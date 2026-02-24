@@ -1,0 +1,20 @@
+id: xulijuan 
+desc: null
+run_id: null
+seed: null
+simple: []
+# simple:
+#   - logging.log_freq: 100
+#   - break_at: 20
+
+is_private: true
+enable_gpu: true
+enable_tpu: false
+enable_internet: true
+
+# Optional: exact dataset/kernel dependencies for Kaggle metadata
+dataset_sources:
+  - liucong12601/ds-file-list
+kernel_sources: []
+competition_sources: []
+model_sources: []

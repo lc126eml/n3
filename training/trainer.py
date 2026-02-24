@@ -34,6 +34,7 @@ import random
 import string
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -57,9 +58,24 @@ from datetime import timedelta
 
 from safetensors.torch import load_file
 from train_utils.priority_lock import PriorityLock
-import rootutils
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-#
+
+
+def _setup_project_root_from_file(start_file: str) -> None:
+    p = Path(start_file).resolve()
+    project_root = None
+    for parent in [p.parent, *p.parents]:
+        if (parent / ".project-root").exists():
+            project_root = parent
+            break
+    if project_root is None:
+        project_root = p.parent.parent
+    os.environ.setdefault("PROJECT_ROOT", str(project_root))
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+
+_setup_project_root_from_file(__file__)
+# 
 from train_utils.general import *
 from train_utils.logging import setup_logging
 from train_utils.distributed import get_machine_local_and_dist_rank

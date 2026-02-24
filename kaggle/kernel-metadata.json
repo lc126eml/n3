@@ -1,0 +1,24 @@
+{
+  "id": "xulijuan/n3r-default",
+  "title": "n3r default",
+  "code_file": "../training/launch.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "liucong12601/timm-repos",
+    "liucong12601/hsm-train-part01",
+    "liucong12601/hsm-train-part02",
+    "liucong12601/hsm-train-part03",
+    "liucong12601/hsm-train-part04",
+    "liucong12601/hsm-train-part05",
+    "liucong12601/hsm-test-val",
+    "liucong12601/ds-file-list"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
