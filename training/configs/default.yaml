@@ -418,7 +418,7 @@ model:
   ffn_bias: True
   # patch_embed: "dinov2_vitl14_reg"
   # patch_embed: "/lc/code/pretrained/dinov3/vitl16" 
-  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16" 
+  patch_embed: "/kaggle/input/datasets/sinayliu/dino-ds/vitl16" 
   patch_size: 16
   dpt_frames_chunk_size: 8
   aa_order: ["frame", "global"]

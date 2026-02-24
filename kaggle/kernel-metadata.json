@@ -1,6 +1,6 @@
 {
-  "id": "xulijuan/n3r-default",
-  "title": "n3r default",
+  "id": "xulijuan/n3r-default-a",
+  "title": "n3r default a",
   "code_file": "../training/launch.py",
   "language": "python",
   "kernel_type": "script",
@@ -10,6 +10,7 @@
   "enable_internet": "true",
   "dataset_sources": [
     "liucong12601/timm-repos",
+    "sinayliu/dino-ds",
     "liucong12601/hsm-train-part01",
     "liucong12601/hsm-train-part02",
     "liucong12601/hsm-train-part03",

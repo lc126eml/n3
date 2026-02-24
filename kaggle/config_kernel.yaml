@@ -115,10 +115,10 @@ running_nodes:
 - id: xulijuan
   left_time: 30.0
   notebooks:
-  - kernel_id: xulijuan/n3r-default
+  - kernel_id: xulijuan/n3r-default-a
     run_id: 0
     total_runs: 1
-    start_time: '2026-02-24 16:00:23'
+    start_time: '2026-02-24 20:09:04'
     resumed_from: null
     history_ids: []
 finished_notebooks: []

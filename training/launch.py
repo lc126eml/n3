@@ -309,7 +309,7 @@ def _default_install_libs() -> list[str]:
         raw = raw.replace(",", " ")
         return [x for x in (s.strip() for s in raw.split()) if x]
     if _IS_KAGGLE:
-        return ["hydra-core", "fvcore", "iopath", "einops", "safetensors"]
+        return ["hydra-core", "fvcore", "iopath", "einops", "safetensors", "wcmatch", "roma"]
     return []
 
 

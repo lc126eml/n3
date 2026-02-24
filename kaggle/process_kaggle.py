@@ -112,6 +112,7 @@ def _update_metadata(cfg: dict) -> dict:
         dataset_sources,
         [
             "liucong12601/timm-repos",
+            "sinayliu/dino-ds",
             "liucong12601/hsm-train-part01",
             "liucong12601/hsm-train-part02",
             "liucong12601/hsm-train-part03",
@@ -119,18 +120,18 @@ def _update_metadata(cfg: dict) -> dict:
             "liucong12601/hsm-train-part05",
             "liucong12601/hsm-test-val",
             "liucong12601/ds-file-list",
-            "sinayliu/temp-db",
-            "sinayliu/scnt-p02",
-            "sinayliu/scnt-p03",
-            "sinayliu/scnt-p04",
-            "sinayliu/scnt-p05",
-            "sinayliu/scnt-p06",
-            "sinayliu/scnt-p07",
-            "sinayliu/scnt-p08",
-            "sinayliu/scnt-p09",
-            "sinayliu/scnt-p10",
-            "sinayliu/scnt-p11",
-            "sinayliu/scnt-p12",
+            # "sinayliu/temp-db",
+            # "sinayliu/scnt-p02",
+            # "sinayliu/scnt-p03",
+            # "sinayliu/scnt-p04",
+            # "sinayliu/scnt-p05",
+            # "sinayliu/scnt-p06",
+            # "sinayliu/scnt-p07",
+            # "sinayliu/scnt-p08",
+            # "sinayliu/scnt-p09",
+            # "sinayliu/scnt-p10",
+            # "sinayliu/scnt-p11",
+            # "sinayliu/scnt-p12",
         ],
     )
     _unique_extend(dataset_sources, [str(x) for x in _as_list(cfg.get("dataset_sources"))])
@@ -218,7 +219,7 @@ def _add_running_node(
     use_lock: bool = True,
     consume_available: bool = False,
 ) -> None:
-    lock_ctx = file_lock(str(config_kernel_path) + ".lock", timeout_sec=600, poll_interval=3.0) if use_lock else nullcontext()
+    lock_ctx = file_lock(config_kernel_path, timeout_sec=600, poll_interval=3.0) if use_lock else nullcontext()
     with lock_ctx:
         kcfg = _load_yaml(config_kernel_path)
         running_nodes = kcfg.get("running_nodes") or []
@@ -257,7 +258,7 @@ def _add_running_node(
 
 
 def _choose_id_for_add_node(config_kernel_path: Path, use_lock: bool = True) -> tuple[str, bool]:
-    lock_ctx = file_lock(str(config_kernel_path) + ".lock", timeout_sec=600, poll_interval=3.0) if use_lock else nullcontext()
+    lock_ctx = file_lock(config_kernel_path, timeout_sec=600, poll_interval=3.0) if use_lock else nullcontext()
     with lock_ctx:
         kcfg = _load_yaml(config_kernel_path)
         running_nodes = kcfg.get("running_nodes") or []
