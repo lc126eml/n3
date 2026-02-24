@@ -1,0 +1,112 @@
+_target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule
+
+pretrained: /lc/code/pretrained/vggt/weights/model.pt_vggtdino
+resume_from_checkpoint: ${ckpt_path}
+log_detail: False
+log_summary: False
+
+# compile model for faster training with pytorch 2.0
+compile: false
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  betas:
+    - 0.9
+    - 0.95
+  weight_decay: 0.1
+
+scheduler:
+  warmup_epochs: 1
+  warmup_steps: 2000
+  epochs: ${trainer.max_epochs}
+  total_steps: ${trainer.max_steps}
+  eta_min: 1e-08
+  min_lr: 3e-05
+  lr: 3e-05
+  muon_lr: 1e-3
+
+net:
+  _target_: vggt.models.vggt.VGGT
+  img_size: 512
+  patch_size: 14
+  embed_dim: 1024
+
+# NOTE: The losses below are from fast3r and might need adaptation to work with the VGGT model's output.
+# VGGT output keys: pose_enc, depth, depth_conf, world_points, world_points_conf
+train_criterion:
+  _target_: fast3r.dust3r.losses.combine_losses
+  losses:
+    - _target_: fast3r.dust3r.losses.ConfLossMultiviewPose
+      pixel_loss:
+        _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+        criterion:
+          _target_: fast3r.dust3r.losses.L21Loss
+        norm_mode: &norm_mode avg_dis #'depth'
+        # norm_mode: depth #avg_dis #'depth'
+        # norm_mode: ~
+        relative: &relative false #true
+        # dist_clip: 5
+        global_from_local: false
+        local_from_depth: false
+        rel_key: &rel_key pred_world_local
+      alpha: 0.2
+      pose_loss:
+        _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+        weight: 1.0
+        alpha: 2.0
+        compute_relative: false
+    # - _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+    #   weight: 1.0
+    #   alpha: 2.0
+    #   compute_relative: false
+      
+      # depth_loss:
+      #   _target_: fast3r.dust3r.loss.depth_loss.ConfDepthLoss
+      #   weight: 1.0
+      #   alpha: 0.2
+      #   # pred_key: pts3d_in_self_view
+      #   # conf_key: conf_self
+      #   pred_key: depth
+      #   conf_key: conf_depth
+      #   # gradient_loss: grad
+      #   gradient_loss: none
+      # cam_loss:
+      #   _target_: fast3r.dust3r.loss.pose_loss.CameraIntrinsicLoss
+      #   weight: 2.0
+      #   pred_key: 'camera_intrinsics'
+      #   fuv_scaler: 128
+      
+validation_criterion:
+  _target_: fast3r.dust3r.losses.combine_losses
+  losses:
+    - _target_: fast3r.dust3r.losses.Eval3DMultiView
+      criterion:
+        _target_: fast3r.dust3r.losses.SmoothL1Loss
+      norm_mode: *norm_mode
+      # norm_mode: depth #avg_dis #'depth'
+      # norm_mode: ~
+      relative: *relative
+      # dist_clip: 5
+      global_from_local: false
+      local_from_depth: false
+      rel_key: *rel_key
+    # pose_loss:
+    - _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+      weight: 1.0
+      compute_relative: false
+    # depth_loss:
+    #   _target_: fast3r.dust3r.loss.depth_loss.ConfDepthLoss
+    #   weight: 1.0
+    #   alpha: 0.2
+    #   # pred_key: pts3d_in_self_view
+    #   # conf_key: conf_self
+    #   pred_key: depth
+    #   conf_key: conf_depth
+    #   # gradient_loss: grad
+    #   gradient_loss: none
+    # cam_loss:
+    #   _target_: fast3r.dust3r.loss.pose_loss.CameraIntrinsicLoss
+    #   weight: 2.0
+    #   pred_key: 'camera_intrinsics'
+    #   fuv_scaler: 128

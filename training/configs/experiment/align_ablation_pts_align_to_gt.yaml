@@ -1,0 +1,37 @@
+# @package _global_
+# Align predictions to GT (rigid alignment; no invariant normalization).
+defaults:
+  - /default
+  - _self_
+
+# exp_name: align_ablation_pts_align_to_gt
+
+postprocess:
+  train:
+    align:
+      to_first_cam:
+        enabled: False
+      pred_center:
+        enabled: False
+      center_world:
+        enabled: False
+      pts_align_to_gt:
+        enabled: &pts_align_to_gt True
+        conf_percentage: 80
+        with_scale: True
+        align_pose: True
+        normalize_depth: False
+        normalize_pose: False
+      pts_align_to_gt_rot:
+        enabled: False
+      gt_align_to_pts:
+        enabled: False
+    normalize:
+      gt_pts_invariant:
+        enabled: False
+      pr_pts_invariant:
+        enabled: False
+
+loss:
+  switch:
+    pts_align_to_gt: *pts_align_to_gt

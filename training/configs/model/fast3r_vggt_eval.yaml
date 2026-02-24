@@ -1,0 +1,101 @@
+_target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule
+
+# pretrained: /lc/code/pretrained/fast3r/model.safetensors
+pretrained: /lc/code/pretrained/vggt/weights/model.pt_vggtdino
+log_detail: False
+log_summary: False
+weight_decay: 0.1
+layer_decay: 1.0
+scale_keywords: ["encoder", "decoder", "downstream_head"]
+pretrain_keywords: ["encoder", "decoder", "head"]
+lr_scales: [0.001, 1.0, 1.0]
+
+vggt: true
+eval_use_pts3d_from_local_head: false
+
+# compile model for faster training with pytorch 2.0
+compile: false
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  # lr: 1e-5
+  betas:
+    - 0.9
+    - 0.95
+  weight_decay: 0.05
+
+scheduler:
+  # _partial_: true
+  warmup_epochs: 10
+  epochs: ${trainer.max_epochs}
+  eta_min: 1e-07
+  min_lr: 1e-06
+  lr: 7e-05
+
+net:
+  _target_: fast3r.models.fast3r.Fast3R
+  freeze: encoder
+  # backbone fast3r encoder_and_head sandwich encoder mask none
+  encoder_args:
+    encoder_type: dino_v2
+    img_size: 512
+    patch_size: 14
+    patch_embed_cls: PatchEmbedDust3R
+    embed_dim: 1024
+    num_heads: 16
+    # num_register_tokens: 0 
+    num_register_tokens: 4 
+    #for depth anything is 0, vggt is 4
+    depth: 24
+    mlp_ratio: 4
+    pos_embed: RoPE100
+    attn_implementation: flash_attention
+  decoder_args:
+    decoder_type: vggt
+    attn_bias_for_inference_enabled: false
+    random_image_idx_embedding: true
+    enc_embed_dim: ${model.net.encoder_args.embed_dim}
+    embed_dim: 1024
+    num_heads: 16
+    depth: 24
+    mlp_ratio: 4.0
+    pos_embed: RoPE100
+    # pos_embed: Token
+    # pos_embed: cosine
+    qkv_bias: true
+    drop: 0.0
+    attn_drop: 0.0
+    has_img_pos: true
+    attn_implementation: flash_attention
+  head_args:
+    head_dim_scale: 2
+    head_type: dpt
+    output_mode: pts3d
+    landscape_only: false
+    with_fast3r_head: false
+    with_local_head: false
+    depth_mode:
+      - exp
+      # - inv_log
+      - !!float -inf
+      - !!float inf
+    conf_mode:
+      - exp
+      - 1
+      - !!float inf
+    pose_mode:
+      - exp
+      - !!float -inf
+      - !!float inf
+    patch_size: 14
+    has_pose: true
+    has_rgb: false
+    has_cam: false
+    cam_dim: 6
+    pose_drop: 0.0
+    vggt_cam: true
+    vggt_depth: true
+    vggt_point: true
+    vggt_local_point: true
+

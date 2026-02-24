@@ -1,0 +1,113 @@
+task_name: eval
+tags:
+- eval
+ckpt_path: null
+model_root: /lc/code/3D/a3R/logs/train/runs/ckpt19
+model_cfg_file: ~
+# ${model_root}/.hydra/config.yaml
+data:
+  data_root: /lc/data/3D/resized_hypersim
+  num_views: 5
+  num_views_val: 5
+  data_module:
+    _target_: src.dust3r.datasets.base.multiview_dust3r_datamodule.MultiViewDUSt3RDataModule
+    test_datasets:
+    - HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}', resolution=224,
+      num_views=${data.num_views_val}, seed=777, samples_per_scene=5)
+    - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='/lc/data/3D/7scenes',
+      aug_crop=1, resolution=224, transform=SeqColorJitter, num_views=${data.num_views},
+      n_corres=0, samples_per_scene=1)
+    - Infinigen_Multi(allow_repeat=False, split='train', ROOT='/lc/data/3D/infinigen',
+      aug_crop=1, resolution=224, transform=SeqColorJitter, num_views=${data.num_views},
+      n_corres=0, samples_per_scene=1)
+    batch_size_per_device: 8
+    batch_size_per_device_val: 1
+    batch_size_per_device_test: 8
+    num_workers: 2
+    num_workers_val: 0
+    num_workers_test: 2
+    pin_memory: false
+    persistent_workers: false
+model:
+  _target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule
+  pretrained: ${model_root}/checkpoints/epoch_019.ckpt
+  log_detail: false
+  eval_use_pts3d_from_local_head: true
+  compile: false
+  net:
+    _target_: fast3r.models.fast3r.Fast3R
+    freeze: encoder
+    encoder_args:
+      encoder_type: croco
+      img_size: 512
+      patch_size: 16
+      patch_embed_cls: PatchEmbedDust3R
+      embed_dim: 1024
+      num_heads: 16
+      depth: 24
+      mlp_ratio: 4
+      pos_embed: RoPE100
+      attn_implementation: flash_attention
+    decoder_args:
+      decoder_type: fast3r
+      attn_bias_for_inference_enabled: false
+      random_image_idx_embedding: true
+      enc_embed_dim: ${model.net.encoder_args.embed_dim}
+      embed_dim: 1024
+      num_heads: 16
+      depth: 24
+      mlp_ratio: 4.0
+      qkv_bias: true
+      drop: 0.0
+      attn_drop: 0.0
+      attn_implementation: flash_attention
+    head_args:
+      head_type: dpt
+      output_mode: pts3d
+      landscape_only: false
+      with_local_head: true
+      depth_mode:
+      - exp
+      - -.inf
+      - .inf
+      conf_mode:
+      - exp
+      - 1
+      - .inf
+      pose_mode:
+      - exp
+      - -.inf
+      - .inf
+      patch_size: 16
+      has_pose: true
+      has_rgb: false
+logger:
+  csv:
+    _target_: pytorch_lightning.loggers.csv_logs.CSVLogger
+    save_dir: ${paths.output_dir}
+    name: csv/
+    prefix: ''
+    version: ''
+trainer:
+  _target_: pytorch_lightning.trainer.Trainer
+  _convert_: partial
+  default_root_dir: ${paths.output_dir}
+  min_epochs: 0
+  max_epochs: 160
+  accelerator: gpu
+  devices: 1
+  precision: bf16-mixed
+  check_val_every_n_epoch: 5
+  enable_model_summary: false
+  deterministic: false
+paths:
+  root_dir: ${oc.env:PROJECT_ROOT}
+  data_dir: ${paths.root_dir}/data/
+  log_dir: ${paths.root_dir}/dlogs/
+  output_dir: ${hydra:runtime.output_dir}
+  work_dir: ${hydra:runtime.cwd}
+  run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+extras:
+  ignore_warnings: false
+  enforce_tags: true
+  print_config: true

@@ -1,0 +1,29 @@
+# @package _global_
+# Pred-centered (align predictions to a centered frame).
+defaults:
+  - /default
+  - _self_
+
+# exp_name: align_ablation_pred_center
+
+postprocess:
+  train:
+    align:
+      to_first_cam:
+        enabled: False
+      pred_center:
+        enabled: &pts_align_to_center True
+        pr_to_gt: False
+        align_pose: True
+      center_world:
+        enabled: False
+      pts_align_to_gt:
+        enabled: False
+      pts_align_to_gt_rot:
+        enabled: False
+      gt_align_to_pts:
+        enabled: False
+
+loss:
+  switch:
+    pts_align_to_center: *pts_align_to_center

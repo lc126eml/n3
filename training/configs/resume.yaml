@@ -1,0 +1,43 @@
+device: cuda
+cuda:
+  cudnn_deterministic: False
+  cudnn_benchmark: False
+  allow_tf32: True
+
+optim:
+  amp:
+    enabled: True
+    amp_dtype: bfloat16
+
+compile:
+  enabled: False
+  mode: "default"
+  fullgraph: False
+  dynamic: False
+
+logging:
+  run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+
+checkpoint:
+  resume_checkpoint_path: /home/liucong/codes/3d/vggt-training/training/logs/ablation/point_l1_gamma2_beta01/to_first_cam_rcropPr0.00-0.80e15-30_lr50_e130/2026-01-07_17-07-24/ckpts/checkpoint.pt
+  filter_keys:
+    enabled: False
+      
+# optim:
+#   options:
+#     lr:
+#       - scheduler:
+#           _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+#           schedulers:
+#             - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+#               start_value: 1e-6
+#               end_value: 1e-5
+#             - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+#               start_value: 1e-5
+#               end_value: 1e-8
+#           lengths: [0.05, 0.95]
+#           interval_scaling: ['rescaled', 'rescaled']
+#     weight_decay:
+#       - scheduler:
+#           _target_: fvcore.common.param_scheduler.ConstantParamScheduler
+#           value: 0.05

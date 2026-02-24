@@ -1,0 +1,188 @@
+# @package _global_
+# First-frame as world coordinates (align poses + points to first cam).
+defaults:
+  - /default
+  - _self_
+
+exp_name: ablation/point_smooth_l1_gamma30_lr100
+
+lr_scheduler_lengths: &lr_scheduler_lengths [0.05, 0.95] #15
+postprocess:
+  train:
+    to_extri: True
+    align:
+      to_first_cam: 
+        enabled: True 
+        points: True
+      pr_align_cam:
+        enabled: False
+        points: False
+      pred_center:
+        enabled: &pts_align_to_center False
+      center_world:
+        enabled: &pts_center_world False
+        align_pose: True
+      pts_align_to_gt:
+        enabled: &pts_align_to_gt False
+      pts_align_to_gt_rot:
+        enabled: &pts_align_to_gt_rot False
+      gt_align_to_pts:
+        enabled: &gt_align_to_pts False
+      depth_align_to_gt:
+        enabled: False
+    normalize:
+      gt_pts: True
+      gt_depth: False
+      gt_pts_invariant: 
+        enabled: False
+      pr_pts:
+        enabled: False
+        metric: False
+      pr_pts_invariant: 
+        enabled: False
+        translate: False
+    transform:
+      cam_from_depth: &cam_from_depth False
+      global_from_cam: &global_from_cam False
+      global_from_cam_detach_pose: &global_from_cam_detach_pose False
+      global_from_depth: &global_from_depth False
+  val:
+    to_extri: True
+    align:
+      to_first_cam: 
+        enabled: True
+        points: True
+      pr_align_cam:
+        enabled: True
+        points: False
+      pts_align_to_gt:
+        enabled: True
+        conf_percentage: null
+        with_scale: True
+        align_pose: False
+        normalize_depth: False
+        normalize_pose: False
+      depth_align_to_gt:
+        enabled: True
+        conf_percentage: null
+        pose: True
+    normalize:
+      gt_pts: False
+      pr_pts:
+        enabled: False
+        metric: False
+    metrics:
+      camera:
+        enabled: True
+        abs_err: True
+        rel_err: True
+        abs_err_angle: True
+        rel_err_angle: True
+        # all_pairs_err: True
+      depth:
+        enabled: True
+      recon:
+        pts_err: True
+        from_cam_err: False
+        from_depth_err: False
+    transform:
+      cam_from_depth: *cam_from_depth
+      global_from_cam: *global_from_cam
+      global_from_cam_detach_pose: *global_from_cam_detach_pose
+      global_from_depth: *global_from_depth
+
+    
+
+
+loss:
+  _target_: train_utils.loss.MultitaskLoss
+  camera: 
+    weight: 30.0
+    weight_focal: 1.0
+    weight_trans: 1.0
+    weight_rot: 1.0
+    pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
+    loss_type: "smooth_l1"   
+  angle_pose: 
+    weight: 1.0
+    weight_trans: 1.0
+    weight_rot: 1.0
+    relative_weight: 0.5
+    absolute_weight: 0.5
+    compute_relative: False
+    compute_absolute: False
+    relative_neighbors: 1
+    loss_type: "smooth_l1" 
+    beta: 1.0
+  depth:
+    weight: 1.0
+    gradient_loss_fn: "grad" 
+    valid_range: 0.98
+    reg_loss_type: "smooth_l1"
+    scale_invariant: false
+    # scale_invariant_mode: "scale"
+    conf_weight: 0.
+    reg_weight: 0.
+    gamma: 10.0
+    alpha: 0.2
+    grad_weight: 1.0
+    silog_weight: 1.0
+    silog_variance_focus: 0.85
+    silog_conf_weight: 1.0
+  # point: null
+  # If you want to enable point, use the following config
+  point: 
+    weight: 1.0
+    global_aligned_weight: 0.1
+    global_from_cam_weight: 0.05
+    global_from_depth_weight: 0.05
+    cam_from_depth_weight: 0.05
+    gradient_loss_fn: "normal" 
+    valid_range: 0.98
+    gamma: 30.0
+    alpha: 0.2
+    reg_loss_type: "smooth_l1"
+    conf_weight: 1.0
+    reg_weight: 1.0
+    grad_weight: 1.0
+    aligned_valid_range: 0.8
+    conf_percentage: 90
+  switch: null
+    # pts_align_to_gt: *pts_align_to_gt
+    # pts_align_to_gt_rot: *pts_align_to_gt_rot
+    # gt_align_to_pts: *gt_align_to_pts
+    # pts_align_to_center: *pts_align_to_center
+    # pts_center_world: *pts_center_world
+  regulize_scale:
+    enabled: True
+    scale_weight: 0.3
+    translation_weight: 0
+  vggt: True
+  enabled: true
+  track: null   
+
+
+optim:
+  val_freq: 1
+  param_group_modifiers: False
+  warmup_epochs: -1
+
+  options:
+    lr:
+      - scheduler:
+          _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+          schedulers:
+            - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+              start_value: 1e-6
+              end_value: &lr_base 1e-3
+            - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+              start_value: *lr_base
+              end_value: 1e-6
+          lengths: *lr_scheduler_lengths
+          interval_scaling: ['rescaled', 'rescaled']
+
+model:
+  rope_freq: 100
+  # rope_freq: -1
+  first_cam: True
+  share_dpt_head: True

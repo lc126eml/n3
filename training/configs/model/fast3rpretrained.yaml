@@ -1,0 +1,58 @@
+_target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule
+
+pretrained: /lc/code/pretrained/fast3r
+# pretrained: /lc/code/3D/a3R/logs/train/runs/2025-04-20_11-27-17/checkpoints/epoch_019.ckpt
+# pretrained: /path/to/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+# resume_from_checkpoint: ${ckpt_path}
+log_detail: False
+
+eval_use_pts3d_from_local_head: true
+
+# compile model for faster training with pytorch 2.0
+compile: false
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  lr: 1e-6
+  betas:
+    - 0.9
+    - 0.95
+  weight_decay: 0.05
+
+scheduler:
+  # _partial_: true
+  warmup_epochs: 5
+  epochs: ${trainer.max_epochs}
+  eta_min: 1e-07
+  min_lr: 1e-06
+  lr: 1e-06
+
+net:
+  _target_: fast3r.models.fast3r.Fast3R.from_pretrained
+  pretrained_model_name_or_path: ${model.pretrained}
+  freeze: backbone
+
+train_criterion:
+  _target_: fast3r.dust3r.losses.ConfLossMultiviewPose
+  pixel_loss:
+    _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+    criterion:
+      _target_: fast3r.dust3r.losses.L21Loss
+    norm_mode: avg_dis
+  alpha: 0.2
+  # pose_loss:
+  #   _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+  #   weight: 1.0
+
+validation_criterion:
+  _target_: fast3r.dust3r.losses.ConfLossMultiviewPose
+  pixel_loss:
+    _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+    criterion:
+      _target_: fast3r.dust3r.losses.L21Loss
+    norm_mode: avg_dis
+  alpha: 0.2
+  # pose_loss:
+  #   _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+  #   weight: 1.0

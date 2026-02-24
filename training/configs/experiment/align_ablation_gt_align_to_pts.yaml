@@ -1,0 +1,28 @@
+# @package _global_
+# Align GT to predicted frame (rigid; no scale).
+defaults:
+  - /default
+  - _self_
+
+exp_name: align_ablation_gt_align_to_pts
+
+postprocess:
+  train:
+    align:
+      to_first_cam:
+        enabled: False
+      pred_center:
+        enabled: False
+      center_world:
+        enabled: False
+      pts_align_to_gt:
+        enabled: False
+      pts_align_to_gt_rot:
+        enabled: False
+      gt_align_to_pts:
+        enabled: &gt_align_to_pts True
+        align_pose: True
+
+loss:
+  switch:
+    gt_align_to_pts: *gt_align_to_pts

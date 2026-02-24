@@ -1,0 +1,49 @@
+_target_: pytorch_lightning.trainer.Trainer
+_convert_: partial
+
+default_root_dir: ${paths.output_dir}
+
+# min_epochs: 0 # prevents early stopping
+# max_epochs: 10
+max_epochs: -1
+max_steps: 36000
+min_steps: 500
+
+accelerator: gpu
+devices: 1
+
+# mixed precision for extra speed-up
+precision: bf16-mixed
+# precision: 32
+# 16-mixed
+
+# perform a validation loop every N training epochs
+check_val_every_n_epoch: null
+val_check_interval: 500
+accumulate_grad_batches: 1
+
+log_every_n_steps: 500
+
+enable_model_summary: False
+# enable_checkpointing: False
+num_sanity_val_steps: 0
+
+# --- Gradient Clipping (Standard Setting for Transformers) ---
+# The value to clip the gradient norm to. 1.0 is a robust and widely used default.
+gradient_clip_val: 1.0
+
+# The clipping algorithm. 'norm' is the default when gradient_clip_val is set,
+# but being explicit is good practice. This is the standard for Transformers.
+gradient_clip_algorithm: 'norm'
+
+# set True to to ensure deterministic results
+# makes training slower but gives more reproducibility than just setting seeds
+deterministic: False
+# plugins:
+#   - _target_: pytorch_lightning.plugins.environments.SLURMEnvironment
+#     auto_requeue: true # auto-resubmit the job when it is preempted by slurm
+#     requeue_signal: ${python_eval:"signal.SIGUSR1"} # singal code is platform dependent, so it has to be decided at runtime
+# requeue_signal:
+#   _target_: signal.Signals
+#   _args_:
+#     - 10  # SIGUSR1, see: https://chromium.googlesource.com/chromiumos/docs/+/master/constants/signals.md

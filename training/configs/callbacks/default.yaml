@@ -1,0 +1,27 @@
+defaults:
+  - model_checkpoint
+  - memory_cleanup
+  - early_stopping
+  # - model_summary
+  - rich_progress_bar
+  - _self_
+
+model_checkpoint:
+  dirpath: ${paths.output_dir}/checkpoints
+  # filename: "epoch_{epoch:03d}"
+  filename: "step_{step}"
+  monitor: "val/gpts_err"
+  mode: "min"
+  save_last: True
+  auto_insert_metric_name: False
+  save_weights_only: True # if True, then only the model’s weights will be saved
+  every_n_train_steps: ${trainer.val_check_interval}
+  every_n_epochs: null # number of epochs between checkpoints
+
+early_stopping:
+  monitor: ${callbacks.model_checkpoint.monitor}
+  patience: 30
+  mode: "min"
+
+model_summary:
+  max_depth: -1

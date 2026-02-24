@@ -1,0 +1,28 @@
+# @package _global_
+mode: val
+
+logging:
+  run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+  log_dir: logs/eval/${logging.run_folder_name}
+
+checkpoint:
+  resume_checkpoint_path: /path/to/checkpoint.pt  # set this to your checkpoint file
+  filter_keys:
+    enabled: False
+
+# Optional hardware/runtime overrides
+cuda:
+  cudnn_deterministic: False
+  cudnn_benchmark: True
+  allow_tf32: True
+
+optim:
+  amp:
+    enabled: True
+    amp_dtype: bfloat16
+
+compile:
+  enabled: False
+  mode: "reduce-overhead"
+  fullgraph: False
+  dynamic: True

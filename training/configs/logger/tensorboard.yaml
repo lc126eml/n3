@@ -1,0 +1,12 @@
+# https://www.tensorflow.org/tensorboard/
+
+tensorboard:
+  _target_: pytorch_lightning.loggers.tensorboard.TensorBoardLogger
+  save_dir: "${paths.output_dir}"
+  # save_dir: ${paths.tensorboard_dir}/${paths.run_folder_name}
+  name: "pred_world_local_long"
+  log_graph: False
+  default_hp_metric: False
+  prefix: ""
+  # version: ${oc.select:hydra.sweep.subdir,""}
+  version: ""

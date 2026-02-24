@@ -1,0 +1,2 @@
+memory_cleanup:
+  _target_: fast3r.models.callbacks.memory_cleanup.MemoryCleanupCallback

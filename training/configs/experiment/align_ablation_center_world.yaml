@@ -1,0 +1,28 @@
+# @package _global_
+# Center world frame (recenter GT poses/points).
+defaults:
+  - /default
+  - _self_
+
+# exp_name: align_ablation_center_world
+
+postprocess:
+  train:
+    align:
+      to_first_cam:
+        enabled: False
+      pred_center:
+        enabled: False
+      center_world:
+        enabled: &pts_center_world True
+        align_pose: True
+      pts_align_to_gt:
+        enabled: False
+      pts_align_to_gt_rot:
+        enabled: False
+      gt_align_to_pts:
+        enabled: False
+
+loss:
+  switch:
+    pts_center_world: *pts_center_world

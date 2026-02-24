@@ -1,0 +1,152 @@
+_target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule
+
+pretrained: /lc/code/pretrained/fast3r/model.safetensors
+# pretrained: /lc/code/pretrained/vggt/weights/model.pt_vggtdino
+# pretrained: /lc/code/3D/a3R/logs/train/runs/ckpt19/checkpoints/epoch_019.ckpt
+# pretrained: /lc/code/3D/a3R/logs/train/runs/ckpt239/checkpoints/epoch_239.ckpt
+# pretrained: /path/to/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+# resume_from_checkpoint: ${ckpt_path}
+log_detail: False
+weight_decay: 0.05
+layer_decay: 1.0
+scale_keywords: ["encoder", "decoder", "downstream_head"]
+lr_scales: [0.001, 1.0, 1.0]
+
+eval_use_pts3d_from_local_head: true
+
+# compile model for faster training with pytorch 2.0
+compile: false
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: true
+  # lr: 1e-5
+  betas:
+    - 0.9
+    - 0.95
+  weight_decay: 0.05
+
+# scheduler:
+#   _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+#   _partial_: true
+#   mode: min
+#   factor: 0.1
+#   patience: 10
+
+scheduler:
+  # _partial_: true
+  warmup_epochs: 10
+  epochs: ${trainer.max_epochs}
+  eta_min: 1e-07
+  min_lr: 1e-06
+  lr: 5e-05
+
+net:
+  _target_: fast3r.models.fast3r.Fast3R
+  freeze: encoder
+  # backbone fast3r encoder_and_head sandwich encoder mask none
+  encoder_args:
+    encoder_type: croco
+    img_size: 512
+    patch_size: 16
+    patch_embed_cls: PatchEmbedDust3R
+    embed_dim: 1024
+    num_heads: 16
+    depth: 24
+    mlp_ratio: 4
+    pos_embed: RoPE100
+    attn_implementation: flash_attention
+  decoder_args:
+    decoder_type: fast3r
+    attn_bias_for_inference_enabled: false
+    random_image_idx_embedding: true
+    enc_embed_dim: ${model.net.encoder_args.embed_dim}
+    embed_dim: 1024
+    num_heads: 16
+    depth: 24
+    mlp_ratio: 4.0
+    # pos_embed: RoPE100
+    pos_embed: Token
+    # pos_embed: cosine
+    qkv_bias: true
+    drop: 0.0
+    attn_drop: 0.0
+    attn_implementation: flash_attention
+  head_args:
+    head_type: dpt
+    output_mode: pts3d
+    landscape_only: false
+    with_local_head: true
+    depth_mode:
+      - exp
+      - !!float -inf
+      - !!float inf
+    conf_mode:
+      - exp
+      - 1
+      - !!float inf
+    pose_mode:
+      - exp
+      - !!float -inf
+      - !!float inf
+    patch_size: 16
+    has_pose: true
+    has_rgb: false
+    has_cam: true
+    cam_dim: 6
+
+  # net:
+  #   _target_: fast3r.models.multiview_dust3r_module.MultiViewDUSt3RLitModule.load_from_checkpoint
+  # checkpoint_path: ${model.pretrained}
+
+  # freeze: none
+
+# train_criterion:
+#   _target_: fast3r.dust3r.losses.combine_losses
+#   losses:
+#     - 0.8
+#     - _target_: fast3r.dust3r.losses.ConfLossMultiviewV2
+#       pixel_loss:
+#         _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+#         criterion:
+#           _target_: fast3r.dust3r.losses.L21Loss
+#         norm_mode: avg_dis
+#       alpha: 0.2
+#     - 0.1
+#     - _target_: src.dust3r.losses.ConfLoss
+#       pixel_loss:
+#         _target_: src.dust3r.losses.Regr3DPoseBatchList
+#         criterion:
+#           _target_: src.dust3r.losses.L21Loss
+#         norm_mode: avg_dis
+#       alpha: 0.2
+
+train_criterion:
+  _target_: fast3r.dust3r.losses.ConfLossMultiviewPose
+  pixel_loss:
+    _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+    criterion:
+      _target_: fast3r.dust3r.losses.L21Loss
+    norm_mode: avg_dis
+  alpha: 0.2
+  pose_loss:
+    _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+    weight: 1.0
+  cam_loss:
+    _target_: fast3r.dust3r.loss.pose_loss.CameraIntrinsicLoss
+    weight: 1.0
+
+validation_criterion:
+  _target_: fast3r.dust3r.losses.ConfLossMultiviewPose
+  pixel_loss:
+    _target_: fast3r.dust3r.losses.Regr3DMultiviewV3
+    criterion:
+      _target_: fast3r.dust3r.losses.L21Loss
+    norm_mode: avg_dis
+  alpha: 0.2
+  pose_loss:
+    _target_: fast3r.dust3r.loss.pose_loss.CameraPoseLoss
+    weight: 1.0
+  cam_loss:
+    _target_: fast3r.dust3r.loss.pose_loss.CameraIntrinsicLoss
+    weight: 0.5
