@@ -170,7 +170,7 @@ def _update_metadata(cfg: dict) -> dict:
             "liucong12601/hsm-train-part04",
             "liucong12601/hsm-train-part05",
             "liucong12601/hsm-test-val",
-            "liucong12601/ds-file-list",
+            "liucong12601/depth-file-list",
             # "sinayliu/temp-db",
             # "sinayliu/scnt-p02",
             # "sinayliu/scnt-p03",

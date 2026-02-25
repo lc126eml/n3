@@ -1,6 +1,6 @@
 {
-  "id": "liucong12601/depth-file-list-42",
-  "title": "depth file list 42",
+  "id": "liucong12601/a-r0-42",
+  "title": "a r0 42",
   "code_file": "../training/launch.py",
   "language": "python",
   "kernel_type": "script",
@@ -17,7 +17,7 @@
     "liucong12601/hsm-train-part04",
     "liucong12601/hsm-train-part05",
     "liucong12601/hsm-test-val",
-    "liucong12601/ds-file-list"
+    "liucong12601/depth-file-list"
   ],
   "competition_sources": [],
   "kernel_sources": [],

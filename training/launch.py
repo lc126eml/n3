@@ -227,6 +227,7 @@ def _ensure_n3_repo_on_kaggle(current_root: Path) -> Path:
             shutil.rmtree(target_root)
         shutil.move(str(extracted_root), str(target_root))
         shutil.rmtree(tmp_extract, ignore_errors=True)
+        zip_path.unlink(missing_ok=True)
         repo_root = target_root
 
     if not _looks_like_n3_repo(repo_root):
@@ -312,14 +313,12 @@ def _default_install_libs() -> list[str]:
         return ["hydra-core", "fvcore", "iopath", "einops", "safetensors", "wcmatch", "roma"]
     return []
 
-lib_names = _default_install_libs()
-install_libs(lib_names)
-
-from hydra import compose, initialize_config_dir
-
 def main() -> None:
     project_root = _setup_project_root()
     project_root = _ensure_n3_repo_on_kaggle(project_root)
+    lib_names = _default_install_libs()
+    install_libs(lib_names)
+    from hydra import compose, initialize_config_dir
 
     parser = argparse.ArgumentParser(description="Run n3 training (Hydra config entrypoint).")
     parser.add_argument(

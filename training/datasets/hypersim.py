@@ -107,12 +107,49 @@ class HyperSim_Multi(BaseMultiViewDataset):
             for img_ids in scene_img_list:
                 f.write(" ".join(str(i) for i in img_ids) + "\n")
 
+    def _revalidate_cached_data(self, scenes, images, scene_img_list):
+        cut_off = (
+            self.num_views * self.min_interval
+            if not self.allow_repeat
+            else max(self.num_views * self.min_interval // 3, 3)
+        )
+
+        kept_scenes = []
+        kept_scene_img_list = []
+        for scene, img_ids in zip(scenes, scene_img_list):
+            if len(img_ids) < cut_off:
+                print(f"Skipping cached {scene}")
+                continue
+            kept_scenes.append(scene)
+            kept_scene_img_list.append(img_ids)
+
+        if not kept_scenes:
+            return [], [], []
+
+        old_to_new = {}
+        new_images = []
+        new_scene_img_list = []
+        for img_ids in kept_scene_img_list:
+            remapped = []
+            for idx in img_ids:
+                if idx < 0 or idx >= len(images):
+                    return None
+                if idx not in old_to_new:
+                    old_to_new[idx] = len(new_images)
+                    new_images.append(images[idx])
+                remapped.append(old_to_new[idx])
+            new_scene_img_list.append(remapped)
+
+        return kept_scenes, new_images, new_scene_img_list
+
     def _load_data(self):
         cached = self._read_cache()
         if cached is not None:
-            self.scenes, self.images, self.scene_img_list = cached
-            self.all_scenes = sorted({osp.basename(osp.dirname(osp.dirname(p))) for p in self.images})
-            return
+            cached = self._revalidate_cached_data(*cached)
+            if cached is not None:
+                self.scenes, self.images, self.scene_img_list = cached
+                self.all_scenes = sorted({osp.basename(osp.dirname(osp.dirname(p))) for p in self.images})
+                return
 
         rgb_paths = []
         for root in self.roots:

@@ -1,6 +1,7 @@
 id: liucong12601 
-desc: depth-file-list
+desc: a
 run_id: 0
+total_runs: 8
 seed: 42
 # simple:
 #   - data.data_module.train_config.datasets.0: "HyperSim_Multi(allow_repeat=False, split='train', ROOT=['${data.data_root}/hypersim_processed'], image_list_path='/kaggle/working', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
@@ -12,10 +13,12 @@ is_private: true
 enable_gpu: false
 enable_tpu: false
 enable_internet: true
+resume_full_ckpt: false
+resume_source: null
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata
 dataset_sources:
-  - liucong12601/ds-file-list
+  - liucong12601/depth-file-list
 kernel_sources: []
 competition_sources: []
 model_sources: []

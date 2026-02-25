@@ -61,15 +61,19 @@ from train_utils.priority_lock import PriorityLock
 
 
 def _setup_project_root_from_file(start_file: str) -> None:
-    p = Path(start_file).resolve()
-    project_root = None
-    for parent in [p.parent, *p.parents]:
-        if (parent / ".project-root").exists():
-            project_root = parent
-            break
-    if project_root is None:
-        project_root = p.parent.parent
-    os.environ.setdefault("PROJECT_ROOT", str(project_root))
+    env_project_root = os.environ.get("PROJECT_ROOT")
+    if env_project_root:
+        project_root = Path(env_project_root).resolve()
+    else:
+        p = Path(start_file).resolve()
+        project_root = None
+        for parent in [p.parent, *p.parents]:
+            if (parent / ".project-root").exists():
+                project_root = parent
+                break
+        if project_root is None:
+            project_root = p.parent.parent
+        os.environ.setdefault("PROJECT_ROOT", str(project_root))
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
@@ -190,8 +194,10 @@ class Trainer:
         # else:
         #     self._base_train_augs = None
 
-        self._setup_dataloaders()
-        sys.exit(0)
+        # self._setup_dataloaders()
+        # import shutil
+        # shutil.rmtree(os.environ.get("PROJECT_ROOT"))
+        # sys.exit(0)
         self._base_train_augs = None
         if random_crop_prob_schedule is not None:
             self._base_train_augs = self._extract_train_augs(self.data_conf)
