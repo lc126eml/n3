@@ -30,15 +30,15 @@ env_variables:
 
 logging:
   run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
-  log_dir: logs/${exp_name}/${logging.run_folder_name}
+  log_dir: logs
   log_visuals: false
-  log_freq: 50
+  log_freq: 200
   log_level_primary: DEBUG
   log_level_secondary: WARNING
   all_ranks: false
-  tensorboard_writer:
-    _target_: train_utils.tb_writer.TensorBoardLogger
-    path: ${logging.log_dir}/tensorboard
+  # tensorboard_writer:
+  #   _target_: train_utils.tb_writer.TensorBoardLogger
+  #   path: ${logging.log_dir}/tensorboard
   csv_writer:
     enabled: true
     path: ${logging.log_dir}/csv
@@ -205,7 +205,7 @@ postprocess:
 
     
 checkpoint:
-  save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
+  save_dir: logs/ckpts
   save_freq: 1 #*max_epochs
   resume_checkpoint_path:
   # When resuming, checkpoint trainer_config is preferred by default.
