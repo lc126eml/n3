@@ -140,10 +140,6 @@ class Trainer:
         self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
-        # Apply Kaggle AMP policy before deriving dtype-dependent config values.
-        if cfg.get("optim") is not None:
-            self.optim_conf = cfg.optim
-            self._apply_kaggle_amp_policy()
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
@@ -275,7 +271,11 @@ class Trainer:
             all_ranks=self.logging_conf.all_ranks,
         )
         set_seeds(self.seed_value, self.max_epochs, 0)
-        self.amp_type = get_amp_type(self.optim_conf.amp.amp_dtype)        
+        amp_conf = getattr(self.optim_conf, "amp", None)
+        if amp_conf is not None and bool(amp_conf.enabled):
+            self.amp_type = get_amp_type(amp_conf.amp_dtype)
+        else:
+            self.amp_type = torch.float32
 
         self._setup_components()  # Except Optimizer everything is setup here.
         self._setup_dataloaders()
@@ -359,19 +359,7 @@ class Trainer:
             return self.checkpoint_conf.resume_checkpoint_path
         return None
 
-    def _merge_resume_config(self, cfg: DictConfig) -> DictConfig:
-        if not cfg.get("checkpoint") or not cfg.checkpoint.get("resume_checkpoint_path"):
-            return cfg
-        self._resume_ckpt_path = cfg.checkpoint.resume_checkpoint_path
-        self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
-        if not self._resume_checkpoint or not isinstance(self._resume_checkpoint, dict):
-            raise ValueError(f"Checkpoint could not be loaded: {self._resume_ckpt_path}")
-        resume_cfg = self._resume_checkpoint.get("trainer_config")
-        if resume_cfg is None:
-            raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
-        self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
-        base_cfg = OmegaConf.create(resume_cfg)
-        merged = OmegaConf.merge(cfg, base_cfg)
+    def _normalize_resume_skip_keys(self, cfg: DictConfig) -> List[str]:
         checkpoint_cfg = cfg.get("checkpoint", {})
         raw_skip_keys = checkpoint_cfg.get("resume_config_skip_keys", [])
         if OmegaConf.is_config(raw_skip_keys):
@@ -388,7 +376,7 @@ class Trainer:
             raw_skip_keys = []
 
         seen_skip_keys = set()
-        resume_skip_keys = []
+        resume_skip_keys: List[str] = []
         for key_path in [*self._RESUME_CONFIG_SKIP_KEYS_HARDCODED, *raw_skip_keys]:
             if not isinstance(key_path, str) or not key_path:
                 logging.warning(f"Ignoring invalid resume_config_skip_keys entry: {key_path!r}")
@@ -397,6 +385,22 @@ class Trainer:
                 continue
             seen_skip_keys.add(key_path)
             resume_skip_keys.append(key_path)
+        return resume_skip_keys
+
+    def _merge_resume_config(self, cfg: DictConfig) -> DictConfig:
+        if not cfg.get("checkpoint") or not cfg.checkpoint.get("resume_checkpoint_path"):
+            return cfg
+        self._resume_ckpt_path = cfg.checkpoint.resume_checkpoint_path
+        self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
+        if not self._resume_checkpoint or not isinstance(self._resume_checkpoint, dict):
+            raise ValueError(f"Checkpoint could not be loaded: {self._resume_ckpt_path}")
+        resume_cfg = self._resume_checkpoint.get("trainer_config")
+        if resume_cfg is None:
+            raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
+        self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
+        base_cfg = OmegaConf.create(resume_cfg)
+        merged = OmegaConf.merge(cfg, base_cfg)
+        resume_skip_keys = self._normalize_resume_skip_keys(cfg)
         _missing = object()
         for key_path in resume_skip_keys:
             try:
@@ -517,34 +521,6 @@ class Trainer:
             torch.backends.cudnn.benchmark = cuda_conf.cudnn_benchmark
             torch.backends.cuda.matmul.allow_tf32 = cuda_conf.allow_tf32
             torch.backends.cudnn.allow_tf32 = cuda_conf.allow_tf32
-
-    def _apply_kaggle_amp_policy(self) -> None:
-        is_kaggle = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
-        if not is_kaggle:
-            return
-        if not getattr(self.optim_conf, "amp", None):
-            return
-
-        if not torch.cuda.is_available():
-            self.optim_conf.amp.enabled = False
-            logging.info("Kaggle AMP policy: CUDA unavailable, forcing float32 (AMP disabled).")
-            return
-
-        bf16_supported = False
-        try:
-            bf16_supported = bool(torch.cuda.is_bf16_supported(including_emulation=False))
-        except TypeError:
-            bf16_supported = bool(torch.cuda.is_bf16_supported())
-        except Exception:
-            bf16_supported = False
-
-        if bf16_supported:
-            self.optim_conf.amp.enabled = True
-            self.optim_conf.amp.amp_dtype = "bfloat16"
-            logging.info("Kaggle AMP policy: bf16 supported, forcing bfloat16 AMP.")
-        else:
-            self.optim_conf.amp.enabled = False
-            logging.info("Kaggle AMP policy: bf16 unsupported, forcing float32 (AMP disabled).")
 
     @staticmethod
     def _update_ckpt_keys_revised(ckpt, heads_to_keep=None, heads_to_discard=None, default_keep=True):

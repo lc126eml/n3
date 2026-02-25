@@ -123,22 +123,32 @@ def _kernel_status(kernel_id: str):
 
 def _push_kernel(cfg: dict):
     cfg_path = BASE_DIR / "config.yaml"
-    _write_yaml(cfg_path, cfg)
-    result = subprocess.run(
-        [
-            "python",
-            str(BASE_DIR / "process_kaggle.py"),
-            "--run",
-            "--concise",
-            "--push-output-only",
-        ],
-        cwd=BASE_DIR,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    output = (result.stdout or "") + (result.stderr or "")
-    return result.returncode == 0, output.strip()
+    original_text = cfg_path.read_text(encoding="utf-8") if cfg_path.exists() else None
+    try:
+        _write_yaml(cfg_path, cfg)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(BASE_DIR / "process_kaggle.py"),
+                "--run",
+                "--concise",
+                "--push-output-only",
+            ],
+            cwd=BASE_DIR,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        return result.returncode == 0, output.strip()
+    finally:
+        try:
+            if original_text is None:
+                cfg_path.unlink(missing_ok=True)
+            else:
+                cfg_path.write_text(original_text, encoding="utf-8")
+        except Exception as exc:
+            logging.warning("Failed to restore %s after push: %s", cfg_path, exc)
 
 
 def _move_finished(notebook, finished_notebooks):
@@ -242,17 +252,12 @@ def _remove_simple_override(cfg: dict, key: str) -> None:
 def _build_resumed_cfg(
     base_cfg: dict,
     *,
-    notebook_cfg: dict | None,
     target_id: str,
     resumed_from: str,
     run_id: int,
     is_tpu: bool,
 ):
-    if isinstance(notebook_cfg, dict) and notebook_cfg:
-        cfg = copy.deepcopy(notebook_cfg)
-    else:
-        logging.warning("Notebook is missing stored cfg snapshot; falling back to current kaggle/config.yaml")
-        cfg = copy.deepcopy(base_cfg)
+    cfg = copy.deepcopy(base_cfg)
     cfg["id"] = target_id
     cfg["run_id"] = run_id
     cfg.pop("slug", None)
@@ -267,6 +272,8 @@ def _build_resumed_cfg(
     cfg["resume_source"] = "kernel"
     cfg["enable_tpu"] = bool(is_tpu)
     cfg["enable_gpu"] = not bool(is_tpu)
+    # Keep auto_resume's predicted kernel_id aligned with process_kaggle.py when resume_infer is enabled.
+    process_kaggle._apply_resume_infer(cfg)
     return cfg
 
 
@@ -416,13 +423,11 @@ def main():
 
                         cfg = _build_resumed_cfg(
                             base_cfg,
-                            notebook_cfg=notebook.get("cfg"),
                             target_id=target_node["id"],
                             resumed_from=resumed_from_id,
                             run_id=next_run_id,
                             is_tpu=is_tpu,
                         )
-                        notebook["cfg"] = copy.deepcopy(cfg)
                         new_kernel_id = process_kaggle._build_kernel_id(cfg)
                         notebook["kernel_id"] = new_kernel_id
                         notebook["start_time"] = _format_time(_now_naive())

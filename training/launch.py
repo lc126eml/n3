@@ -13,6 +13,71 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
     "N3R_GITHUB_ZIP_URL", "https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip"
 )
 
+# Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
+# BEGIN_KAGGLE_RUNTIME_OVERRIDES
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'break_at': 50,
+ 'checkpoint.resume_checkpoint_path': None,
+ 'checkpoint.resume_config_skip_keys': [],
+ 'data.data_module.train_config.batch_size': 16,
+ 'max_epochs': 130,
+ 'mode': 'train',
+ 'optim.options.lr.0.scheduler.schedulers.0.end_value': 0.0001,
+ 'resume_bs': True,
+ 'seed_value': 42,
+ 'total_run_time_hr': 12.0}
+# END_KAGGLE_RUNTIME_OVERRIDES
+
+
+def _apply_kaggle_runtime_overrides(cfg) -> None:
+    overrides = KAGGLE_RUNTIME_CONFIG_OVERRIDES
+    if not isinstance(overrides, dict) or not overrides:
+        return
+    from omegaconf import OmegaConf
+
+    applied = []
+    for key, value in overrides.items():
+        if not isinstance(key, str) or not key:
+            continue
+        OmegaConf.update(cfg, key, value, merge=False)
+        applied.append(key)
+    if applied:
+        print(f"[launch] Applied runtime config overrides: {applied}")
+
+
+def _apply_kaggle_amp_policy(cfg) -> None:
+    if not _IS_KAGGLE:
+        return
+    optim_conf = cfg.get("optim")
+    if optim_conf is None or not getattr(optim_conf, "amp", None):
+        return
+
+    try:
+        import torch
+    except Exception as exc:
+        print(f"[launch] Kaggle AMP policy skipped (torch import failed: {exc})")
+        return
+
+    if not torch.cuda.is_available():
+        optim_conf.amp.enabled = False
+        print("[launch] Kaggle AMP policy: CUDA unavailable, forcing float32 (AMP disabled).")
+        return
+
+    bf16_supported = False
+    try:
+        bf16_supported = bool(torch.cuda.is_bf16_supported(including_emulation=False))
+    except TypeError:
+        bf16_supported = bool(torch.cuda.is_bf16_supported())
+    except Exception:
+        bf16_supported = False
+
+    if bf16_supported:
+        optim_conf.amp.enabled = True
+        optim_conf.amp.amp_dtype = "bfloat16"
+        print("[launch] Kaggle AMP policy: bf16 supported, forcing bfloat16 AMP.")
+    else:
+        optim_conf.amp.enabled = False
+        print("[launch] Kaggle AMP policy: bf16 unsupported, forcing float32 (AMP disabled).")
+
 def _find_repo_root(start_file: str) -> Path | None:
     def _candidate_roots() -> list[Path]:
         out: list[Path] = []
@@ -341,11 +406,16 @@ def main() -> None:
     config_dir = (project_root / "training" / "configs").resolve()
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
         cfg = compose(config_name=args.config_name, overrides=overrides)
+    if _IS_KAGGLE:
+        _apply_kaggle_runtime_overrides(cfg)
+        _apply_kaggle_amp_policy(cfg)
 
     if _IS_KAGGLE:
         print(f"[launch] Kaggle detected, project_root={project_root}")
         if overrides:
             print(f"[launch] Applied overrides: {overrides}")
+        if KAGGLE_RUNTIME_CONFIG_OVERRIDES:
+            print(f"[launch] Kaggle runtime overrides: {KAGGLE_RUNTIME_CONFIG_OVERRIDES}")
 
     from training.trainer import Trainer
 

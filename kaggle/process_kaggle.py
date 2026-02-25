@@ -1,7 +1,8 @@
 import argparse
-import copy
+import ast
 import json
 import os
+import pprint
 import re
 import subprocess
 import sys
@@ -18,6 +19,8 @@ BASE_DIR = Path(__file__).resolve().parent
 _ROUNDTRIP_YAML = _RuamelYAML()
 _ROUNDTRIP_YAML.preserve_quotes = True
 _ROUNDTRIP_YAML.width = 4096
+_LAUNCH_OVERRIDE_BEGIN = "# BEGIN_KAGGLE_RUNTIME_OVERRIDES"
+_LAUNCH_OVERRIDE_END = "# END_KAGGLE_RUNTIME_OVERRIDES"
 
 
 def _load_yaml(path: Path):
@@ -91,6 +94,21 @@ def _unique_extend(target, values):
 
 def _bool_str(v: bool) -> str:
     return "true" if bool(v) else "false"
+
+
+def _get_source_name(value) -> str | None:
+    sources = _as_list(value)
+    if not sources:
+        return None
+    src = sources[0]
+    if not isinstance(src, str):
+        src = str(src)
+    src = src.strip()
+    if not src:
+        return None
+    if "/" in src:
+        return src.split("/", 1)[1]
+    return src
 
 
 def _load_token(owner_id: str):
@@ -179,7 +197,7 @@ def _build_kernel_id(cfg: dict) -> str:
     return f"{owner}/{slug}"
 
 
-def _update_metadata(cfg: dict) -> dict:
+def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
     meta_path = BASE_DIR / "kernel-metadata.json"
     meta = {}
     if meta_path.exists():
@@ -230,7 +248,8 @@ def _update_metadata(cfg: dict) -> dict:
     meta["kernel_sources"] = [str(x) for x in _as_list(cfg.get("kernel_sources"))]
     meta["model_sources"] = [str(x) for x in _as_list(cfg.get("model_sources"))]
 
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if write:
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return meta
 
 
@@ -241,6 +260,61 @@ def _resolve_resume_source(cfg: dict):
         return None
     sources = _as_list(cfg.get("kernel_sources"))
     return str(sources[0]) if sources else None
+
+
+def _resume_skip_keys(cfg: dict) -> list[str]:
+    for key, value in _iter_simple_updates(cfg):
+        if key == "checkpoint.resume_config_skip_keys":
+            return [str(x) for x in _as_list(value) if str(x)]
+    return []
+
+
+def _resume_allows_yaml_override(dot_path: str, skip_keys: list[str]) -> bool:
+    path = str(dot_path)
+    for skip in skip_keys:
+        if path == skip or path.startswith(skip + "."):
+            return True
+    return False
+
+
+def _infer_from_source_id(source_id: str) -> tuple[str | None, int, str]:
+    if not source_id or not isinstance(source_id, str):
+        raise ValueError("resume_infer requires a valid source id string.")
+    source_id = source_id.strip()
+    match = re.fullmatch(r"(?:(?P<prefix>.+)-)?r(?P<run_id>\d+)(?P<suffix>-[^-]+)", source_id)
+    if not match:
+        raise ValueError(f"Unsupported source id format for n3r resume_infer: {source_id}")
+    prefix = match.group("prefix")
+    run_id = int(match.group("run_id"))
+    suffix = match.group("suffix")
+    return prefix, run_id, suffix
+
+
+def _apply_resume_infer(cfg: dict) -> dict | None:
+    if not (cfg.get("resume_full_ckpt") and cfg.get("resume_infer")):
+        return None
+    resume_source = cfg.get("resume_source")
+    if resume_source == "kernel":
+        source_name = _get_source_name(cfg.get("kernel_sources"))
+    elif resume_source == "dataset":
+        source_name = _get_source_name(cfg.get("dataset_sources"))
+    else:
+        raise ValueError(f"Unsupported resume_source for resume_infer: {resume_source}")
+
+    prefix, inferred_run_id, suffix = _infer_from_source_id(source_name)
+    explicit_run_id = cfg.get("run_id")
+    if explicit_run_id in (None, ""):
+        next_run_id = int(inferred_run_id) + 1
+    else:
+        next_run_id = int(explicit_run_id)
+    cfg["run_id"] = next_run_id
+    cfg["slug"] = (f"{prefix}-" if prefix else "") + f"r{next_run_id}{suffix}"
+    return {
+        "source": source_name,
+        "inferred_run_id": inferred_run_id,
+        "applied_run_id": next_run_id,
+        "slug": cfg["slug"],
+    }
 
 
 def _iter_simple_updates(cfg: dict):
@@ -259,6 +333,121 @@ def _iter_simple_updates(cfg: dict):
         for k, v in item.items():
             updates.append((str(k), v))
     return updates
+
+
+def _runtime_override_alias_map() -> dict[str, str]:
+    return {
+        "lr": "optim.options.lr.0.scheduler.schedulers.0.end_value",
+    }
+
+
+def _build_runtime_config_overrides(cfg: dict) -> dict[str, object]:
+    updates = []
+    aliases = _runtime_override_alias_map()
+    for key, value in _iter_simple_updates(cfg):
+        updates.append((aliases.get(key, key), value))
+
+    if cfg.get("resume_full_ckpt"):
+        skip_keys = _resume_skip_keys(cfg)
+        updates = [
+            (k, v)
+            for k, v in updates
+            if k == "checkpoint.resume_config_skip_keys" or _resume_allows_yaml_override(k, skip_keys)
+        ]
+
+    out: dict[str, object] = {}
+    for key, value in updates:
+        if key in out:
+            del out[key]
+        out[str(key)] = value
+
+    resume_checkpoint_path = cfg.get("resume_checkpoint_path")
+    out["checkpoint.resume_checkpoint_path"] = None if resume_checkpoint_path is None else str(resume_checkpoint_path)
+    if cfg.get("seed") is not None and (
+        not cfg.get("resume_full_ckpt") or _resume_allows_yaml_override("seed_value", _resume_skip_keys(cfg))
+    ):
+        out["seed_value"] = cfg.get("seed")
+    elif "seed_value" in out:
+        del out["seed_value"]
+
+    return out
+
+
+def _launch_py_path() -> Path:
+    return (BASE_DIR.parent / "training" / "launch.py").resolve()
+
+
+def _load_launch_runtime_overrides(launch_py_path: Path | None = None) -> tuple[Path, dict[str, object], str]:
+    path = launch_py_path or _launch_py_path()
+    text = path.read_text(encoding="utf-8")
+    block_re = re.compile(
+        rf"(?s)({re.escape(_LAUNCH_OVERRIDE_BEGIN)}\n)(.*?)({re.escape(_LAUNCH_OVERRIDE_END)})"
+    )
+    m = block_re.search(text)
+    if not m:
+        raise ValueError(f"Managed override block not found in {path}")
+    body = m.group(2)
+    assign_re = re.compile(r"(?s)\bKAGGLE_RUNTIME_CONFIG_OVERRIDES\s*=\s*(.+)\Z")
+    am = assign_re.search(body.strip())
+    if not am:
+        raise ValueError(f"KAGGLE_RUNTIME_CONFIG_OVERRIDES assignment not found in managed block: {path}")
+    rhs = am.group(1).strip()
+    try:
+        data = ast.literal_eval(rhs)
+    except Exception as exc:
+        raise ValueError(f"Failed to parse KAGGLE_RUNTIME_CONFIG_OVERRIDES in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"KAGGLE_RUNTIME_CONFIG_OVERRIDES must be a dict in {path}")
+    return path, data, text
+
+
+def _apply_runtime_overrides_to_launch_py(
+    cfg: dict,
+    *,
+    write: bool = True,
+) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
+    path, old_overrides, text = _load_launch_runtime_overrides()
+    new_overrides = _build_runtime_config_overrides(cfg)
+
+    all_keys = []
+    seen = set()
+    for key in [*old_overrides.keys(), *new_overrides.keys()]:
+        if key in seen:
+            continue
+        seen.add(key)
+        all_keys.append(key)
+    changes: list[tuple[str, object, object]] = []
+    _missing = object()
+    for key in all_keys:
+        old_value = old_overrides.get(key, _missing)
+        new_value = new_overrides.get(key, _missing)
+        if old_value is _missing and new_value is _missing:
+            continue
+        if old_value == new_value:
+            changes.append((key, old_value, new_value))
+            continue
+        changes.append((key, old_value, new_value))
+
+    if write and old_overrides != new_overrides:
+        block_re = re.compile(
+            rf"(?s)({re.escape(_LAUNCH_OVERRIDE_BEGIN)}\n)(.*?)({re.escape(_LAUNCH_OVERRIDE_END)})"
+        )
+        rendered = pprint.pformat(new_overrides, width=120, sort_dicts=True)
+        def _repl(m):
+            return f"{m.group(1)}KAGGLE_RUNTIME_CONFIG_OVERRIDES = {rendered}\n{m.group(3)}"
+
+        text = block_re.sub(_repl, text, count=1)
+        path.write_text(text, encoding="utf-8")
+
+    if not changes:
+        return None
+    return [(path, changes)]
+
+
+def _format_change_value(value) -> str:
+    if isinstance(value, object) and type(value) is object:
+        return "<missing>"
+    return repr(value)
 
 
 def _set_by_dot_path(data, dot_path: str, value) -> None:
@@ -291,6 +480,29 @@ def _set_by_dot_path(data, dot_path: str, value) -> None:
             cur = cur[part]
 
 
+def _get_by_dot_path(data, dot_path: str):
+    parts = [p for p in str(dot_path).split(".") if p]
+    if not parts:
+        raise ValueError(f"Invalid simple key: {dot_path!r}")
+
+    cur = data
+    for i, part in enumerate(parts):
+        if isinstance(cur, list):
+            if not part.isdigit():
+                raise ValueError(f"Expected list index at '{'.'.join(parts[:i+1])}'")
+            idx = int(part)
+            if idx < 0 or idx >= len(cur):
+                raise ValueError(f"List index out of range at '{'.'.join(parts[:i+1])}'")
+            cur = cur[idx]
+            continue
+        if not isinstance(cur, dict):
+            raise ValueError(f"Cannot descend into non-container at '{'.'.join(parts[:i])}'")
+        if part not in cur:
+            raise ValueError(f"Key not found in yaml: '{'.'.join(parts[:i+1])}'")
+        cur = cur[part]
+    return cur
+
+
 def _resolve_default_group_yaml(default_cfg: dict, group_name: str) -> Path | None:
     defaults = default_cfg.get("defaults")
     if not isinstance(defaults, list):
@@ -308,15 +520,24 @@ def _resolve_default_group_yaml(default_cfg: dict, group_name: str) -> Path | No
     return (BASE_DIR.parent / "training" / "configs" / group_name / rel).resolve()
 
 
-def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str, object]]]] | None:
+def _apply_simple_to_default_yaml(cfg: dict, *, write: bool = True) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
     updates = _iter_simple_updates(cfg)
     if not updates:
         return None
-    # Slug/launcher-only simple flags: keep in kaggle/config.yaml but do not patch trainer yaml.
-    ignored_simple_keys = {"lr"}
-    updates = [(k, v) for k, v in updates if k not in ignored_simple_keys]
-    if not updates:
-        return None
+    # Keep shorthand keys in kaggle/config.yaml, but route them to the trainer yaml path.
+    simple_key_aliases = {
+        "lr": "optim.options.lr.0.scheduler.schedulers.0.end_value",
+    }
+    updates = [(simple_key_aliases.get(k, k), v) for k, v in updates]
+    if cfg.get("resume_full_ckpt"):
+        skip_keys = _resume_skip_keys(cfg)
+        updates = [
+            (k, v)
+            for k, v in updates
+            if k == "checkpoint.resume_config_skip_keys" or _resume_allows_yaml_override(k, skip_keys)
+        ]
+        if not updates:
+            return None
 
     default_yaml_path = (BASE_DIR.parent / "training" / "configs" / "default.yaml").resolve()
     default_data = _load_yaml_roundtrip(default_yaml_path)
@@ -328,11 +549,15 @@ def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str,
 
     for key, value in updates:
         top_key, sep, remainder = str(key).partition(".")
+        group_yaml = _resolve_default_group_yaml(default_data, top_key)
+        if group_yaml is not None and remainder:
+            routed_updates.setdefault(group_yaml, []).append((remainder, value))
+            continue
+
         if top_key in default_data:
             default_updates.append((key, value))
             continue
 
-        group_yaml = _resolve_default_group_yaml(default_data, top_key)
         if group_yaml is None:
             raise ValueError(
                 f"simple key '{key}' not found in default.yaml and no Hydra defaults group entry for '{top_key}'"
@@ -341,39 +566,47 @@ def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str,
             raise ValueError(f"simple key '{key}' must include a nested path inside group '{top_key}'")
         routed_updates.setdefault(group_yaml, []).append((remainder, value))
 
-    results: list[tuple[Path, list[tuple[str, object]]]] = []
+    results: list[tuple[Path, list[tuple[str, object, object]]]] = []
 
     if default_updates:
+        default_change_rows: list[tuple[str, object, object]] = []
         for key, value in default_updates:
+            old_value = _get_by_dot_path(default_data, key)
             _set_by_dot_path(default_data, key, value)
-        _write_yaml_roundtrip(default_yaml_path, default_data)
-        results.append((default_yaml_path, default_updates))
+            default_change_rows.append((key, old_value, value))
+        if write:
+            _write_yaml_roundtrip(default_yaml_path, default_data)
+        results.append((default_yaml_path, default_change_rows))
 
     for yaml_path, path_updates in routed_updates.items():
         group_data = _load_yaml_roundtrip(yaml_path)
         if not isinstance(group_data, dict) or not group_data:
             raise ValueError(f"Failed to load group config yaml: {yaml_path}")
+        group_change_rows: list[tuple[str, object, object]] = []
         for key, value in path_updates:
+            old_value = _get_by_dot_path(group_data, key)
             _set_by_dot_path(group_data, key, value)
-        _write_yaml_roundtrip(yaml_path, group_data)
-        results.append((yaml_path, path_updates))
+            group_change_rows.append((key, old_value, value))
+        if write:
+            _write_yaml_roundtrip(yaml_path, group_data)
+        results.append((yaml_path, group_change_rows))
 
     return results
 
 
-def _apply_special_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str, object]]]] | None:
+def _apply_special_to_default_yaml(cfg: dict, *, write: bool = True) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
     updates: list[tuple[str, object]] = []
-    special_key_map = (
-        ("resume_checkpoint_path", "checkpoint.resume_checkpoint_path", str),
-        ("seed", "seed_value", None),
+    resume_checkpoint_path = cfg.get("resume_checkpoint_path")
+    updates.append(
+        (
+            "checkpoint.resume_checkpoint_path",
+            None if resume_checkpoint_path is None else str(resume_checkpoint_path),
+        )
     )
-    for src_key, dst_key, cast_fn in special_key_map:
-        if cfg.get(src_key) is None:
-            continue
-        value = cfg.get(src_key)
-        if cast_fn is not None:
-            value = cast_fn(value)
-        updates.append((dst_key, value))
+    if cfg.get("seed") is not None and (
+        not cfg.get("resume_full_ckpt") or _resume_allows_yaml_override("seed_value", _resume_skip_keys(cfg))
+    ):
+        updates.append(("seed_value", cfg.get("seed")))
     if not updates:
         return None
 
@@ -381,10 +614,14 @@ def _apply_special_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str
     default_data = _load_yaml_roundtrip(default_yaml_path)
     if not isinstance(default_data, dict) or not default_data:
         raise ValueError(f"Failed to load default.yaml: {default_yaml_path}")
+    change_rows: list[tuple[str, object, object]] = []
     for key, value in updates:
+        old_value = _get_by_dot_path(default_data, key)
         _set_by_dot_path(default_data, key, value)
-    _write_yaml_roundtrip(default_yaml_path, default_data)
-    return [(default_yaml_path, updates)]
+        change_rows.append((key, old_value, value))
+    if write:
+        _write_yaml_roundtrip(default_yaml_path, default_data)
+    return [(default_yaml_path, change_rows)]
 
 
 def _add_running_node(
@@ -431,7 +668,6 @@ def _add_running_node(
             "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "resumed_from": _resolve_resume_source(cfg),
             "history_ids": [],
-            "cfg": copy.deepcopy(cfg),
         }
         notebooks.append(notebook)
         node["notebooks"] = notebooks
@@ -512,6 +748,7 @@ def main():
     cfg = _load_yaml(cfg_path)
     if not cfg:
         raise ValueError(f"Empty or missing config: {cfg_path}")
+    resume_infer_info = _apply_resume_infer(cfg)
     if args.config_kernel:
         config_kernel_path = Path(args.config_kernel).expanduser()
         if not config_kernel_path.is_absolute():
@@ -534,9 +771,9 @@ def main():
     if "id" not in cfg or cfg.get("id") in (None, ""):
         raise ValueError("config.yaml requires 'id' (Kaggle owner id), or use --add-running-node with config_kernel.yaml.available_ids")
 
-    simple_result = _apply_simple_to_default_yaml(cfg)
-    special_result = _apply_special_to_default_yaml(cfg)
-    meta = _update_metadata(cfg)
+    write_files = bool(args.run)
+    runtime_override_result = _apply_runtime_overrides_to_launch_py(cfg, write=write_files)
+    meta = _update_metadata(cfg, write=write_files)
 
     # Mirror pos behavior: this flag is an internal mode used by auto_resume.py.
     suppress_prep_output = bool(args.push_output_only)
@@ -544,16 +781,25 @@ def main():
         if args.concise:
             print(f"kernel_id: {meta['id']}")
         else:
-            print(f"Updated {BASE_DIR / 'kernel-metadata.json'}")
-            all_cfg_updates = []
-            if simple_result is not None:
-                all_cfg_updates.extend(simple_result)
-            if special_result is not None:
-                all_cfg_updates.extend(special_result)
-            if all_cfg_updates:
-                for yaml_path, updates in all_cfg_updates:
-                    print(f"Updated {yaml_path}")
-                    print(f"config updates: {[k for k, _ in updates]}")
+            if not write_files:
+                print("Dry preview: no files modified (use --run to apply and push).")
+            if resume_infer_info is not None:
+                print(
+                    "resume_infer: source=%s inferred_run_id=%s applied_run_id=%s slug=%s"
+                    % (
+                        resume_infer_info["source"],
+                        resume_infer_info["inferred_run_id"],
+                        resume_infer_info["applied_run_id"],
+                        resume_infer_info["slug"],
+                    )
+                )
+            print(f"{'Updated' if write_files else 'Would update'} {BASE_DIR / 'kernel-metadata.json'}")
+            if runtime_override_result:
+                for launch_path, updates in runtime_override_result:
+                    print(f"{'Updated' if write_files else 'Would update'} {launch_path}")
+                    print(f"runtime overrides: {[k for k, _, _ in updates]}")
+                    for key, old_value, new_value in updates:
+                        print(f"  {key}: {_format_change_value(old_value)} -> {_format_change_value(new_value)}")
             print(f"Kernel id: {meta['id']}")
             print(f"Title: {meta['title']}")
             print(f"dataset_sources: {meta.get('dataset_sources', [])}")

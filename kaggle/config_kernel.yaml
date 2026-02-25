@@ -112,8 +112,20 @@ exhausted_ids: []
 sleep_time_hr: 0
 poll_interval_minutes: 10
 running_nodes:
-- id: xulijuan
+- id: zongjiaxin
   left_time: 30.0
   notebooks:
+  - kernel_id: zongjiaxin/lr10-r0-42
+    run_id: 0
+    total_runs: 8
+    start_time: '2026-02-26 09:31:22'
+    resumed_from: null
+    history_ids: []
+- id: xulijuan
+  left_time: 30.0
+  notebooks: null
+- id: zzr123123
+  left_time: 30.0
+  notebooks: null
 finished_notebooks: []
 error_notebooks: []
