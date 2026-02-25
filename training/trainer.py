@@ -190,6 +190,8 @@ class Trainer:
         # else:
         #     self._base_train_augs = None
 
+        self._setup_dataloaders()
+        sys.exit(0)
         self._base_train_augs = None
         if random_crop_prob_schedule is not None:
             self._base_train_augs = self._extract_train_augs(self.data_conf)

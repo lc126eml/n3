@@ -312,14 +312,14 @@ def _default_install_libs() -> list[str]:
         return ["hydra-core", "fvcore", "iopath", "einops", "safetensors", "wcmatch", "roma"]
     return []
 
+lib_names = _default_install_libs()
+install_libs(lib_names)
+
+from hydra import compose, initialize_config_dir
 
 def main() -> None:
-    lib_names = _default_install_libs()
-    install_libs(lib_names)
     project_root = _setup_project_root()
     project_root = _ensure_n3_repo_on_kaggle(project_root)
-
-    from hydra import compose, initialize_config_dir
 
     parser = argparse.ArgumentParser(description="Run n3 training (Hydra config entrypoint).")
     parser.add_argument(

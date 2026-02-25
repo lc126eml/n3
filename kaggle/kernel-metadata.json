@@ -1,11 +1,11 @@
 {
-  "id": "xulijuan/n3r-default-a",
-  "title": "n3r default a",
+  "id": "liucong12601/depth-file-list-42",
+  "title": "depth file list 42",
   "code_file": "../training/launch.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": "true",
-  "enable_gpu": "true",
+  "enable_gpu": "false",
   "enable_tpu": "false",
   "enable_internet": "true",
   "dataset_sources": [
