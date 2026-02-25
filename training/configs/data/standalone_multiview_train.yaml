@@ -49,8 +49,8 @@ data_module:
             # "/kaggle/input/datasets/sinayliu/scnt-p10",
             # "/kaggle/input/datasets/sinayliu/scnt-p11",
             # "/kaggle/input/datasets/sinayliu/scnt-p12"], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs})
-    batch_size: 21
-    num_workers: 10
+    batch_size: 16
+    num_workers: 4
     augs:
       cojitter: true
       cojitter_ratio: 0.3
@@ -123,5 +123,5 @@ data_module:
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384, 504, 378
     batch_size: 1
-    num_workers: 5
+    num_workers: 2
     augs: ${..validation_config.augs}

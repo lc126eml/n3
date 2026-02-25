@@ -112,6 +112,11 @@ class Trainer:
     """
 
     EPSILON = 1e-8
+    _RESUME_CONFIG_SKIP_KEYS_HARDCODED = (
+        "checkpoint.resume_checkpoint_path",
+        "checkpoint.resume_config_skip_keys",
+        "logging.run_folder_name",
+    )
 
     def __init__(self, cfg: DictConfig):
         # --- Acquire a file lock to ensure exclusive GPU usage ---
@@ -132,12 +137,13 @@ class Trainer:
         self._resume_checkpoint = None
         self._resume_checkpoint_amp = None
         self._trainer_config_snapshot = None
+        self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
-        if self.accumulation_mode == "across_batches":
+        if self.accumulation_mode == "across_batches" and self._resume_checkpoint is None:
             cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
         self.cfg = cfg
 
@@ -165,6 +171,8 @@ class Trainer:
 
         self.where = 0.0
         self.seed_value = cfg.get("seed_value", 123)
+        self.total_run_time_hr = cfg.get("total_run_time_hr")
+        self.resume_bs = cfg.get("resume_bs", False)
 
         log_dir = self.logging_conf.log_dir
         exp_name = cfg.get("exp_name")
@@ -226,14 +234,15 @@ class Trainer:
         if exp_name and suffix_parts:
             suffix = "_".join(suffix_parts)
             new_exp_name = f"{exp_name}/{suffix}"
-            if isinstance(log_dir, str) and exp_name in log_dir:
-                log_dir = log_dir.replace(exp_name, new_exp_name, 1)
-            else:
-                run_folder_name = self.logging_conf.get("run_folder_name")
-                if run_folder_name:
-                    log_dir = os.path.join(log_dir, new_exp_name, run_folder_name)
+            if not (isinstance(log_dir, str) and new_exp_name in log_dir):
+                if isinstance(log_dir, str) and exp_name in log_dir:
+                    log_dir = log_dir.replace(exp_name, new_exp_name, 1)
                 else:
-                    log_dir = os.path.join(log_dir, new_exp_name)
+                    run_folder_name = self.logging_conf.get("run_folder_name")
+                    if run_folder_name:
+                        log_dir = os.path.join(log_dir, new_exp_name, run_folder_name)
+                    else:
+                        log_dir = os.path.join(log_dir, new_exp_name)
             self.logging_conf.log_dir = log_dir
         
 
@@ -358,7 +367,41 @@ class Trainer:
             raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
         self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
         base_cfg = OmegaConf.create(resume_cfg)
-        merged = OmegaConf.merge(base_cfg, cfg)
+        merged = OmegaConf.merge(cfg, base_cfg)
+        checkpoint_cfg = cfg.get("checkpoint", {})
+        raw_skip_keys = checkpoint_cfg.get("resume_config_skip_keys", [])
+        if OmegaConf.is_config(raw_skip_keys):
+            raw_skip_keys = OmegaConf.to_container(raw_skip_keys, resolve=False)
+        if raw_skip_keys is None:
+            raw_skip_keys = []
+        elif isinstance(raw_skip_keys, str):
+            raw_skip_keys = [raw_skip_keys]
+        elif not isinstance(raw_skip_keys, (list, tuple)):
+            logging.warning(
+                "checkpoint.resume_config_skip_keys must be a list/tuple of dot-path strings; "
+                f"got {type(raw_skip_keys).__name__}. Ignoring it."
+            )
+            raw_skip_keys = []
+
+        seen_skip_keys = set()
+        resume_skip_keys = []
+        for key_path in [*self._RESUME_CONFIG_SKIP_KEYS_HARDCODED, *raw_skip_keys]:
+            if not isinstance(key_path, str) or not key_path:
+                logging.warning(f"Ignoring invalid resume_config_skip_keys entry: {key_path!r}")
+                continue
+            if key_path in seen_skip_keys:
+                continue
+            seen_skip_keys.add(key_path)
+            resume_skip_keys.append(key_path)
+        _missing = object()
+        for key_path in resume_skip_keys:
+            try:
+                value = OmegaConf.select(cfg, key_path, default=_missing)
+                if value is _missing:
+                    continue
+                OmegaConf.update(merged, key_path, copy.deepcopy(value), merge=False)
+            except Exception as exc:
+                logging.warning(f"Failed to apply resume_config_skip_keys override for '{key_path}': {exc}")
         base_log_dir = base_cfg.get("logging", {}).get("log_dir")
         new_run_folder = merged.get("logging", {}).get("run_folder_name")
         if base_log_dir and new_run_folder:
@@ -607,6 +650,8 @@ class Trainer:
                 np.random.set_state(rng_state["numpy"])
             if "python" in rng_state:
                 random.setstate(rng_state["python"])
+        if checkpoint.get("train_dataset_checkpoint_state") is not None:
+            self._restore_train_dataset_checkpoint_state(checkpoint["train_dataset_checkpoint_state"])
 
 
     def _setup_device(self, device):
@@ -694,6 +739,7 @@ class Trainer:
         # Instantiate the data module from the config
         data_module = instantiate(self.data_conf.data_module, _recursive_=False)
         data_module.seed = self.seed_value
+        self.data_module = data_module
 
         if self.mode in ["train", "val"]:
             # Get the validation dataloader from the data module
@@ -750,6 +796,9 @@ class Trainer:
                 "python": random.getstate(),
             },
         }
+        train_dataset_checkpoint_state = self._get_train_dataset_checkpoint_state()
+        if train_dataset_checkpoint_state is not None:
+            checkpoint_content["train_dataset_checkpoint_state"] = train_dataset_checkpoint_state
         
         if len(self.optims) == 1:
             checkpoint_content["optimizer"] = checkpoint_content["optimizer"][0]
@@ -774,8 +823,96 @@ class Trainer:
 
 
     def _get_train_dataset_checkpoint_state(self):
-        # Checkpoint state for dataloaders is not handled in this setup.
-        return None
+        state = {}
+
+        data_module = getattr(self, "data_module", None)
+        if data_module is not None and hasattr(data_module, "state_dict"):
+            try:
+                data_module_state = data_module.state_dict()
+                if data_module_state is not None:
+                    state["data_module"] = data_module_state
+            except Exception as exc:
+                logging.warning(f"Failed to collect data_module checkpoint state: {exc}")
+
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return state or None
+
+        loader_generator = getattr(train_loader, "generator", None)
+        if isinstance(loader_generator, torch.Generator):
+            try:
+                state["loader_generator_state"] = loader_generator.get_state()
+            except Exception as exc:
+                logging.warning(f"Failed to collect train loader generator state: {exc}")
+
+        for key, obj in (
+            ("dataset", getattr(train_loader, "dataset", None)),
+            ("sampler", getattr(train_loader, "sampler", None)),
+            ("batch_sampler", getattr(train_loader, "batch_sampler", None)),
+        ):
+            if obj is None:
+                continue
+            if hasattr(obj, "state_dict"):
+                try:
+                    obj_state = obj.state_dict()
+                    if obj_state is not None:
+                        state[key] = obj_state
+                except Exception as exc:
+                    logging.warning(f"Failed to collect train loader {key} state: {exc}")
+            obj_generator = getattr(obj, "generator", None)
+            if isinstance(obj_generator, torch.Generator):
+                try:
+                    state[f"{key}_generator_state"] = obj_generator.get_state()
+                except Exception as exc:
+                    logging.warning(f"Failed to collect train loader {key} generator state: {exc}")
+
+        return state or None
+
+    def _restore_train_dataset_checkpoint_state(self, checkpoint_state):
+        if not checkpoint_state:
+            return
+
+        data_module = getattr(self, "data_module", None)
+        if data_module is not None and "data_module" in checkpoint_state and hasattr(data_module, "load_state_dict"):
+            try:
+                data_module.load_state_dict(checkpoint_state["data_module"])
+            except Exception as exc:
+                logging.warning(f"Failed to restore data_module checkpoint state: {exc}")
+
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return
+
+        loader_generator_state = checkpoint_state.get("loader_generator_state")
+        loader_generator = getattr(train_loader, "generator", None)
+        if loader_generator_state is not None and isinstance(loader_generator, torch.Generator):
+            try:
+                loader_generator.set_state(loader_generator_state)
+            except Exception as exc:
+                logging.warning(f"Failed to restore train loader generator state: {exc}")
+
+        for key, obj in (
+            ("dataset", getattr(train_loader, "dataset", None)),
+            ("sampler", getattr(train_loader, "sampler", None)),
+            ("batch_sampler", getattr(train_loader, "batch_sampler", None)),
+        ):
+            if obj is None:
+                continue
+
+            obj_state = checkpoint_state.get(key)
+            if obj_state is not None and hasattr(obj, "load_state_dict"):
+                try:
+                    obj.load_state_dict(obj_state)
+                except Exception as exc:
+                    logging.warning(f"Failed to restore train loader {key} state: {exc}")
+
+            obj_generator_state = checkpoint_state.get(f"{key}_generator_state")
+            obj_generator = getattr(obj, "generator", None)
+            if obj_generator_state is not None and isinstance(obj_generator, torch.Generator):
+                try:
+                    obj_generator.set_state(obj_generator_state)
+                except Exception as exc:
+                    logging.warning(f"Failed to restore train loader {key} generator state: {exc}")
 
 
     def _get_scalar_log_keys(self, phase):
@@ -1069,20 +1206,35 @@ class Trainer:
         self._last_train_augs = augs
 
     def run_train(self):
+        last_train_epoch_duration_sec = 0.0
+        last_val_epoch_duration_sec = 0.0
+        limit_sec = None
+        if self.total_run_time_hr is not None:
+            try:
+                limit_sec = float(self.total_run_time_hr) * 3600.0
+            except (TypeError, ValueError):
+                logging.warning(f"Ignoring invalid total_run_time_hr={self.total_run_time_hr!r}")
+                limit_sec = None
         while self.epoch < self.max_epochs:
             self.end_warmup()
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
             self._apply_train_aug_schedule(self.epoch)
 
+            train_epoch_start_time = time.time()
             ok = self.train_epoch(self.train_loader)
+            last_train_epoch_duration_sec = time.time() - train_epoch_start_time
             if ok is False:
                 logging.error("Stopping training due to non-finite loss.")
                 break
             
             # Save checkpoint before validating
             self.save_checkpoint(self.epoch)
+            ran_val = False
             if (self.epoch + 1) % self.optim_conf.val_freq == 0:
+                val_epoch_start_time = time.time()
                 self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+                last_val_epoch_duration_sec = time.time() - val_epoch_start_time
+                ran_val = True
 
             # gc.collect()
             if torch.cuda.is_available():
@@ -1091,6 +1243,15 @@ class Trainer:
 
             self.epoch += 1
 
+            if limit_sec is not None and limit_sec > 0:
+                elapsed_sec = time.time() - self.start_time
+                if elapsed_sec + last_train_epoch_duration_sec + last_val_epoch_duration_sec > limit_sec:
+                    logging.info(
+                        "Stopping before next epoch due to total_run_time_hr budget: "
+                        f"elapsed={elapsed_sec/3600.0:.2f}h, "
+                        f"limit={limit_sec/3600.0:.2f}h."
+                    )
+                    break
             if self.epoch == self.cfg.get("break_at", -1):
                 break
         self.epoch -= 1

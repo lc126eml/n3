@@ -1,8 +1,17 @@
 id: liucong12601 
 desc: a
+desc_keys: []
 run_id: 0
 total_runs: 8
 seed: 42
+simple:
+  - max_epochs: 80
+  - break_at: 15
+  - checkpoint.resume_config_skip_keys: []
+  - lr: 5.0e-4
+  - mode: train
+  - resume_bs: true
+  - total_run_time_hr: 12.0
 # simple:
 #   - data.data_module.train_config.datasets.0: "HyperSim_Multi(allow_repeat=False, split='train', ROOT=['${data.data_root}/hypersim_processed'], image_list_path='/kaggle/working', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
 # simple:
@@ -10,7 +19,7 @@ seed: 42
 #   - break_at: 20
 
 is_private: true
-enable_gpu: false
+enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false

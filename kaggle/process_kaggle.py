@@ -2,6 +2,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -121,10 +122,48 @@ def _slugify(text: str) -> str:
     return slug or "n3r"
 
 
+def _abbr_token(text: str) -> str:
+    parts = re.split(r"[_-]+", str(text))
+    if len(parts) > 1:
+        return "".join(p[:1] for p in parts if p)
+    return re.sub(r"[^A-Za-z0-9]+", "", str(text))
+
+
+def _abbr_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "T" if value else "F"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value*100000:g}".replace(".", "").replace("+", "")
+    text = str(value)
+    if re.search(r"[_-]+", text):
+        text = _abbr_token(text)
+    return re.sub(r"[^A-Za-z0-9]+", "", text)
+
+
 def _derived_slug(cfg: dict) -> str:
     parts = []
-    if cfg.get("desc") not in (None, ""):
-        parts.append(str(cfg["desc"]))
+    desc = cfg.get("desc")
+    desc_keys = _as_list(cfg.get("desc_keys"))
+    if desc_keys:
+        simple_updates = {k: v for k, v in _iter_simple_updates(cfg)}
+        desc_parts = []
+        for key in desc_keys:
+            value = simple_updates.get(key, cfg.get(key))
+            if value is None:
+                continue
+            key_str = _abbr_token(key)
+            value_str = _abbr_value(value)
+            if not value_str:
+                continue
+            desc_parts.append(f"{key_str}{value_str}")
+        if desc_parts:
+            desc = "-".join(desc_parts)
+    if desc not in (None, ""):
+        parts.append(str(desc))
     if cfg.get("run_id") not in (None, ""):
         parts.append(f"r{cfg['run_id']}")
     if cfg.get("seed") not in (None, ""):
@@ -273,6 +312,11 @@ def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str,
     updates = _iter_simple_updates(cfg)
     if not updates:
         return None
+    # Slug/launcher-only simple flags: keep in kaggle/config.yaml but do not patch trainer yaml.
+    ignored_simple_keys = {"lr", "mode"}
+    updates = [(k, v) for k, v in updates if k not in ignored_simple_keys]
+    if not updates:
+        return None
 
     default_yaml_path = (BASE_DIR.parent / "training" / "configs" / "default.yaml").resolve()
     default_data = _load_yaml_roundtrip(default_yaml_path)
@@ -319,8 +363,17 @@ def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str,
 
 def _apply_special_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str, object]]]] | None:
     updates: list[tuple[str, object]] = []
-    if cfg.get("resume_checkpoint_path") is not None:
-        updates.append(("checkpoint.resume_checkpoint_path", str(cfg.get("resume_checkpoint_path"))))
+    special_key_map = (
+        ("resume_checkpoint_path", "checkpoint.resume_checkpoint_path", str),
+        ("seed", "seed_value", None),
+    )
+    for src_key, dst_key, cast_fn in special_key_map:
+        if cfg.get(src_key) is None:
+            continue
+        value = cfg.get(src_key)
+        if cast_fn is not None:
+            value = cast_fn(value)
+        updates.append((dst_key, value))
     if not updates:
         return None
 

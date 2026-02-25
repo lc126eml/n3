@@ -20,6 +20,7 @@ logging:
 
 checkpoint:
   resume_checkpoint_path: /home/liucong/codes/3d/vggt-training/training/logs/ablation/point_l1_gamma2_beta01/to_first_cam_rcropPr0.00-0.80e15-30_lr50_e130/2026-01-07_17-07-24/ckpts/checkpoint.pt
+  resume_config_skip_keys: []
   filter_keys:
     enabled: False
       
