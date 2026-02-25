@@ -24,16 +24,7 @@ data_module:
     num_views: 6
     fixed_length: false
     datasets:
-    - HyperSim_Multi(allow_repeat=False, split='train', ROOT=[
-            "/kaggle/input/datasets/liucong12601/hsm-train-part01",
-            "/kaggle/input/datasets/liucong12601/hsm-train-part02",
-            "/kaggle/input/datasets/liucong12601/hsm-train-part03",
-            "/kaggle/input/datasets/liucong12601/hsm-train-part04",
-            "/kaggle/input/datasets/liucong12601/hsm-train-part05",
-        ],
-      image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", transform=None, resolution=${..resolution},
-      num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1,
-      augs=${..augs})
+    - HyperSim_Multi(allow_repeat=False, split='train', ROOT=[ "/kaggle/input/datasets/liucong12601/hsm-train-part01", "/kaggle/input/datasets/liucong12601/hsm-train-part02", "/kaggle/input/datasets/liucong12601/hsm-train-part03", "/kaggle/input/datasets/liucong12601/hsm-train-part04", "/kaggle/input/datasets/liucong12601/hsm-train-part05", ], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})
       # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
       # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
       # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
@@ -58,7 +49,7 @@ data_module:
       random_crop_prob: 0.0
       # Optional linear schedules (use one or set to null)
       # random_crop_prob_schedule: null
-      random_crop_prob_schedule: 
+      random_crop_prob_schedule:
         start: 0.0
         end: 0.8
         start_epoch: 15
@@ -93,9 +84,7 @@ data_module:
   validation_config:
     num_views: 6
     datasets:
-    - HyperSim_Multi(allow_repeat=False, split='val', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/val"],
-      image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224,
-      max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
+    - HyperSim_Multi(allow_repeat=False, split='val', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/val"], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128
@@ -105,19 +94,17 @@ data_module:
     augs:
       cojitter: false
       cojitter_ratio: 0.5
-      scales: null
+      scales:
       aspects:
       - 1.0
       - 1.0
-      color_jitter: null
+      color_jitter:
       gray_scale: false
       gau_blur: false
   test_config:
     num_views: 6
     datasets:
-    - HyperSim_Multi(allow_repeat=False, split='test', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/test"],
-      image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224,
-      max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
+    - HyperSim_Multi(allow_repeat=False, split='test', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/test"], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126

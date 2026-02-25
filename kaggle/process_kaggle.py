@@ -313,7 +313,7 @@ def _apply_simple_to_default_yaml(cfg: dict) -> list[tuple[Path, list[tuple[str,
     if not updates:
         return None
     # Slug/launcher-only simple flags: keep in kaggle/config.yaml but do not patch trainer yaml.
-    ignored_simple_keys = {"lr", "mode"}
+    ignored_simple_keys = {"lr"}
     updates = [(k, v) for k, v in updates if k not in ignored_simple_keys]
     if not updates:
         return None

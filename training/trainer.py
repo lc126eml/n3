@@ -140,6 +140,10 @@ class Trainer:
         self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
+        # Apply Kaggle AMP policy before deriving dtype-dependent config values.
+        if cfg.get("optim") is not None:
+            self.optim_conf = cfg.optim
+            self._apply_kaggle_amp_policy()
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
@@ -514,6 +518,34 @@ class Trainer:
             torch.backends.cuda.matmul.allow_tf32 = cuda_conf.allow_tf32
             torch.backends.cudnn.allow_tf32 = cuda_conf.allow_tf32
 
+    def _apply_kaggle_amp_policy(self) -> None:
+        is_kaggle = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
+        if not is_kaggle:
+            return
+        if not getattr(self.optim_conf, "amp", None):
+            return
+
+        if not torch.cuda.is_available():
+            self.optim_conf.amp.enabled = False
+            logging.info("Kaggle AMP policy: CUDA unavailable, forcing float32 (AMP disabled).")
+            return
+
+        bf16_supported = False
+        try:
+            bf16_supported = bool(torch.cuda.is_bf16_supported(including_emulation=False))
+        except TypeError:
+            bf16_supported = bool(torch.cuda.is_bf16_supported())
+        except Exception:
+            bf16_supported = False
+
+        if bf16_supported:
+            self.optim_conf.amp.enabled = True
+            self.optim_conf.amp.amp_dtype = "bfloat16"
+            logging.info("Kaggle AMP policy: bf16 supported, forcing bfloat16 AMP.")
+        else:
+            self.optim_conf.amp.enabled = False
+            logging.info("Kaggle AMP policy: bf16 unsupported, forcing float32 (AMP disabled).")
+
     @staticmethod
     def _update_ckpt_keys_revised(ckpt, heads_to_keep=None, heads_to_discard=None, default_keep=True):
         """
@@ -723,8 +755,13 @@ class Trainer:
         self.loss = instantiate(self.loss_conf, _recursive_=False)
 
 
-        # Use standard Gradient Scaler for DDP
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.optim_conf.amp.enabled)
+        # GradScaler is only needed for fp16 AMP (not bf16/float32).
+        scaler_enabled = (
+            torch.cuda.is_available()
+            and self.optim_conf.amp.enabled
+            and str(self.optim_conf.amp.amp_dtype) == "float16"
+        )
+        self.scaler = torch.cuda.amp.GradScaler(enabled=scaler_enabled)
         self.gradient_clipper = instantiate(self.optim_conf.gradient_clip)
 
         logging.info("Successfully initialized all training components: model, loss function, optimizer, and etc.")
@@ -1316,7 +1353,6 @@ class Trainer:
         for dl_idx, current_val_loader in enumerate(val_loader):
             batch_time = AverageMeter("Batch Time", self.device, ":.4f")
             data_time = AverageMeter("Data Time", self.device, ":.4f")
-            mem = AverageMeter("Mem (GB)", self.device, ":.4f")
             
             iters_per_epoch = len(current_val_loader)
 
@@ -1329,7 +1365,7 @@ class Trainer:
 
             progress = ProgressMeter(
                 iters_per_epoch,
-                [batch_time, data_time, mem,
+                [batch_time, data_time,
                 self.time_elapsed_meter,
                 *loss_meters.values(),],
                 self._get_meters(curr_phases),
@@ -1380,8 +1416,6 @@ class Trainer:
                 )
 
                 if data_iter % self.logging_conf.log_freq == 0:
-                    if torch.cuda.is_available():
-                        mem.update(torch.cuda.max_memory_allocated() // 1e9)
                     progress.display(data_iter)
 
             # Collect metrics for this dataloader
@@ -1418,12 +1452,10 @@ class Trainer:
                 out[key] = value
         return out
 
-
-
     def train_epoch(self, train_loader):        
         batch_time = AverageMeter("Batch Time", self.device, ":.4f")
         data_time = AverageMeter("Data Time", self.device, ":.4f")
-        mem = AverageMeter("Mem (GB)", self.device, ":.4f")
+        peak_mem = AverageMeter("Peak Mem (GB)", self.device, ":.4f")
         data_times = []
         phase = 'train'
         
@@ -1443,7 +1475,7 @@ class Trainer:
             meters=[
                 batch_time,
                 data_time,
-                mem,
+                peak_mem,
                 self.time_elapsed_meter,
                 *loss_meters.values(),
             ],
@@ -1659,7 +1691,7 @@ class Trainer:
                 time.time() - self.start_time + self.ckpt_time_elapsed
             )
             if data_iter % self.logging_conf.log_freq == 0:
-                mem.update(torch.cuda.max_memory_allocated() // 1e9)
+                peak_mem.update(torch.cuda.max_memory_allocated() / (1024 ** 3))
                 progress.display(data_iter)
 
         # Log metrics to CSV

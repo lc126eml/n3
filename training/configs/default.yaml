@@ -369,7 +369,7 @@ optim:
 
   amp:
     enabled: true
-    amp_dtype: bfloat16
+    amp_dtype: float32
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
