@@ -1,0 +1,35 @@
+id:  
+desc: b
+desc_keys: ["lr"]
+run_id: 0
+total_runs: 8
+seed: 42
+simple:
+  - max_epochs: 130
+  - break_at: 50
+  - checkpoint.resume_config_skip_keys: []
+  - data.data_module.train_config.batch_size: 16
+  - lr: 1.0e-5
+  - mode: train
+  - resume_bs: true
+  - total_run_time_hr: 12.0
+# simple:
+#   - data.data_module.train_config.datasets.0: "HyperSim_Multi(allow_repeat=False, split='train', ROOT=['${data.data_root}/hypersim_processed'], image_list_path='/kaggle/working', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
+# simple:
+#   - logging.log_freq: 100
+#   - break_at: 20
+
+is_private: true
+enable_gpu: true
+enable_tpu: false
+enable_internet: true
+resume_full_ckpt: false
+resume_source: null
+resume_infer: false
+
+# Optional: exact dataset/kernel dependencies for Kaggle metadata
+dataset_sources:
+  - liucong12601/depth-file-list
+kernel_sources: []
+competition_sources: []
+model_sources: []

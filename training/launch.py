@@ -1,11 +1,13 @@
 import argparse
+import os
 from hydra import initialize, compose
 from trainer import Trainer
 
 
 import rootutils
 
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+project_root = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+os.environ["PROJECT_ROOT"] = str(project_root)
 
 parser = argparse.ArgumentParser(description="Run VGGT training.")
 parser.add_argument('--config_name', type=str, default='default', help='Name of the config file to use (without .yaml extension).')

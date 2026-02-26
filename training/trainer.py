@@ -34,6 +34,7 @@ import random
 import string
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -57,9 +58,28 @@ from datetime import timedelta
 
 from safetensors.torch import load_file
 from train_utils.priority_lock import PriorityLock
-import rootutils
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-#
+
+def _setup_project_root_from_file(start_file: str) -> Path:
+    env_project_root = os.environ.get("PROJECT_ROOT")
+    if env_project_root:
+        project_root = Path(env_project_root).resolve()
+    else:
+        p = Path(start_file).resolve()
+        project_root = None
+        for parent in [p.parent, *p.parents]:
+            if (parent / ".project-root").exists():
+                project_root = parent
+                break
+        if project_root is None:
+            project_root = p.parent.parent
+        os.environ.setdefault("PROJECT_ROOT", str(project_root))
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    return project_root
+
+
+PROJECT_ROOT = _setup_project_root_from_file(__file__)
+# 
 from train_utils.general import *
 from train_utils.logging import setup_logging
 from train_utils.distributed import get_machine_local_and_dist_rank
@@ -92,6 +112,11 @@ class Trainer:
     """
 
     EPSILON = 1e-8
+    _RESUME_CONFIG_SKIP_KEYS_HARDCODED = (
+        "checkpoint.resume_checkpoint_path",
+        "checkpoint.resume_config_skip_keys",
+        "logging.run_folder_name",
+    )
 
     def __init__(self, cfg: DictConfig):
         # --- Acquire a file lock to ensure exclusive GPU usage ---
@@ -112,12 +137,13 @@ class Trainer:
         self._resume_checkpoint = None
         self._resume_checkpoint_amp = None
         self._trainer_config_snapshot = None
+        self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
-        if self.accumulation_mode == "across_batches":
+        if self.accumulation_mode == "across_batches" and self._resume_checkpoint is None:
             cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
         self.cfg = cfg
 
@@ -145,6 +171,8 @@ class Trainer:
 
         self.where = 0.0
         self.seed_value = cfg.get("seed_value", 123)
+        self.total_run_time_hr = cfg.get("total_run_time_hr")
+        self.resume_bs = cfg.get("resume_bs", False)
 
         log_dir = self.logging_conf.log_dir
         exp_name = cfg.get("exp_name")
@@ -174,6 +202,10 @@ class Trainer:
         # else:
         #     self._base_train_augs = None
 
+        # self._setup_dataloaders()
+        # import shutil
+        # shutil.rmtree(os.environ.get("PROJECT_ROOT"))
+        # sys.exit(0)
         self._base_train_augs = None
         if random_crop_prob_schedule is not None:
             self._base_train_augs = self._extract_train_augs(self.data_conf)
@@ -191,27 +223,28 @@ class Trainer:
             if random_crop_prob is not None:
                 suffix_parts.append(f"rcropP{float(random_crop_prob):.2f}")
 
-        lr_schedulers = getattr(self.optim_conf.options, "lr", [])
-        try:
-            base_lr = lr_schedulers[0].scheduler.schedulers[0].end_value
-        except Exception:
-            base_lr = None
-        if base_lr is not None:
-            suffix_parts.append(f"lr{int(base_lr * 1e5)}")
-        suffix_parts.append(f"e{self.max_epochs}")
-        if exp_name and suffix_parts:
-            suffix = "_".join(suffix_parts)
-            new_exp_name = f"{exp_name}/{suffix}"
-            if isinstance(log_dir, str) and exp_name in log_dir:
-                log_dir = log_dir.replace(exp_name, new_exp_name, 1)
-            else:
-                run_folder_name = self.logging_conf.get("run_folder_name")
-                if run_folder_name:
-                    log_dir = os.path.join(log_dir, new_exp_name, run_folder_name)
-                else:
-                    log_dir = os.path.join(log_dir, new_exp_name)
-            self.logging_conf.log_dir = log_dir
-        
+        if "working" not in str(PROJECT_ROOT):
+            lr_schedulers = getattr(self.optim_conf.options, "lr", [])
+            try:
+                base_lr = lr_schedulers[0].scheduler.schedulers[0].end_value
+            except Exception:
+                base_lr = None
+            if base_lr is not None:
+                suffix_parts.append(f"lr{int(base_lr * 1e5)}")
+            suffix_parts.append(f"e{self.max_epochs}")
+            if exp_name and suffix_parts:
+                suffix = "_".join(suffix_parts)
+                new_exp_name = f"{exp_name}/{suffix}"
+                if not (isinstance(log_dir, str) and new_exp_name in log_dir):
+                    if isinstance(log_dir, str) and exp_name in log_dir:
+                        log_dir = log_dir.replace(exp_name, new_exp_name, 1)
+                    else:
+                        run_folder_name = self.logging_conf.get("run_folder_name")
+                        if run_folder_name:
+                            log_dir = os.path.join(log_dir, new_exp_name, run_folder_name)
+                        else:
+                            log_dir = os.path.join(log_dir, new_exp_name)
+                self.logging_conf.log_dir = log_dir        
 
         self.checkpoint_conf.save_dir = os.path.join(log_dir, "ckpts")
         
@@ -228,7 +261,7 @@ class Trainer:
                 dynamo.config.suppress_errors = True
                 dynamo.config.capture_scalar_outputs = True
             except Exception as exc:
-                logging.warning(f"Failed to set torch._dynamo configs: {exc}")
+                print(f"Failed to set torch._dynamo configs: {exc}", flush=True)
         setup_logging(
             __name__,
             output_dir=self.logging_conf.log_dir,
@@ -238,7 +271,11 @@ class Trainer:
             all_ranks=self.logging_conf.all_ranks,
         )
         set_seeds(self.seed_value, self.max_epochs, 0)
-        self.amp_type = get_amp_type(self.optim_conf.amp.amp_dtype)        
+        amp_conf = getattr(self.optim_conf, "amp", None)
+        if amp_conf is not None and bool(amp_conf.enabled):
+            self.amp_type = get_amp_type(amp_conf.amp_dtype)
+        else:
+            self.amp_type = torch.float32
 
         self._setup_components()  # Except Optimizer everything is setup here.
         self._setup_dataloaders()
@@ -265,8 +302,8 @@ class Trainer:
 
         ################################
         # If you want to force to resume from a specific checkpoint, you can do so by setting the resume_checkpoint_path in the config
-        if self._resume_ckpt_path is None:
-            self._resume_ckpt_path = self._resolve_resume_checkpoint_path()
+        # if self._resume_ckpt_path is None:
+        #     self._resume_ckpt_path = self._find_resume_checkpoint_path(cfg)
         if self._resume_ckpt_path is not None:
             if self._resume_checkpoint is None:
                 self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
@@ -313,19 +350,83 @@ class Trainer:
             with g_pathmgr.open(meta_path, "w") as f:
                 f.write(json.dumps(metadata, indent=2))
         except Exception as exc:
-            logging.warning(f"Failed to write run metadata: {exc}")
+            print(f"Failed to write run metadata: {exc}", flush=True)
 
-    def _resolve_resume_checkpoint_path(self) -> Optional[str]:
-        if not self.checkpoint_conf:
+    def _find_resume_checkpoint_path(self, cfg) -> Optional[str]:
+        requested_path = str(cfg.checkpoint.resume_checkpoint_path)
+        if not requested_path:
             return None
-        if self.checkpoint_conf.get("resume_checkpoint_path") is not None:
-            return self.checkpoint_conf.resume_checkpoint_path
+        if os.path.isfile(requested_path):
+            return requested_path
+        
+        path_obj = Path(str(requested_path))
+        parts = path_obj.parts
+        if path_obj.is_absolute():
+            if len(parts) < 4:
+                return None
+            search_root = Path(parts[0], parts[1], parts[2], parts[3], parts[4])
+        else:
+            if len(parts) < 3:
+                return None
+            search_root = Path(*parts[:3])
+
+        if not search_root.is_dir():
+            return None
+
+        for found in search_root.rglob("checkpoint.pt"):
+            if found.is_file():
+                print(
+                    "resume_checkpoint_path '%s' is not a file; using discovered checkpoint '%s'"
+                    % (requested_path, found),
+                    flush=True,
+                )
+                return str(found)
         return None
+
+    def _normalize_resume_skip_keys(self, cfg: DictConfig) -> List[str]:
+        checkpoint_cfg = cfg.get("checkpoint", {})
+        raw_skip_keys = checkpoint_cfg.get("resume_config_skip_keys", [])
+        if OmegaConf.is_config(raw_skip_keys):
+            raw_skip_keys = OmegaConf.to_container(raw_skip_keys, resolve=False)
+        if raw_skip_keys is None:
+            raw_skip_keys = []
+        elif isinstance(raw_skip_keys, str):
+            raw_skip_keys = [raw_skip_keys]
+        elif not isinstance(raw_skip_keys, (list, tuple)):
+            logging.warning(
+                "checkpoint.resume_config_skip_keys must be a list/tuple of dot-path strings; "
+                f"got {type(raw_skip_keys).__name__}. Ignoring it."
+            )
+            raw_skip_keys = []
+
+        seen_skip_keys = set()
+        resume_skip_keys: List[str] = []
+        for key_path in [*self._RESUME_CONFIG_SKIP_KEYS_HARDCODED, *raw_skip_keys]:
+            if not isinstance(key_path, str) or not key_path:
+                print(f"Ignoring invalid resume_config_skip_keys entry: {key_path!r}", flush=True)
+                continue
+            if key_path in seen_skip_keys:
+                continue
+            seen_skip_keys.add(key_path)
+            resume_skip_keys.append(key_path)
+        return resume_skip_keys
 
     def _merge_resume_config(self, cfg: DictConfig) -> DictConfig:
         if not cfg.get("checkpoint") or not cfg.checkpoint.get("resume_checkpoint_path"):
             return cfg
-        self._resume_ckpt_path = cfg.checkpoint.resume_checkpoint_path
+        self._resume_ckpt_path = self._find_resume_checkpoint_path(cfg)
+        if self._resume_ckpt_path is None:
+            print(
+                (
+                    "resume_checkpoint_path '%s' is not a file and no fallback 'checkpoint.pt' was found. "
+                    "Skipping resume config merge."
+                )
+                % (cfg.checkpoint.resume_checkpoint_path,),
+                flush=True,
+            )
+            sys.exit(0)
+            return cfg
+
         self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
         if not self._resume_checkpoint or not isinstance(self._resume_checkpoint, dict):
             raise ValueError(f"Checkpoint could not be loaded: {self._resume_ckpt_path}")
@@ -334,7 +435,20 @@ class Trainer:
             raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
         self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
         base_cfg = OmegaConf.create(resume_cfg)
-        merged = OmegaConf.merge(base_cfg, cfg)
+        merged = OmegaConf.merge(cfg, base_cfg)
+        resume_skip_keys = self._normalize_resume_skip_keys(cfg)
+        _missing = object()
+        for key_path in resume_skip_keys:
+            try:
+                value = OmegaConf.select(cfg, key_path, default=_missing)
+                if value is _missing:
+                    continue
+                OmegaConf.update(merged, key_path, copy.deepcopy(value), merge=False)
+            except Exception as exc:
+                print(
+                    f"Failed to apply resume_config_skip_keys override for '{key_path}': {exc}",
+                    flush=True,
+                )
         base_log_dir = base_cfg.get("logging", {}).get("log_dir")
         new_run_folder = merged.get("logging", {}).get("run_folder_name")
         if base_log_dir and new_run_folder:
@@ -361,7 +475,7 @@ class Trainer:
             try:
                 return load_file(ckpt_path)
             except Exception as exc:
-                logging.error(f"Error loading safetensors file: {exc}")
+                print(f"Error loading safetensors file: {exc}", flush=True)
                 return None
         with g_pathmgr.open(ckpt_path, "rb") as f:
             return torch.load(f, map_location="cpu", weights_only=False)
@@ -583,6 +697,8 @@ class Trainer:
                 np.random.set_state(rng_state["numpy"])
             if "python" in rng_state:
                 random.setstate(rng_state["python"])
+        if checkpoint.get("train_dataset_checkpoint_state") is not None:
+            self._restore_train_dataset_checkpoint_state(checkpoint["train_dataset_checkpoint_state"])
 
 
     def _setup_device(self, device):
@@ -619,7 +735,10 @@ class Trainer:
         self.steps = {'train': 0, 'val': 0}
         self.meters = None
 
-        self.tb_writer = instantiate(self.logging_conf.tensorboard_writer, _recursive_=False)
+        self.tb_writer = None
+        tb_conf = self.logging_conf.get("tensorboard_writer")
+        if tb_conf:
+            self.tb_writer = instantiate(tb_conf, _recursive_=False)
         self.model = instantiate(self.model_conf, _recursive_=False)
         if getattr(self.optim_conf, "frozen_module_names", None):
             logging.info(
@@ -654,8 +773,17 @@ class Trainer:
         self.loss = instantiate(self.loss_conf, _recursive_=False)
 
 
-        # Use standard Gradient Scaler for DDP
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.optim_conf.amp.enabled)
+        # GradScaler is only needed for fp16 AMP (not bf16/float32).
+        scaler_enabled = (
+            torch.cuda.is_available()
+            and self.optim_conf.amp.enabled
+            and str(self.optim_conf.amp.amp_dtype) == "float16"
+        )
+        try:
+            self.scaler = torch.amp.GradScaler("cuda", enabled=scaler_enabled)
+        except (AttributeError, TypeError):
+            # Backward compatibility with older PyTorch versions.
+            self.scaler = torch.cuda.amp.GradScaler(enabled=scaler_enabled)
         self.gradient_clipper = instantiate(self.optim_conf.gradient_clip)
 
         logging.info("Successfully initialized all training components: model, loss function, optimizer, and etc.")
@@ -670,6 +798,7 @@ class Trainer:
         # Instantiate the data module from the config
         data_module = instantiate(self.data_conf.data_module, _recursive_=False)
         data_module.seed = self.seed_value
+        self.data_module = data_module
 
         if self.mode in ["train", "val"]:
             # Get the validation dataloader from the data module
@@ -726,6 +855,9 @@ class Trainer:
                 "python": random.getstate(),
             },
         }
+        train_dataset_checkpoint_state = self._get_train_dataset_checkpoint_state()
+        if train_dataset_checkpoint_state is not None:
+            checkpoint_content["train_dataset_checkpoint_state"] = train_dataset_checkpoint_state
         
         if len(self.optims) == 1:
             checkpoint_content["optimizer"] = checkpoint_content["optimizer"][0]
@@ -750,8 +882,96 @@ class Trainer:
 
 
     def _get_train_dataset_checkpoint_state(self):
-        # Checkpoint state for dataloaders is not handled in this setup.
-        return None
+        state = {}
+
+        data_module = getattr(self, "data_module", None)
+        if data_module is not None and hasattr(data_module, "state_dict"):
+            try:
+                data_module_state = data_module.state_dict()
+                if data_module_state is not None:
+                    state["data_module"] = data_module_state
+            except Exception as exc:
+                logging.warning(f"Failed to collect data_module checkpoint state: {exc}")
+
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return state or None
+
+        loader_generator = getattr(train_loader, "generator", None)
+        if isinstance(loader_generator, torch.Generator):
+            try:
+                state["loader_generator_state"] = loader_generator.get_state()
+            except Exception as exc:
+                logging.warning(f"Failed to collect train loader generator state: {exc}")
+
+        for key, obj in (
+            ("dataset", getattr(train_loader, "dataset", None)),
+            ("sampler", getattr(train_loader, "sampler", None)),
+            ("batch_sampler", getattr(train_loader, "batch_sampler", None)),
+        ):
+            if obj is None:
+                continue
+            if hasattr(obj, "state_dict"):
+                try:
+                    obj_state = obj.state_dict()
+                    if obj_state is not None:
+                        state[key] = obj_state
+                except Exception as exc:
+                    logging.warning(f"Failed to collect train loader {key} state: {exc}")
+            obj_generator = getattr(obj, "generator", None)
+            if isinstance(obj_generator, torch.Generator):
+                try:
+                    state[f"{key}_generator_state"] = obj_generator.get_state()
+                except Exception as exc:
+                    logging.warning(f"Failed to collect train loader {key} generator state: {exc}")
+
+        return state or None
+
+    def _restore_train_dataset_checkpoint_state(self, checkpoint_state):
+        if not checkpoint_state:
+            return
+
+        data_module = getattr(self, "data_module", None)
+        if data_module is not None and "data_module" in checkpoint_state and hasattr(data_module, "load_state_dict"):
+            try:
+                data_module.load_state_dict(checkpoint_state["data_module"])
+            except Exception as exc:
+                logging.warning(f"Failed to restore data_module checkpoint state: {exc}")
+
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return
+
+        loader_generator_state = checkpoint_state.get("loader_generator_state")
+        loader_generator = getattr(train_loader, "generator", None)
+        if loader_generator_state is not None and isinstance(loader_generator, torch.Generator):
+            try:
+                loader_generator.set_state(loader_generator_state)
+            except Exception as exc:
+                logging.warning(f"Failed to restore train loader generator state: {exc}")
+
+        for key, obj in (
+            ("dataset", getattr(train_loader, "dataset", None)),
+            ("sampler", getattr(train_loader, "sampler", None)),
+            ("batch_sampler", getattr(train_loader, "batch_sampler", None)),
+        ):
+            if obj is None:
+                continue
+
+            obj_state = checkpoint_state.get(key)
+            if obj_state is not None and hasattr(obj, "load_state_dict"):
+                try:
+                    obj.load_state_dict(obj_state)
+                except Exception as exc:
+                    logging.warning(f"Failed to restore train loader {key} state: {exc}")
+
+            obj_generator_state = checkpoint_state.get(f"{key}_generator_state")
+            obj_generator = getattr(obj, "generator", None)
+            if obj_generator_state is not None and isinstance(obj_generator, torch.Generator):
+                try:
+                    obj_generator.set_state(obj_generator_state)
+                except Exception as exc:
+                    logging.warning(f"Failed to restore train loader {key} generator state: {exc}")
 
 
     def _get_scalar_log_keys(self, phase):
@@ -1045,20 +1265,35 @@ class Trainer:
         self._last_train_augs = augs
 
     def run_train(self):
+        last_train_epoch_duration_sec = 0.0
+        last_val_epoch_duration_sec = 0.0
+        limit_sec = None
+        if self.total_run_time_hr is not None:
+            try:
+                limit_sec = float(self.total_run_time_hr) * 3600.0
+            except (TypeError, ValueError):
+                logging.warning(f"Ignoring invalid total_run_time_hr={self.total_run_time_hr!r}")
+                limit_sec = None
         while self.epoch < self.max_epochs:
             self.end_warmup()
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
             self._apply_train_aug_schedule(self.epoch)
 
+            train_epoch_start_time = time.time()
             ok = self.train_epoch(self.train_loader)
+            last_train_epoch_duration_sec = time.time() - train_epoch_start_time
             if ok is False:
                 logging.error("Stopping training due to non-finite loss.")
                 break
             
             # Save checkpoint before validating
             self.save_checkpoint(self.epoch)
+            ran_val = False
             if (self.epoch + 1) % self.optim_conf.val_freq == 0:
+                val_epoch_start_time = time.time()
                 self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+                last_val_epoch_duration_sec = time.time() - val_epoch_start_time
+                ran_val = True
 
             # gc.collect()
             if torch.cuda.is_available():
@@ -1067,6 +1302,15 @@ class Trainer:
 
             self.epoch += 1
 
+            if limit_sec is not None and limit_sec > 0:
+                elapsed_sec = time.time() - self.start_time
+                if elapsed_sec + last_train_epoch_duration_sec + last_val_epoch_duration_sec > limit_sec:
+                    logging.info(
+                        "Stopping before next epoch due to total_run_time_hr budget: "
+                        f"elapsed={elapsed_sec/3600.0:.2f}h, "
+                        f"limit={limit_sec/3600.0:.2f}h."
+                    )
+                    break
             if self.epoch == self.cfg.get("break_at", -1):
                 break
         self.epoch -= 1
@@ -1101,7 +1345,8 @@ class Trainer:
         #     torch.cuda.empty_cache()
         #     torch.cuda.reset_peak_memory_stats()
 
-        self.tb_writer.log_dict(outs_json, epoch)  # Logged only on rank 0
+        if self.tb_writer is not None:
+            self.tb_writer.log_dict(outs_json, epoch)  # Logged only on rank 0
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv(
@@ -1131,7 +1376,6 @@ class Trainer:
         for dl_idx, current_val_loader in enumerate(val_loader):
             batch_time = AverageMeter("Batch Time", self.device, ":.4f")
             data_time = AverageMeter("Data Time", self.device, ":.4f")
-            mem = AverageMeter("Mem (GB)", self.device, ":.4f")
             
             iters_per_epoch = len(current_val_loader)
 
@@ -1144,7 +1388,7 @@ class Trainer:
 
             progress = ProgressMeter(
                 iters_per_epoch,
-                [batch_time, data_time, mem,
+                [batch_time, data_time,
                 self.time_elapsed_meter,
                 *loss_meters.values(),],
                 self._get_meters(curr_phases),
@@ -1195,8 +1439,6 @@ class Trainer:
                 )
 
                 if data_iter % self.logging_conf.log_freq == 0:
-                    if torch.cuda.is_available():
-                        mem.update(torch.cuda.max_memory_allocated() // 1e9)
                     progress.display(data_iter)
 
             # Collect metrics for this dataloader
@@ -1233,12 +1475,10 @@ class Trainer:
                 out[key] = value
         return out
 
-
-
     def train_epoch(self, train_loader):        
         batch_time = AverageMeter("Batch Time", self.device, ":.4f")
         data_time = AverageMeter("Data Time", self.device, ":.4f")
-        mem = AverageMeter("Mem (GB)", self.device, ":.4f")
+        peak_mem = AverageMeter("Peak Mem (GB)", self.device, ":.4f")
         data_times = []
         phase = 'train'
         
@@ -1258,7 +1498,7 @@ class Trainer:
             meters=[
                 batch_time,
                 data_time,
-                mem,
+                peak_mem,
                 self.time_elapsed_meter,
                 *loss_meters.values(),
             ],
@@ -1353,16 +1593,18 @@ class Trainer:
                                         else ""
                                     )
                                 )
-                                self.tb_writer.log(
-                                    os.path.join("Optim", f"{optim_prefix}", option),
-                                    param_group[option],
-                                    self.steps[phase],
-                                )
-                    self.tb_writer.log(
-                        os.path.join("Optim", "where"),
-                        self.where,
-                        self.steps[phase],
-                    )
+                                if self.tb_writer is not None:
+                                    self.tb_writer.log(
+                                        os.path.join("Optim", f"{optim_prefix}", option),
+                                        param_group[option],
+                                        self.steps[phase],
+                                    )
+                    if self.tb_writer is not None:
+                        self.tb_writer.log(
+                            os.path.join("Optim", "where"),
+                            self.where,
+                            self.steps[phase],
+                        )
                     if torch.cuda.is_available():
                         torch.cuda.reset_peak_memory_stats()
 
@@ -1439,16 +1681,18 @@ class Trainer:
                                             else ""
                                         )
                                     )
-                                    self.tb_writer.log(
-                                        os.path.join("Optim", f"{optim_prefix}", option),
-                                        param_group[option],
-                                        self.steps[phase],
-                                    )
-                        self.tb_writer.log(
-                            os.path.join("Optim", "where"),
-                            self.where,
-                            self.steps[phase],
-                        )
+                                    if self.tb_writer is not None:
+                                        self.tb_writer.log(
+                                            os.path.join("Optim", f"{optim_prefix}", option),
+                                            param_group[option],
+                                            self.steps[phase],
+                                        )
+                        if self.tb_writer is not None:
+                            self.tb_writer.log(
+                                os.path.join("Optim", "where"),
+                                self.where,
+                                self.steps[phase],
+                            )
                         if torch.cuda.is_available():
                             torch.cuda.reset_peak_memory_stats()
 
@@ -1474,7 +1718,7 @@ class Trainer:
                 time.time() - self.start_time + self.ckpt_time_elapsed
             )
             if data_iter % self.logging_conf.log_freq == 0:
-                mem.update(torch.cuda.max_memory_allocated() // 1e9)
+                peak_mem.update(torch.cuda.max_memory_allocated() / (1024 ** 3))
                 progress.display(data_iter)
 
         # Log metrics to CSV
@@ -1821,7 +2065,8 @@ class Trainer:
                 loss_meters[f"{phase}_{key}"].update(value, batch_size)
                 if step % self.logging_conf.log_freq == 0:
                     value_item = value.item() if torch.is_tensor(value) else value
-                    self.tb_writer.log(f"Values/{phase}/{key}", value_item, step)
+                    if self.tb_writer is not None:
+                        self.tb_writer.log(f"Values/{phase}/{key}", value_item, step)
 
 
     def _log_tb_visuals(self, batch: Mapping, phase: str, step: int) -> None:
@@ -1867,9 +2112,10 @@ class Trainer:
                 visuals_to_log = visuals_to_log.to(torch.float16)
             visuals_to_log = visuals_to_log.numpy()
 
-            self.tb_writer.log_visuals(
-                name, visuals_to_log, step, self.logging_conf.video_logging_fps
-            )
+            if self.tb_writer is not None:
+                self.tb_writer.log_visuals(
+                    name, visuals_to_log, step, self.logging_conf.video_logging_fps
+                )
 
 
 

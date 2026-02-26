@@ -168,7 +168,7 @@ class Aggregator(nn.Module):
 
         if "conv" in patch_embed:
             self.patch_embed = PatchEmbed(img_size=img_size, patch_size=patch_size, in_chans=3, embed_dim=embed_dim)
-        elif "dinov3" in patch_embed:
+        elif "dinov3" in patch_embed or "dino-ds" in patch_embed:
             from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTModel
             import os
             self.patch_embed = DINOv3ViTModel.from_pretrained(patch_embed)

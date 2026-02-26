@@ -1,0 +1,114 @@
+# @package data
+
+# Define the common data root and number of views
+# data_root: /lc/data/3D
+data_root: /home/liucong/data/3d
+data_keys:
+  extrinsics: camera_pose
+  intrinsics: camera_intrinsics
+  pts3d_cam: pts3d_cam
+  world_points: pts3d
+  depths: depthmap
+  valid_mask: valid_mask
+  images: img
+data_module:
+  _target_: training.datasets.base.standalone_multiview_datamodule.StandaloneMultiViewDataModule
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
+  seed: 42
+  train_config:
+    # resolution: '[(154,126),(224, 224),(238, 224),(238, 238),(392, 392), (392, 336), (392, 238), (392, 224), (238, 224), (392, 126)]'
+    # resolution: '[(160,128),(224, 224),(240, 224),(240, 240),(384, 384), (384, 336), (384, 240), (384, 224), (240, 224), (384, 128)]'
+    resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (240, 224), (384, 128)]'
+    num_views: 6
+    fixed_length: false
+    datasets:
+    - HyperSim_Multi(allow_repeat=False, split='train', ROOT=[ "/kaggle/input/datasets/liucong12601/hsm-train-part01", "/kaggle/input/datasets/liucong12601/hsm-train-part02", "/kaggle/input/datasets/liucong12601/hsm-train-part03", "/kaggle/input/datasets/liucong12601/hsm-train-part04", "/kaggle/input/datasets/liucong12601/hsm-train-part05", ], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})
+      # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
+      # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
+      # - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
+    - ScanNetpp_Multi(allow_repeat=False, split='train', ROOT=["/kaggle/input/datasets/sinayliu/temp-db",
+            "/kaggle/input/datasets/sinayliu/scnt-p02",
+            "/kaggle/input/datasets/sinayliu/scnt-p03",
+            "/kaggle/input/datasets/sinayliu/scnt-p04",
+            "/kaggle/input/datasets/sinayliu/scnt-p05",
+            "/kaggle/input/datasets/sinayliu/scnt-p06",
+            "/kaggle/input/datasets/sinayliu/scnt-p07",
+            "/kaggle/input/datasets/sinayliu/scnt-p08",
+            "/kaggle/input/datasets/sinayliu/scnt-p09",
+            "/kaggle/input/datasets/sinayliu/scnt-p10",
+            "/kaggle/input/datasets/sinayliu/scnt-p11",
+            "/kaggle/input/datasets/sinayliu/scnt-p12"], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs})
+    batch_size: 16
+    num_workers: 4
+    augs:
+      cojitter: true
+      cojitter_ratio: 0.3
+      aug_crop: 10
+      random_crop_prob: 0.0
+      # Optional linear schedules (use one or set to null)
+      # random_crop_prob_schedule: null
+      random_crop_prob_schedule:
+        start: 0.0
+        end: 0.8
+        start_epoch: 15
+        end_epoch: 30
+
+      # prot_schedule:
+      #   start: 0.5
+      #   end: 0.5
+      #   start_epoch: 0
+      #   end_epoch: 0
+      # pcrop_schedule:
+      #   start: 0.95
+      #   end: 0.95
+      #   start_epoch: 0
+      #   end_epoch: 0
+      prot: 0.5
+      pcrop: 0.95
+      scales:
+      - 0.8
+      - 1.2
+      aspects:
+      - 1.0
+      - 1.5
+      color_jitter:
+        brightness: 0.5
+        contrast: 0.5
+        saturation: 0.5
+        hue: 0.1
+        p: 0.9
+      gray_scale: true
+      gau_blur: false
+  validation_config:
+    num_views: 6
+    datasets:
+    - HyperSim_Multi(allow_repeat=False, split='val', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/val"], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
+      # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
+      # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
+      # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128
+      # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(504, 378), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384
+    batch_size: 8
+    num_workers: 3
+    augs:
+      cojitter: false
+      cojitter_ratio: 0.5
+      scales:
+      aspects:
+      - 1.0
+      - 1.0
+      color_jitter:
+      gray_scale: false
+      gau_blur: false
+  test_config:
+    num_views: 6
+    datasets:
+    - HyperSim_Multi(allow_repeat=False, split='test', ROOT=["/kaggle/input/datasets/liucong12601/hsm-test-val/test"], image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list", resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)
+      # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
+      # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
+      # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126
+      # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384, 504, 378
+    batch_size: 1
+    num_workers: 2
+    augs: ${..validation_config.augs}
