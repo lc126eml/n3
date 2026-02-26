@@ -114,36 +114,27 @@ poll_interval_minutes: 10
 running_nodes:
 - id: zongjiaxin
   left_time: 30.0
-  notebooks:
-  - kernel_id: zongjiaxin/lr10-r0-42
-    run_id: 0
-    total_runs: 8
-    start_time: '2026-02-26 09:31:22'
-    resumed_from: null
-    history_ids: []
-  - kernel_id: zongjiaxin/lr5-r0-42
-    run_id: 0
-    total_runs: 8
-    start_time: '2026-02-26 12:51:20'
-    resumed_from: null
-    history_ids: []
+  notebooks: null
 - id: xulijuan
   left_time: 28.06439549805555
   notebooks:
-  - kernel_id: xulijuan/lr8-r0-42
+  - kernel_id: xulijuan/lr10-r0-42
     run_id: 0
     total_runs: 8
-    start_time: '2026-02-26 17:36:36'
+    start_time: '2026-02-28 09:38:36'
     resumed_from: null
     history_ids: []
-  - kernel_id: xulijuan/lr1-r0-42
-    run_id: 0
+  - kernel_id: xulijuan/lr10-r1-42
+    run_id: 1
     total_runs: 8
-    start_time: '2026-02-26 17:48:59'
+    start_time: '2026-02-28 10:03:57'
     resumed_from: null
     history_ids: []
 - id: zzr123123
   left_time: 30.0
-  notebooks: []
+  notebooks: null
+- id: liucong12601
+  left_time: 30.0
+  notebooks: null
 finished_notebooks: []
 error_notebooks: []

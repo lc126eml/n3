@@ -57,7 +57,16 @@ class EasyDataset:
     #     return BatchedRandomSampler(sampler, batch_size, drop_last)
     
     def make_sampler(
-        self, batch_size, shuffle=True, drop_last=True, world_size=1, rank=0, fixed_length=False, seed=None
+        self,
+        batch_size,
+        shuffle=True,
+        drop_last=True,
+        world_size=1,
+        rank=0,
+        fixed_length=False,
+        seed=None,
+        accum_steps=1,
+        debug_enumerate_batches=False,
     ):
         """
         Creates and returns a DynamicResolutionSampler which acts as a batch sampler.
@@ -83,6 +92,8 @@ class EasyDataset:
             base_batch_size=batch_size,
             min_view_size=min_views,
             max_view_size=max_views,
+            accum_steps=accum_steps,
+            debug_enumerate_batches=debug_enumerate_batches,
             drop_last=drop_last,
             world_size=world_size,
             seed=seed

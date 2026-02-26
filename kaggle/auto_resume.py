@@ -285,13 +285,14 @@ def main():
         help="Override per-node quota hours (default: 30 GPU / 20 TPU).",
     )
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--tpu", action="store_true", help="Process TPU running nodes.")
-    mode_group.add_argument("--gpu", action="store_true", help="Process GPU running nodes.")
+    mode_group.add_argument("--tpu", dest="is_tpu", action="store_true", help="Process TPU running nodes.")
+    mode_group.add_argument("--gpu", dest="is_tpu", action="store_false", help="Process GPU running nodes.")
+    parser.set_defaults(is_tpu=False)
     parser.add_argument("--no-lock", action="store_false", dest="lock", default=True, help="Disable config locking.")
     args = parser.parse_args()
     verbose = not args.quiet
 
-    is_tpu = bool(args.tpu)
+    is_tpu = bool(args.is_tpu)
     if args.config:
         config_path = Path(args.config)
         if not config_path.is_absolute():

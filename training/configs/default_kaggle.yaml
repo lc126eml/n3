@@ -3,7 +3,7 @@ defaults:
 
 exp_name: aug_ablation
 seed_value: 42
-accum_steps: 3
+accum_steps: 1
 
 limit_train_batches:
 limit_val_batches:
@@ -12,7 +12,7 @@ test: false
 # mode: 'val'
 
 max_epochs: 130
-break_at: 50
+break_at: 2
 resume_bs: true
 total_run_time_hr: 12.0
 lr_scheduler_lengths: &lr_scheduler_lengths [0.05, 0.95] #15
@@ -32,7 +32,7 @@ logging:
   run_folder_name: null #${now:%Y-%m-%d}_${now:%H-%M-%S}
   log_dir: logs
   log_visuals: false
-  log_freq: 200
+  log_freq: 1
   log_level_primary: DEBUG
   log_level_secondary: WARNING
   all_ranks: false
@@ -314,7 +314,8 @@ optim:
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: false
-  warmup_epochs: &warmup_epochs 15
+  warmup_epochs: &warmup_epochs 1
+  warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
   warmup_configs:

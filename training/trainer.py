@@ -558,8 +558,25 @@ class Trainer:
         if torch.cuda.is_available():
             torch.backends.cudnn.deterministic = cuda_conf.cudnn_deterministic
             torch.backends.cudnn.benchmark = cuda_conf.cudnn_benchmark
-            torch.backends.cuda.matmul.allow_tf32 = cuda_conf.allow_tf32
-            torch.backends.cudnn.allow_tf32 = cuda_conf.allow_tf32
+            allow_tf32 = bool(cuda_conf.allow_tf32)
+            # Use new TF32 controls (PyTorch >= 2.9).
+            tf32_mode = "tf32" if allow_tf32 else "ieee"
+            try:
+                torch.backends.cuda.matmul.fp32_precision = tf32_mode
+                if hasattr(torch.backends.cudnn, "conv") and hasattr(torch.backends.cudnn.conv, "fp32_precision"):
+                    torch.backends.cudnn.conv.fp32_precision = tf32_mode
+                elif hasattr(torch.backends.cudnn, "fp32_precision"):
+                    torch.backends.cudnn.fp32_precision = tf32_mode
+                else:
+                    logging.warning(
+                        "TF32 precision API is unavailable in this PyTorch build; "
+                        "skip setting TF32 backend flags."
+                    )
+            except Exception:
+                logging.warning(
+                    "Failed to apply TF32 precision settings via new API.",
+                    exc_info=True,
+                )
 
     @staticmethod
     def _update_ckpt_keys_revised(ckpt, heads_to_keep=None, heads_to_discard=None, default_keep=True):
@@ -798,6 +815,10 @@ class Trainer:
         # Instantiate the data module from the config
         data_module = instantiate(self.data_conf.data_module, _recursive_=False)
         data_module.seed = self.seed_value
+        if hasattr(data_module, "accum_steps"):
+            data_module.accum_steps = int(self.accum_steps)
+        if hasattr(data_module, "train_config") and isinstance(data_module.train_config, Mapping):
+            data_module.train_config["accum_steps"] = int(self.accum_steps)
         self.data_module = data_module
 
         if self.mode in ["train", "val"]:
@@ -1146,7 +1167,6 @@ class Trainer:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
 
     def _log_epoch_metrics_to_csv(self, phase, metrics):
         """Logs epoch metrics to a CSV file if enabled."""
@@ -1167,6 +1187,10 @@ class Trainer:
     def end_warmup(self):
         if self.epoch == self.optim_conf.warmup_epochs:
             unfreeze(self.model, True)
+            warmup_batch_cost_discount = float(
+                getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
+            )
+            self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
         if not hasattr(self.optim_conf, "warmup_configs"):
             return
         for warmup_conf in self.optim_conf.warmup_configs:
@@ -1193,6 +1217,33 @@ class Trainer:
 
                 except AttributeError as e:
                     print(f"Warning: Could not apply warmup config for {warmup_conf.attr}. Attribute not found. Error: {e}")
+
+    def _apply_train_sampler_batch_cost_discount(self, discount: float) -> None:
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return
+        applied = False
+        for obj in (
+            getattr(train_loader, "batch_sampler", None),
+            getattr(train_loader, "sampler", None),
+            getattr(train_loader, "dataset", None),
+        ):
+            if obj is None:
+                continue
+            if hasattr(obj, "set_target_batch_cost_discount"):
+                try:
+                    obj.set_target_batch_cost_discount(discount)
+                    applied = True
+                except Exception as exc:
+                    logging.warning(
+                        "Failed to apply warmup batch-cost discount "
+                        f"{discount} on {type(obj).__name__}: {exc}"
+                    )
+        if applied:
+            logging.info(
+                "Applied warmup batch-cost discount %.4f to train sampler",
+                discount,
+            )
 
     def _extract_train_augs(self, data_conf):
         train_augs = (
@@ -1298,7 +1349,6 @@ class Trainer:
             # gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                torch.cuda.reset_peak_memory_stats()
 
             self.epoch += 1
 
@@ -1341,8 +1391,8 @@ class Trainer:
         outs = self.val_epoch(val_loader, is_fresh_epoch=is_fresh_epoch)
         outs_json = self._to_jsonable(outs)
         # gc.collect()
-        # if torch.cuda.is_available():
-        #     torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         #     torch.cuda.reset_peak_memory_stats()
 
         if self.tb_writer is not None:
@@ -1478,7 +1528,8 @@ class Trainer:
     def train_epoch(self, train_loader):        
         batch_time = AverageMeter("Batch Time", self.device, ":.4f")
         data_time = AverageMeter("Data Time", self.device, ":.4f")
-        peak_mem = AverageMeter("Peak Mem (GB)", self.device, ":.4f")
+        peak_alloc_mem = AverageMeter("Peak Alloc (GB)", self.device, ":.4f")
+        peak_reserved_mem = AverageMeter("Peak Reserved (GB)", self.device, ":.4f")
         data_times = []
         phase = 'train'
         
@@ -1498,7 +1549,8 @@ class Trainer:
             meters=[
                 batch_time,
                 data_time,
-                peak_mem,
+                peak_alloc_mem,
+                peak_reserved_mem,
                 self.time_elapsed_meter,
                 *loss_meters.values(),
             ],
@@ -1508,6 +1560,8 @@ class Trainer:
 
         self.model.train()
         end = time.time()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
 
         iters_per_epoch = int(len(train_loader))
         limit_train_batches = (
@@ -1541,16 +1595,18 @@ class Trainer:
             batch = copy_data_to_device(batch, self.device, non_blocking=True)
 
             batch_size = batch["img"].shape[0]
+            batch_img_shape = tuple(batch["img"].shape)
             if batch_size <= 0:
                 logging.warning("Skipping empty batch during training.")
                 continue
 
             if self.accumulation_mode == "chunk_within_batch":
                 accum_steps = self.accum_steps
+                logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
                 if accum_steps > batch_size:
                     logging.warning(
                         f"accum_steps ({accum_steps}) > batch_size ({batch_size}); "
-                        f"clamping accum_steps to batch_size for this batch. image size: {batch['img'].shape}"
+                        f"clamping accum_steps to batch_size for this batch. image size: {batch_img_shape}"
                     )
                     accum_steps = batch_size
 
@@ -1605,8 +1661,6 @@ class Trainer:
                             self.where,
                             self.steps[phase],
                         )
-                    if torch.cuda.is_available():
-                        torch.cuda.reset_peak_memory_stats()
 
                 # Clipping gradients and detecting diverging gradients
                 if self.gradient_clipper is not None:
@@ -1693,8 +1747,6 @@ class Trainer:
                                 self.where,
                                 self.steps[phase],
                             )
-                        if torch.cuda.is_available():
-                            torch.cuda.reset_peak_memory_stats()
 
                     if self.gradient_clipper is not None:
                         for optim in self.optims:
@@ -1718,11 +1770,16 @@ class Trainer:
                 time.time() - self.start_time + self.ckpt_time_elapsed
             )
             if data_iter % self.logging_conf.log_freq == 0:
-                peak_mem.update(torch.cuda.max_memory_allocated() / (1024 ** 3))
+                if torch.cuda.is_available():
+                    peak_alloc_mem.update(torch.cuda.max_memory_allocated() / (1024 ** 3))
+                    peak_reserved_mem.update(torch.cuda.max_memory_reserved() / (1024 ** 3))
+                    torch.cuda.reset_peak_memory_stats()
                 progress.display(data_iter)
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv("train", loss_meters)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         return True
 

@@ -16,13 +16,16 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'break_at': 50,
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'accum_steps': 4,
+ 'break_at': 30,
  'checkpoint.resume_checkpoint_path': None,
  'checkpoint.resume_config_skip_keys': [],
- 'data.data_module.train_config.batch_size': 16,
+ 'data.data_module.train_config.batch_size': 40,
+ 'data.data_module.train_config.debug_enumerate_batches': True,
  'max_epochs': 130,
  'mode': 'train',
- 'optim.options.lr.0.scheduler.schedulers.0.end_value': 1e-05,
+ 'optim.options.lr.0.scheduler.schedulers.0.end_value': 0.0001,
+ 'optim.warmup_batch_cost_discount': 0.55,
  'resume_bs': True,
  'seed_value': 42,
  'total_run_time_hr': 12.0}
