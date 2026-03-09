@@ -365,17 +365,42 @@ def _iter_simple_updates(cfg: dict):
     simple = cfg.get("simple")
     if simple is None:
         return []
-    if isinstance(simple, dict):
-        items = []
-        for k, v in simple.items():
-            items.append((str(k), v))
-        return items
     updates = []
-    for item in _as_list(simple):
+    def flatten_nested_dict(nested_dict, parent_key="", sep="."):
+        """
+        Recursively flatten a nested dictionary into full key-value pairs.
+        
+        Args:
+            nested_dict: The nested dictionary to flatten (supports any depth)
+            parent_key: Internal use (tracks the parent key path)
+            sep: Separator for joining keys (default: dot ".")
+        
+        Returns:
+            dict: Flattened dict with full hierarchical keys
+        """
+        items = []
+        for key, value in nested_dict.items():
+            # Build the full key path (e.g., "postprocess.train" + "." + "align.to_first_cam")
+            full_key = f"{parent_key}{sep}{key}" if parent_key else key
+            
+            # If the value is a dict (nested level), recurse
+            if isinstance(value, dict):
+                # Recursively process the nested dict and extend the items list
+                items.extend(flatten_nested_dict(value, full_key, sep=sep).items())
+            else:
+                # If it's a final value (bool/int/str), add to items
+                items.append((full_key, value))
+        
+        # Convert the list of (key, value) tuples to a dict
+        return dict(items)
+    for item in simple:
         if not isinstance(item, dict):
             continue
-        for k, v in item.items():
-            updates.append((str(k), v))
+        # item = _expand(item)
+        item = flatten_nested_dict(item)
+        for prefix, val in item.items():
+            # print(f"collect {prefix} {val}")
+            updates.append((prefix, val))
     return updates
 
 

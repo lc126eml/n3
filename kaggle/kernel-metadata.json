@@ -1,6 +1,6 @@
 {
-  "id": "xulijuan/lr10-r0-42",
-  "title": "lr10 r0 42",
+  "id": "zzr123123/pts-align-to-gt-r0-42",
+  "title": "pts align to gt r0 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",

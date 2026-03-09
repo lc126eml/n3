@@ -175,7 +175,7 @@ postprocess:
         normalize_depth: false
         normalize_pose: false
       depth_align_to_gt:
-        enabled: true
+        enabled: false
         conf_percentage: 80
         pose: true
     normalize:
@@ -314,7 +314,7 @@ optim:
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: false
-  warmup_epochs: &warmup_epochs 1
+  warmup_epochs: &warmup_epochs 15
   warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
