@@ -62,7 +62,7 @@ postprocess:
         normalize_depth: False
         normalize_pose: False
       depth_align_to_gt:
-        enabled: True
+        enabled: &enable_depth false
         conf_percentage: null
         pose: True
     normalize:
@@ -79,7 +79,7 @@ postprocess:
         rel_err_angle: True
         # all_pairs_err: True
       depth:
-        enabled: True
+        enabled: *enable_depth
       recon:
         pts_err: True
         from_cam_err: False
@@ -153,3 +153,4 @@ model:
   rope_freq: 100
   # rope_freq: -1
   first_cam: True
+  enable_depth: *enable_depth

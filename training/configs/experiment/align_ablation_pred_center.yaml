@@ -12,8 +12,8 @@ postprocess:
       to_first_cam:
         enabled: False
       pred_center:
-        enabled: &pts_align_to_center True
-        pr_to_gt: False
+        enabled: True
+        pr_to_gt: &pts_align_to_center False
         align_pose: True
       center_world:
         enabled: False

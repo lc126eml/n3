@@ -1602,7 +1602,7 @@ class Trainer:
 
             if self.accumulation_mode == "chunk_within_batch":
                 accum_steps = self.accum_steps
-                logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
+                # logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
                 if accum_steps > batch_size:
                     logging.warning(
                         f"accum_steps ({accum_steps}) > batch_size ({batch_size}); "
@@ -1971,7 +1971,7 @@ class Trainer:
             pred['scale'] = inv_avg_scale
             pred['translation'] = centroid
         
-        pts_align_conf = pp_conf.normalize.get("pred_center", {})
+        pts_align_conf = pp_conf.align.get("pred_center", {})
         if pts_align_conf.get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             if not pts_align_conf.get('pr_to_gt'):
                 with torch.no_grad():                
