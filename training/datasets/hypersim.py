@@ -259,16 +259,21 @@ class HyperSim_Multi(BaseMultiViewDataset):
             camera_pose = cam_file["pose"].astype(np.float32)
 
             if self.split == "train" and rng.random() < self.random_crop_prob:
-                rgb_image, depthmap, intrinsics, camera_pose = self._crop_resize(
-                    rgb_image,
-                    depthmap,
-                    intrinsics,
-                    resolution,
-                    rng=rng,
-                    prot=self.prot,
-                    pcrop=self.pcrop,
-                    pose=camera_pose,
-                )
+                try:
+                    rgb_image, depthmap, intrinsics, camera_pose = self._crop_resize(
+                        rgb_image,
+                        depthmap,
+                        intrinsics,
+                        resolution,
+                        rng=rng,
+                        prot=self.prot,
+                        pcrop=self.pcrop,
+                        pose=camera_pose,
+                    )
+                except ValueError as e:
+                    # Output the full rgb image path if such error occurred
+                    print(f"ValueError: {e}: Image: {rgb_path}")
+                    return None  # 
             else:
                 rgb_image, depthmap, intrinsics = self._crop_resize_if_necessary(
                     rgb_image, depthmap, intrinsics, resolution, rng=rng, info=view_idx

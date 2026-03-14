@@ -1,5 +1,4 @@
 available_ids:
-- asdsad0000
 - asssmer
 - autune
 - b201xiaoli
@@ -12,7 +11,6 @@ available_ids:
 - chenrunze11
 - chuasiliu
 - cq1234
-- cshlhs
 - cycyxcy
 - dddd110
 - denghaimeng
@@ -45,7 +43,6 @@ available_ids:
 - keyongkk
 - kezzymik
 - lemonlaila
-- linyunlk243
 - liucong12601
 - luanjing
 - ly1122
@@ -108,20 +105,59 @@ available_ids:
 - zjl001
 - zongjiaxin
 - zzr123123
-exhausted_ids: []
+exhausted_ids:
+- xulijuan
+- zongjiaxin
+- zzr123123
 sleep_time_hr: 0
 poll_interval_minutes: 10
 running_nodes:
-- id: zongjiaxin
-  left_time: 30.0
-  notebooks:
-- id: xulijuan
-  left_time: 30
-  notebooks:
-- id: zzr123123
-  left_time: 30.0
-  notebooks:
 - id: liucong12601
+  left_time: 14.69001863166667
+  notebooks:
+  - kernel_id: liucong12601/gt-align-to-pts-r2-42
+    run_id: 2
+    total_runs: 8
+    start_time: '2026-03-15 10:57:53'
+    resumed_from: liucong12601/gt-align-to-pts-r1-42
+    history_ids: []
+  - kernel_id: liucong12601/first-cam-r2-42
+    run_id: 2
+    total_runs: 8
+    start_time: '2026-03-15 10:57:59'
+    resumed_from: xulijuan/first-cam-r1-42
+    history_ids: []
+- id: cshlhs
+  notebooks:
+  - kernel_id: cshlhs/center-world-r2-42
+    run_id: 2
+    total_runs: 8
+    start_time: '2026-03-15 10:58:05'
+    resumed_from: xulijuan/center-world-r1-42
+    history_ids: []
+  - kernel_id: cshlhs/pts-align-to-gt-r2-42
+    run_id: 2
+    total_runs: 8
+    start_time: '2026-03-15 10:58:11'
+    resumed_from: zongjiaxin/pts-align-to-gt-r1-42
+    history_ids: []
+  left_time: 25.588442844166668
+- id: linyunlk243
+  notebooks:
+  - kernel_id: linyunlk243/pred-center-pr2gt-r2-42
+    run_id: 2
+    total_runs: 8
+    start_time: '2026-03-15 10:58:16'
+    resumed_from: zzr123123/pred-center-pr2gt-r1-42
+    history_ids: []
+  - kernel_id: linyunlk243/pred-center-normpr2gt-r0-42
+    run_id: 0
+    total_runs: 8
+    start_time: '2026-03-15 11:11:13'
+    resumed_from: null
+    history_ids: []
+  left_time: 27.404503704166668
+- id: asdsad0000
   left_time: 30.0
   notebooks: null
 finished_notebooks: []

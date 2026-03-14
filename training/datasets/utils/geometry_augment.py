@@ -11,8 +11,10 @@ def random_crop(image, depth, K, target_size=(256, 224), aspect_ratio_range=[1.0
     W, H = image.size
     # randomly choose a aspect ratio in aspect_ratio_range, and randomly choose a Ws, Hs (abide aspect ratio), to make Wtarget < Ws <= W, Htarget < Hs <= H
     target_w, target_h = target_size
-    if target_w > W or target_h > H:
-        raise ValueError(f"target_size {target_size} exceeds image size {(W, H)}")
+    # if target_w > W or target_h > H:
+    #     raise ValueError(f"target_size {target_size} exceeds image size {(W, H)}")
+    target_w = min(target_w, W)
+    target_h = min(target_h, H)
 
     min_ar = max(aspect_ratio_range[0], target_w / H)
     max_ar = min(aspect_ratio_range[1], W / target_h)

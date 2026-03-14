@@ -3,7 +3,7 @@ defaults:
 
 exp_name: aug_ablation
 seed_value: 42
-accum_steps: 1
+accum_steps: 4
 
 limit_train_batches:
 limit_val_batches:
@@ -32,7 +32,7 @@ logging:
   run_folder_name: null #${now:%Y-%m-%d}_${now:%H-%M-%S}
   log_dir: logs
   log_visuals: false
-  log_freq: 1
+  log_freq: 50
   log_level_primary: DEBUG
   log_level_secondary: WARNING
   all_ranks: false
@@ -56,12 +56,12 @@ logging:
       - loss_Pose_T
       - loss_Pose_R
       - loss_FL
-      - loss_conf_depth
+      # - loss_conf_depth
       - loss_conf_point
-      - loss_reg_depth
-      - loss_grad_depth
-      - loss_silog_depth
-      - loss_silog_conf_depth
+      # - loss_reg_depth
+      # - loss_grad_depth
+      # - loss_silog_depth
+      # - loss_silog_conf_depth
       - loss_reg_point
         # - loss_scale
         # - loss_trans
@@ -73,8 +73,8 @@ logging:
       keys_to_log:
       - recon_abs_rel
       - recon_mae
-      - abs_rel
-      - abe
+      # - abs_rel
+      # - abe
       - rot_error_mean_deg
       - trans_error_mean
       - trans_angle_error_mean_deg
@@ -192,7 +192,7 @@ postprocess:
         rel_err_angle: true
         # all_pairs_err: True
       depth:
-        enabled: true
+        enabled: false
       recon:
         pts_err: true
         from_cam_err: false
@@ -301,7 +301,7 @@ loss:
     pts_align_to_center: *pts_align_to_center
     pts_center_world: *pts_center_world
   regulize_scale:
-    enabled: true
+    enabled: false
     scale_weight: 0.3
     translation_weight: 0
   vggt: false
@@ -322,9 +322,9 @@ optim:
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
-  - attr: "loss.regulize_scale.scale_weight"
-    value: 1.0
-    epoch: *warmup_epoch2
+  # - attr: "loss.regulize_scale.scale_weight"
+  #   value: 1.0
+  #   epoch: *warmup_epoch2
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3

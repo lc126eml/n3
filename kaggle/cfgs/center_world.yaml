@@ -1,0 +1,72 @@
+id: 
+# desc: pred_center_pr2gt
+# desc: pred_center_gt2pr
+desc: center_world
+# desc: first_cam
+# desc_keys: ["lr"]
+run_id: 0
+total_runs: 8
+seed: 42
+simple:
+  - max_epochs: 130
+  - break_at: 30
+  - accum_steps: 4
+  - checkpoint.resume_config_skip_keys: []
+  - data.data_module.train_config.batch_size: 40
+  - data.data_module.train_config.debug_enumerate_batches: false
+  - optim.warmup_epochs: 15
+  - optim.warmup_batch_cost_discount: 0.55
+  - model.enable_depth: false
+  - postprocess.train:
+      align:
+        to_first_cam:
+          enabled: false
+          points: true
+        center_world:
+          enabled: &pts_center_world true
+          align_pose: true
+        pred_center:
+          enabled: false
+          pr_to_gt: &pts_align_to_center false
+          align_pose: true
+        pts_align_to_gt:
+          enabled: &pts_align_to_gt false
+          conf_percentage: 80
+          with_scale: true
+          align_pose: true
+          normalize_depth: false
+          normalize_pose: false
+        gt_align_to_pts:
+          enabled: &gt_align_to_pts false
+          conf_percentage: 80
+          align_pose: true
+      normalize.gt_pts_invariant:
+        enabled: true
+        translate: true
+  - loss.switch:
+      pts_center_world: *pts_center_world
+      pts_align_to_gt: *pts_align_to_gt
+      gt_align_to_pts: *gt_align_to_pts
+      pts_align_to_center: *pts_align_to_center
+  # - data.data_module.train_config.num_workers: 4
+  # - data.data_module.train_config.resolution: "[(160,128),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416), (432, 416), (432, 432)]"
+  - lr: 1.0e-4
+  - mode: train
+  - resume_bs: true
+  - total_run_time_hr: 12.0
+#   - logging.log_freq: 100
+#   - break_at: 20
+
+is_private: false
+enable_gpu: true
+enable_tpu: false
+enable_internet: true
+resume_full_ckpt: false
+resume_source: null
+resume_infer: false
+
+# Optional: exact dataset/kernel dependencies for Kaggle metadata
+dataset_sources:
+kernel_sources: []
+competition_sources: []
+model_sources: []

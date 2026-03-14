@@ -190,7 +190,9 @@ class Trainer:
         ]:
             if align_conf.get(key, {}).get("enabled"):
                 suffix_parts.append(key)
-
+        if not self.postprocess_conf.get("train", {}).get("align", {}).get("pred_center", {}).get('enabled'):
+            self.loss_conf.switch.pts_align_to_center = False
+            
         train_augs = self.data_conf.data_module.get("train_config", {}).get("augs", {})
         random_crop_prob_schedule = train_augs.get("random_crop_prob_schedule")
         # has_aug_schedule = any(

@@ -445,6 +445,7 @@ def main():
                             ok, output = True, ""
                         else:
                             ok, output = _push_kernel(cfg)
+                            logging.info(output)
 
                         quota_msg = "Maximum weekly GPU quota"
                         if quota_msg in output:
