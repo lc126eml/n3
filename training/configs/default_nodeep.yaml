@@ -1,20 +1,20 @@
 defaults:
-- data: kaggle_multiview_train
+  - data: standalone_multiview_train
 
-exp_name: aug_ablation
+exp_name: test
 seed_value: 42
-accum_steps: 4
+accum_steps: 3
 
-limit_train_batches:
-limit_val_batches:
+limit_train_batches: null
+limit_val_batches: null
 mode: 'train'
-test: false
+test: False
 # mode: 'val'
 
-max_epochs: 130
-break_at: 2
-resume_bs: true
-total_run_time_hr: 12.0
+seed: 42
+
+max_epochs: &max_epochs 130
+break_at: 15
 lr_scheduler_lengths: &lr_scheduler_lengths [0.05, 0.95] #15
 # lr_scheduler_lengths: &lr_scheduler_lengths [0.0075, 0.9925] #100
 # lr_scheduler_lengths: &lr_scheduler_lengths [0.075, 0.925] #10
@@ -29,40 +29,40 @@ env_variables:
   GPU_LOCK_PRIORITY: "10"
 
 logging:
-  run_folder_name: null #${now:%Y-%m-%d}_${now:%H-%M-%S}
-  log_dir: logs
-  log_visuals: false
+  run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+  log_dir: logs/${exp_name}/${logging.run_folder_name}
+  log_visuals: False
   log_freq: 50
   log_level_primary: DEBUG
   log_level_secondary: WARNING
-  all_ranks: false
-  # tensorboard_writer:
-  #   _target_: train_utils.tb_writer.TensorBoardLogger
-  #   path: ${logging.log_dir}/tensorboard
+  all_ranks: False
+  tensorboard_writer:
+    _target_: train_utils.tb_writer.TensorBoardLogger
+    path: ${logging.log_dir}/tensorboard
   csv_writer:
-    enabled: true
+    enabled: True
     path: ${logging.log_dir}/csv
     filename: "epoch_metrics.csv"
 
   scalar_keys_to_log:
     train:
       keys_to_log:
-      - loss_objective
-      - loss_camera
-      - loss_T
-      - loss_R
-      - loss_Rel_T
-      - loss_Rel_R
-      - loss_Pose_T
-      - loss_Pose_R
-      - loss_FL
-      # - loss_conf_depth
-      - loss_conf_point
-      # - loss_reg_depth
-      # - loss_grad_depth
-      # - loss_silog_depth
-      # - loss_silog_conf_depth
-      - loss_reg_point
+        - loss_objective
+        - loss_camera
+        - loss_T
+        - loss_R
+        - loss_Rel_T
+        - loss_Rel_R
+        - loss_Pose_T
+        - loss_Pose_R
+        - loss_FL
+        # - loss_conf_depth
+        - loss_conf_point
+        # - loss_reg_depth
+        # - loss_grad_depth
+        # - loss_silog_depth
+        # - loss_silog_conf_depth
+        - loss_reg_point
         # - loss_scale
         # - loss_trans
         # - pts3d_cam_loss_reg_point
@@ -71,13 +71,13 @@ logging:
         # - global_from_depth_loss_reg_point
     val:
       keys_to_log:
-      - recon_abs_rel
-      - recon_mae
-      # - abs_rel
-      # - abe
-      - rot_error_mean_deg
-      - trans_error_mean
-      - trans_angle_error_mean_deg
+        - recon_abs_rel
+        - recon_mae
+        # - abs_rel
+        # - abe
+        - rot_error_mean_deg
+        - trans_error_mean
+        - trans_angle_error_mean_deg
         # - cam_recon_abs_rel
         # - cam_recon_sq_err
         # - depth_recon_abs_rel
@@ -104,99 +104,99 @@ postprocess:
     global_aligned_to_center: "global_aligned_to_center"
     global_to_center_world: "global_to_center_world"
   train:
-    to_extri: true
+    to_extri: True
     align:
-      to_first_cam:
-        enabled: false
-        points: false
+      to_first_cam: 
+        enabled: False 
+        points: False
       pr_align_cam:
-        enabled: false
-        points: false
+        enabled: False
+        points: False
       pred_center:
-        pr_to_gt: &pts_align_to_center false
-        enabled: false
-        align_pose: true
+        pr_to_gt: &pts_align_to_center False
+        enabled: False
+        align_pose: True
       center_world:
-        enabled: &pts_center_world false
-        align_pose: true
+        enabled: &pts_center_world False
+        align_pose: True
       pts_align_to_gt:
-        enabled: &pts_align_to_gt false
+        enabled: &pts_align_to_gt False
         conf_percentage: 80
-        with_scale: true
-        align_pose: true
-        normalize_depth: false
-        normalize_pose: false
+        with_scale: True
+        align_pose: True
+        normalize_depth: False
+        normalize_pose: False
       pts_align_to_gt_rot:
-        enabled: &pts_align_to_gt_rot false
+        enabled: &pts_align_to_gt_rot False
         conf_percentage: 80
-        with_scale: true
-        align_pose: true
+        with_scale: True
+        align_pose: True
       gt_align_to_pts:
-        enabled: &gt_align_to_pts false
+        enabled: &gt_align_to_pts False
         conf_percentage: 80
-        align_pose: true
+        align_pose: True
         # normalize_depth: False
         # normalize_pose: False
       depth_align_to_gt:
-        enabled: false
+        enabled: False
         conf_percentage: 80
-        pose: false
+        pose: False
     normalize:
-      gt_pts: false
-      gt_depth: false
-      gt_pts_invariant:
-        enabled: true
-        translate: true
+      gt_pts: False
+      gt_depth: False
+      gt_pts_invariant: 
+        enabled: True
+        translate: True
       pr_pts:
-        enabled: false
-        metric: false
-      pr_pts_invariant:
-        enabled: false
-        translate: false
+        enabled: False
+        metric: False
+      pr_pts_invariant: 
+        enabled: False
+        translate: False
     transform:
-      cam_from_depth: &cam_from_depth false
-      global_from_cam: &global_from_cam false
-      global_from_cam_detach_pose: &global_from_cam_detach_pose false
-      global_from_depth: &global_from_depth false
+      cam_from_depth: &cam_from_depth False
+      global_from_cam: &global_from_cam False
+      global_from_cam_detach_pose: &global_from_cam_detach_pose False
+      global_from_depth: &global_from_depth False
   val:
-    to_extri: true
+    to_extri: True
     align:
-      to_first_cam:
-        enabled: true
-        points: false
+      to_first_cam: 
+        enabled: True
+        points: False
       pr_align_cam:
-        enabled: true
-        points: false
+        enabled: True
+        points: False
       pts_align_to_gt:
-        enabled: true
+        enabled: True
         conf_percentage: 80
-        with_scale: true
-        align_pose: false
-        normalize_depth: false
-        normalize_pose: false
+        with_scale: True
+        align_pose: False
+        normalize_depth: False
+        normalize_pose: False
       depth_align_to_gt:
         enabled: false
         conf_percentage: 80
-        pose: true
+        pose: True
     normalize:
-      gt_pts: false
+      gt_pts: False
       pr_pts:
-        enabled: false
-        metric: false
+        enabled: False
+        metric: False
     metrics:
       camera:
-        enabled: true
-        abs_err: true
-        rel_err: true
-        abs_err_angle: true
-        rel_err_angle: true
+        enabled: True
+        abs_err: True
+        rel_err: True
+        abs_err_angle: True
+        rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: false
       recon:
-        pts_err: true
-        from_cam_err: false
-        from_depth_err: false
+        pts_err: True
+        from_cam_err: False
+        from_depth_err: False
     transform:
       cam_from_depth: *cam_from_depth
       global_from_cam: *global_from_cam
@@ -205,16 +205,9 @@ postprocess:
 
     
 checkpoint:
-  save_dir: logs/ckpts
+  save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: 1 #*max_epochs
-  resume_checkpoint_path:
-  # When resuming, checkpoint trainer_config is preferred by default.
-  # Hardcoded current-config overrides are always applied for:
-  # - checkpoint.resume_checkpoint_path
-  # - checkpoint.resume_config_skip_keys
-  # - logging.run_folder_name
-  # List only additional dot-path overrides here.
-  resume_config_skip_keys: []
+  resume_checkpoint_path: null
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
   # resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
   # strict: False
@@ -227,14 +220,14 @@ checkpoint:
   #   default_keep: False
     # default_keep: True
   # resume_checkpoint_path: /lc/code/pretrained/dinov2/dinov2_vitl14_reg4_pretrain.pth
-  strict: false
+  strict: False
   filter_keys:
-    enabled: true
-    heads_to_keep:
-    - ['layer', 'aggregator.patch_embed.blocks']
+    enabled: True
+    heads_to_keep: 
+      - ['layer', 'aggregator.patch_embed.blocks']
       # - ['*', 'aggregator.patch_embed.']
-    heads_to_discard:
-    default_keep: false
+    heads_to_discard: null
+    default_keep: False
     # default_keep: True
 
 
@@ -246,18 +239,18 @@ loss:
     weight_trans: 0
     weight_rot: 0
     pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
-    loss_type: "l1"
+    loss_type: "l1"   
     beta: 1.0
-  angle_pose:
+  angle_pose: 
     weight: 1.0
     weight_trans: 1.0
     weight_rot: 1.0
     relative_weight: 0.5
     absolute_weight: 0.5
-    compute_relative: false
-    compute_absolute: false
+    compute_relative: False
+    compute_absolute: False
     relative_neighbors: 1
-    loss_type: "l2"
+    loss_type: "l2" 
     beta: 1.0
   depth:
     weight: 1.0
@@ -277,7 +270,7 @@ loss:
     silog_conf_weight: 0.0
   # point: null
   # If you want to enable point, use the following config
-  point:
+  point: 
     weight: 1.0
     global_aligned_weight: 1.0
     global_from_cam_weight: 0.05
@@ -313,45 +306,44 @@ optim:
   val_freq: 5
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
-  param_group_modifiers: false
+  param_group_modifiers: False
   warmup_epochs: &warmup_epochs 15
-  warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
-  warmup_configs:
+  warmup_configs: 
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
-  # - attr: "loss.regulize_scale.scale_weight"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
+    # - attr: "loss.regulize_scale.scale_weight"
+    #   value: 1.0
+    #   epoch: *warmup_epoch2
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
-  - attr: "loss.pose_loss.compute_absolute"
-    value: true
-    epoch: *warmup_epoch3
-  - attr: "loss.pose_loss.compute_relative"
-    value: true
-    epoch: *warmup_epoch2
+    - attr: "loss.pose_loss.compute_absolute"
+      value: true
+      epoch: *warmup_epoch3
+    - attr: "loss.pose_loss.compute_relative"
+      value: true
+      epoch: *warmup_epoch2
     # - attr: "loss.camera.weight"
     #   value: 5.0
     #   epoch: *warmup_epochs
-  - attr: "loss.camera.weight_focal"
-    value: 0.5
-    epoch: *warmup_epoch2
-  - attr: "loss.camera.weight_trans"
-    value: 1.0
-    epoch: *warmup_epoch2
-  - attr: "loss.camera.weight_rot"
-    value: 1.0
-    epoch: *warmup_epoch2
-  - attr: "loss.depth.gradient_loss_fn"
-    value: "grad"
-    epoch: *warmup_epoch3
-  - attr: "loss.point.gradient_loss_fn"
-    value: "normal"
-    epoch: *warmup_epoch3
+    - attr: "loss.camera.weight_focal"
+      value: 0.5
+      epoch: *warmup_epoch2
+    - attr: "loss.camera.weight_trans"
+      value: 1.0
+      epoch: *warmup_epoch2
+    - attr: "loss.camera.weight_rot"
+      value: 1.0
+      epoch: *warmup_epoch2
+    - attr: "loss.depth.gradient_loss_fn"
+      value: "grad"
+      epoch: *warmup_epoch3
+    - attr: "loss.point.gradient_loss_fn"
+      value: "normal"
+      epoch: *warmup_epoch3
     # - attr: "loss.point.global_aligned_weight"
     #   value: 1.0
     #   epoch: *warmup_epoch3
@@ -365,79 +357,79 @@ optim:
 
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
-  - "*patch_embed*"
+      - "*patch_embed*"
 
 
   amp:
-    enabled: false
+    enabled: True
     amp_dtype: bfloat16
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
-    - module_name: ["aggregator"]
-      max_norm: 1.0
-      norm_type: 2
-    - module_name: ["shared_dpt"]
-      max_norm: 5.0
-      norm_type: 2
-    - module_name: ["point_head"]
-      max_norm: 5.0
-      norm_type: 2
-    - module_name: ["depth"]
-      max_norm: 5.0     # feel free to reduce this if you see instabilities
-      norm_type: 2
-    - module_name: ["camera"]
-      max_norm: 1.0     # feel free to reduce this if you see instabilities
-      norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["shared_dpt"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["point_head"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["depth"]
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
+      - module_name: ["camera"]
+        max_norm: 1.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
   options:
     lr:
-    - scheduler:
-        _target_: fvcore.common.param_scheduler.CompositeParamScheduler
-        schedulers:
-        - _target_: fvcore.common.param_scheduler.LinearParamScheduler
-          start_value: 1e-6
-          end_value: &lr_base 5e-4
-        - _target_: fvcore.common.param_scheduler.CosineParamScheduler
-          start_value: *lr_base
-          end_value: 1e-6
-        lengths: *lr_scheduler_lengths
-        interval_scaling: ['rescaled', 'rescaled']
+      - scheduler:
+          _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+          schedulers:
+            - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+              start_value: 1e-6
+              end_value: &lr_base 5e-4
+            - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+              start_value: *lr_base
+              end_value: 1e-6
+          lengths: *lr_scheduler_lengths
+          interval_scaling: ['rescaled', 'rescaled']
     weight_decay:
-    - scheduler:
-        _target_: fvcore.common.param_scheduler.ConstantParamScheduler
-        value: 0.05
+      - scheduler:
+          _target_: fvcore.common.param_scheduler.ConstantParamScheduler
+          value: 0.05
 
 
 model:
   _target_: vggt.models.vggt.VGGT
-  conf_logit_max:
-  enable_camera: true
+  conf_logit_max: null
+  enable_camera: True
   enable_depth: false
-  enable_point: true
-  enable_cam_point: false
-  enable_track: false
+  enable_point: True
+  enable_cam_point: False
+  enable_track: False
   embed_dim: 768
   depth: 12
   num_heads: 16
   mlp_ratio: 4.0
   num_register_tokens: 4
-  qkv_bias: true
-  proj_bias: true
-  ffn_bias: true
+  qkv_bias: True
+  proj_bias: True
+  ffn_bias: True
   # patch_embed: "dinov2_vitl14_reg"
   # patch_embed: "/lc/code/pretrained/dinov3/vitl16" 
-  patch_embed: "/kaggle/input/datasets/sinayliu/dino-ds/vitb16"
+  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16" 
   patch_size: 16
   dpt_frames_chunk_size: 8
   aa_order: ["frame", "global"]
   aa_block_size: 1
-  qk_norm: true
+  qk_norm: True
   # rope_freq: 100
   rope_freq: -1
   init_values: 0.01
-  first_cam: false
+  first_cam: False
   intermediate_layer_idx: [2, 5, 8, 11]
-  pose_encoding_type: *pose_encoding_type
+  pose_encoding_type: *pose_encoding_type 
   # intermediate_layer_idx: [4, 11, 17, 23]
 
 
@@ -445,13 +437,13 @@ distributed:
   # check https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html for options
   backend: nccl
   comms_dtype: None
-  find_unused_parameters: false
+  find_unused_parameters: False
   timeout_mins: 30
-  gradient_as_bucket_view: true  # Less memory used
+  gradient_as_bucket_view: True  # Less memory used
   bucket_cap_mb: 25
-  broadcast_buffers: true
+  broadcast_buffers: True
 
 cuda:
-  cudnn_deterministic: false
-  cudnn_benchmark: true
-  allow_tf32: true
+    cudnn_deterministic: False
+    cudnn_benchmark: True
+    allow_tf32: True

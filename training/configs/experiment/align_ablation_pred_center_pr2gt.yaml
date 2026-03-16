@@ -1,7 +1,7 @@
 # @package _global_
 # Pred-centered (align predictions to a centered frame).
 defaults:
-  - /default
+  - /default_nodeep
   - _self_
 
 # exp_name: align_ablation_pred_center
@@ -13,7 +13,7 @@ postprocess:
         enabled: False
       pred_center:
         enabled: True
-        pr_to_gt: &pts_align_to_center False
+        pr_to_gt: &pts_align_to_center true
         align_pose: True
       center_world:
         enabled: False
@@ -24,6 +24,13 @@ postprocess:
       gt_align_to_pts:
         enabled: False
 
+    normalize:
+      gt_pts_invariant:
+        enabled: true
+        translate: true
+      pr_pts_invariant:
+        enabled: false
+        translate: false
 loss:
   switch:
     pts_align_to_center: *pts_align_to_center

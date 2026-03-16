@@ -1,10 +1,10 @@
 # @package _global_
-# Center world frame (recenter GT poses/points).
+# Pred-centered (align predictions to a centered frame).
 defaults:
   - /default_nodeep
   - _self_
 
-# exp_name: align_ablation_center_world
+# exp_name: align_ablation_pred_center
 
 postprocess:
   train:
@@ -12,10 +12,11 @@ postprocess:
       to_first_cam:
         enabled: False
       pred_center:
-        enabled: False
-      center_world:
-        enabled: &pts_center_world True
+        enabled: True
+        pr_to_gt: &pts_align_to_center False
         align_pose: True
+      center_world:
+        enabled: False
       pts_align_to_gt:
         enabled: False
       pts_align_to_gt_rot:
@@ -26,10 +27,10 @@ postprocess:
     normalize:
       gt_pts_invariant:
         enabled: true
-        translate: false
+        translate: true
       pr_pts_invariant:
-        enabled: false
-        translate: false
+        enabled: true
+        translate: true
 loss:
   switch:
-    pts_center_world: *pts_center_world
+    pts_align_to_center: *pts_align_to_center

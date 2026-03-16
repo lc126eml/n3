@@ -36,9 +36,13 @@ simple:
           enabled: &gt_align_to_pts false
           conf_percentage: 80
           align_pose: true
-      normalize.gt_pts_invariant:
-        enabled: true
-        translate: true
+      normalize:
+        gt_pts_invariant:
+          enabled: true
+          translate: true
+        pr_pts_invariant:
+          enabled: false
+          translate: false
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt
