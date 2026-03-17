@@ -1,6 +1,6 @@
 id: 
 # desc: pred_center_pr2gt
-desc: pred_center_gt2pr
+desc: pred_center_gt2pr_notrans
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 8
@@ -41,10 +41,10 @@ simple:
       normalize:
         gt_pts_invariant:
           enabled: true
-          translate: true
+          translate: false
         pr_pts_invariant:
           enabled: true
-          translate: true
+          translate: false
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt

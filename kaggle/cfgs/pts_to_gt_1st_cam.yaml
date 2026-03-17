@@ -3,7 +3,7 @@ id:
 # desc: pred_center_gt2pr
 # desc: center_world
 # desc: first_cam
-desc: pts_align_to_gt_normpr
+desc: pts_align_to_gt_1st_cam
 # desc: gt_align_to_pts
 # desc_keys: ["lr"]
 run_id: 0
@@ -22,7 +22,10 @@ simple:
   - postprocess.train:
       align:
         to_first_cam:
-          enabled: false
+          enabled: true
+          points: true
+        pr_align_cam:
+          enabled: true
           points: true
         center_world:
           enabled: &pts_center_world false
@@ -43,12 +46,17 @@ simple:
           conf_percentage: 80
           align_pose: true
       normalize:
-        gt_pts_invariant:
+        gt_pts: true
+        pr_pts:
           enabled: true
-          translate: true
-        pr_pts_invariant:
-          enabled: true
-          translate: true
+          metric: False
+        gt_depth: False
+        gt_pts_invariant: 
+          enabled: false
+          translate: false
+        pr_pts_invariant: 
+          enabled: False
+          translate: False
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt

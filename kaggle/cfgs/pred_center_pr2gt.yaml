@@ -1,5 +1,5 @@
 id: 
-desc: pred_center_pr2gt
+desc: pred_center_pr2gt_notrans
 run_id: 0
 total_runs: 8
 seed: 42
@@ -39,7 +39,7 @@ simple:
       normalize:
         gt_pts_invariant:
           enabled: true
-          translate: true
+          translate: false
         pr_pts_invariant:
           enabled: false
           translate: false

@@ -3,7 +3,7 @@ id:
 # desc: pred_center_gt2pr
 # desc: center_world
 # desc: first_cam
-desc: gt_align_to_pts
+desc: gt_align_to_pts_normpr
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 8
@@ -41,9 +41,13 @@ simple:
           enabled: &gt_align_to_pts true
           conf_percentage: 80
           align_pose: true
-      normalize.gt_pts_invariant:
-        enabled: true
-        translate: true
+      normalize:
+        gt_pts_invariant:
+          enabled: true
+          translate: true
+        pr_pts_invariant:
+          enabled: true
+          translate: true
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt

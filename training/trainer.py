@@ -1959,7 +1959,10 @@ class Trainer:
                 pred[pred_data_keys.world_points], norm_factor_pr = normalize_pointcloud_vggt(pred[pred_data_keys.world_points], batch[data_keys.valid_mask])
                 pred['scale'] = 1.0 / norm_factor_pr
 
-            pred["depth"], _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor_pr, pred["depth"], None, pred[pred_data_keys.extrinsics])
+            if "depth" in pred:
+                pred["depth"], _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor_pr, pred["depth"], None, pred[pred_data_keys.extrinsics])
+            else:
+                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor=norm_factor_pr, extrinsics=pred[pred_data_keys.extrinsics])
             pred["pose_trans_aligned"] = True
 
         pts_align_conf = pp_conf.normalize.get("pr_pts_invariant", {})
