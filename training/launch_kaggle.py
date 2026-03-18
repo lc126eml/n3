@@ -16,7 +16,7 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/asssmer/pred-center-gt2pr-notrans-r2-42/logs/ckpts/checkpoint.pt',
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cdong121/gt-align-to-pts-1st-cam-r1-42/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
  'total_run_time_hr': 12.0}
 # END_KAGGLE_RUNTIME_OVERRIDES

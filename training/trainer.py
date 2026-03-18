@@ -116,6 +116,7 @@ class Trainer:
         "checkpoint.resume_checkpoint_path",
         "checkpoint.resume_config_skip_keys",
         "logging.run_folder_name",
+        "total_run_time_hr",
     )
 
     def __init__(self, cfg: DictConfig):
@@ -1979,10 +1980,9 @@ class Trainer:
         pts_align_conf = pp_conf.align.get("pred_center", {})
         if pts_align_conf.get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             if not pts_align_conf.get('pr_to_gt'):
-                with torch.no_grad():                
-                    gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
-                    mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
-                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
+                gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
+                mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
+                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
             else:
                 aligned_to_center_key = pred_data_keys.get("global_aligned_to_center", "global_aligned_to_center")
                 # with torch.no_grad():
