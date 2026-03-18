@@ -17,26 +17,52 @@ class CsvLogger:
 
         new_filename = f"{self.filepath.stem}_v{self.filepath.suffix}"
         self.val_filepath = self.filepath.with_name(new_filename)
-        
+
+    def _get_filepath(self, val=False):
+        return self.val_filepath if val else self.filepath
+
+    def _collect_fieldnames(self, rows):
+        fieldnames = []
+        seen = set()
+        if any("epoch" in row for row in rows):
+            fieldnames.append("epoch")
+            seen.add("epoch")
+        for row in rows:
+            for key in row.keys():
+                if key in seen:
+                    continue
+                fieldnames.append(key)
+                seen.add(key)
+        return fieldnames
+
+    def write_history(self, rows, val=False):
+        """
+        Rewrites the per-phase CSV from full in-memory history.
+
+        Args:
+            rows (list[dict]): All rows accumulated for this phase.
+        """
+        filepath = self._get_filepath(val=val)
+        if not rows:
+            if filepath.exists():
+                filepath.unlink()
+            return
+
+        fieldnames = self._collect_fieldnames(rows)
+        with open(filepath, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key, "") for key in fieldnames})
+
     def log(self, data_dict, val=False):
         """
-        Logs a row of data to the CSV file and prints keys/values to the log.
+        Compatibility wrapper for single-row writes.
 
         Args:
             data_dict (dict): A dictionary of data to log.
         """
-        filepath = self.filepath
-        if val:
-            filepath = self.val_filepath
-        
-        row = []
-        for k, v in data_dict.items():
-            row.append(k)
-            row.append(v)
-
-        with open(filepath, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(row)
+        self.write_history([data_dict], val=val)
 # # --- Example Usage ---
 # # 1. Define header and initialize logger
 # log_header = ['epoch', 'train_loss', 'val_acc']

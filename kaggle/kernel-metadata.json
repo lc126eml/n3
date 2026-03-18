@@ -1,6 +1,6 @@
 {
-  "id": "kezzymik/gt-align-to-pts-1st-cam-r2-42",
-  "title": "gt align to pts 1st cam r2 42",
+  "id": "jokerking1/center-world-notrans-r3-42",
+  "title": "center world notrans r3 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -33,7 +33,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "cdong121/gt-align-to-pts-1st-cam-r1-42"
+    "jokerking1/center-world-notrans-r2-42"
   ],
   "model_sources": []
 }

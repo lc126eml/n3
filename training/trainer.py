@@ -138,6 +138,7 @@ class Trainer:
         self._resume_checkpoint = None
         self._resume_checkpoint_amp = None
         self._trainer_config_snapshot = None
+        self.metrics_history = {"train": [], "val": []}
         self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
@@ -461,8 +462,8 @@ class Trainer:
                 merged.logging.tensorboard_writer.path = os.path.join(
                     merged.logging.log_dir, "tensorboard"
                 )
-            if merged.get("logging", {}).get("csv"):
-                merged.logging.csv.path = os.path.join(merged.logging.log_dir, "csv")
+            if merged.get("logging", {}).get("csv_writer"):
+                merged.logging.csv_writer.path = os.path.join(merged.logging.log_dir, "csv")
             if merged.get("checkpoint"):
                 merged.checkpoint.save_dir = os.path.join(
                     merged.logging.log_dir, "ckpts"
@@ -719,6 +720,7 @@ class Trainer:
                 random.setstate(rng_state["python"])
         if checkpoint.get("train_dataset_checkpoint_state") is not None:
             self._restore_train_dataset_checkpoint_state(checkpoint["train_dataset_checkpoint_state"])
+        self._restore_metrics_history(checkpoint.get("metrics_history"))
 
 
     def _setup_device(self, device):
@@ -872,6 +874,7 @@ class Trainer:
             "time_elapsed": self.time_elapsed_meter.val,
             "optimizer": [optim.optimizer.state_dict() for optim in self.optims],
             "trainer_config": OmegaConf.to_container(self.cfg, resolve=True),
+            "metrics_history": self.metrics_history,
             "rng_state": {
                 "torch": torch.get_rng_state(),
                 "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
@@ -1173,19 +1176,81 @@ class Trainer:
 
     def _log_epoch_metrics_to_csv(self, phase, metrics):
         """Logs epoch metrics to a CSV file if enabled."""
+        data_dict = self._build_epoch_metrics_row(metrics)
+        self.metrics_history.setdefault(phase, []).append(data_dict)
+        self._sync_metrics_history_to_csv(phase=phase)
+
+    def _build_epoch_metrics_row(self, metrics):
+        data_dict = {"epoch": int(self.epoch)}
+        for k, v in metrics.items():
+            if hasattr(v, "avg"):
+                data_dict[k] = self._serialize_metric_value(v.avg)
+            elif hasattr(v, "average"):
+                data_dict[k] = self._serialize_metric_value(v.average)
+            else:
+                data_dict[k] = self._serialize_metric_value(v)
+        return data_dict
+
+    def _serialize_metric_value(self, value):
+        if torch.is_tensor(value):
+            return float(value.item())
+        if isinstance(value, np.generic):
+            return value.item()
+        return value
+
+    def _assert_finite_metric_value(self, name: str, value, phase: str) -> None:
+        if torch.is_tensor(value):
+            finite = torch.isfinite(value).all()
+            value_repr = value.detach().cpu()
+            if finite.item():
+                return
+        else:
+            try:
+                scalar_value = float(value)
+            except (TypeError, ValueError):
+                return
+            if math.isfinite(scalar_value):
+                return
+            value_repr = scalar_value
+
+        raise FloatingPointError(
+            f"Non-finite metric detected: name={name}, phase={phase}, "
+            f"epoch={self.epoch}, step={self.steps.get(phase)}, value={value_repr}"
+        )
+
+    def _restore_metrics_history(self, history):
+        self.metrics_history = {"train": [], "val": []}
+        if not isinstance(history, Mapping):
+            return
+        for phase in ("train", "val"):
+            rows = history.get(phase, [])
+            if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+                continue
+            normalized_rows = []
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                normalized_row = {}
+                for key, value in row.items():
+                    normalized_row[key] = self._serialize_metric_value(value)
+                if "epoch" in normalized_row:
+                    try:
+                        normalized_row["epoch"] = int(normalized_row["epoch"])
+                    except (TypeError, ValueError):
+                        pass
+                normalized_rows.append(normalized_row)
+            self.metrics_history[phase] = normalized_rows
+
+    def _sync_metrics_history_to_csv(self, phase=None):
         if not self.csv_logger:
             return
 
-        data_dict = {'epoch': self.epoch, 'phase': phase}
-        for k, v in metrics.items():
-            if hasattr(v, "average"):
-                data_dict[k] = v.average
-            elif torch.is_tensor(v):
-                data_dict[k] = float(v.item())
-            else:
-                data_dict[k] = v
-        
-        self.csv_logger.log(data_dict, val=(phase == 'val'))
+        phases = (phase,) if phase is not None else ("train", "val")
+        for current_phase in phases:
+            self.csv_logger.write_history(
+                self.metrics_history.get(current_phase, []),
+                val=(current_phase == "val"),
+            )
     
     def end_warmup(self):
         if self.epoch == self.optim_conf.warmup_epochs:
@@ -2124,6 +2189,8 @@ class Trainer:
                     value = batch[key].detach()
                 else:
                     value = batch[key]
+                if phase == "train":
+                    self._assert_finite_metric_value(f"{phase}_{key}", value, phase)
                 loss_meters[f"{phase}_{key}"].update(value, batch_size)
                 if step % self.logging_conf.log_freq == 0:
                     value_item = value.item() if torch.is_tensor(value) else value
