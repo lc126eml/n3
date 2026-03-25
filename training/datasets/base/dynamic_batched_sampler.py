@@ -163,13 +163,14 @@ class DynamicResolutionSampler(BatchSampler):
                 self.max_view_size,
                 max(0, math.floor(self._target_cap_cost / res_cost)),
             )
-            if self.debug_enumerate_batches and max_view_for_resolution < self.max_view_size:
+            if max_view_for_resolution < self.max_view_size:
                 logging.warning(
                     "DynamicResolutionSampler capped max view size for resolution "
                     f"({res_h}, {res_w}) from {self.max_view_size} to {max_view_for_resolution}"
                 )
                 # max_view_for_resolution = 5
             resolution_view_max.append(max_view_for_resolution)
+        logging.info(f"resolutions: {self.resolutions}")
         return resolution_view_max
 
     def _adjust_batch_size_for_accum(self, global_batch_size: int) -> int:

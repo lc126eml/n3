@@ -1,4 +1,4 @@
-id: 
+id: xulijuan
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
 # desc: center_world
@@ -7,7 +7,7 @@ desc: pts_align_to_gt
 # desc: gt_align_to_pts
 # desc_keys: ["lr"]
 run_id: 0
-total_runs: 8
+total_runs: 3
 seed: 42
 simple:
   - max_epochs: 130

@@ -555,6 +555,8 @@ class Trainer:
         if env_variables_conf is not None:
             for variable_name, value in env_variables_conf.items():
                 os.environ[variable_name] = value
+        print(torch.cuda.get_device_name(0))
+        print(torch.cuda.get_device_capability(0))
         print(f"Environment:\n{json.dumps(dict(os.environ), sort_keys=True, indent=2)}")
 
     def _setup_cuda_backend(self, cuda_conf) -> None:
@@ -566,7 +568,8 @@ class Trainer:
             # Use new TF32 controls (PyTorch >= 2.9).
             tf32_mode = "tf32" if allow_tf32 else "ieee"
             try:
-                torch.backends.cuda.matmul.fp32_precision = tf32_mode
+                torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+                torch.backends.cudnn.allow_tf32 = allow_tf32
                 if hasattr(torch.backends.cudnn, "conv") and hasattr(torch.backends.cudnn.conv, "fp32_precision"):
                     torch.backends.cudnn.conv.fp32_precision = tf32_mode
                 elif hasattr(torch.backends.cudnn, "fp32_precision"):
@@ -1255,10 +1258,10 @@ class Trainer:
     def end_warmup(self):
         if self.epoch == self.optim_conf.warmup_epochs:
             unfreeze(self.model, True)
-            warmup_batch_cost_discount = float(
-                getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
-            )
-            self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
+            # warmup_batch_cost_discount = float(
+            #     getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
+            # )
+            # self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
         if not hasattr(self.optim_conf, "warmup_configs"):
             return
         for warmup_conf in self.optim_conf.warmup_configs:

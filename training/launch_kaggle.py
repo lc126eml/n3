@@ -16,8 +16,48 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/jokerking1/center-world-notrans-r2-42/logs/ckpts/checkpoint.pt',
- 'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'accum_steps': 4,
+ 'break_at': 30,
+ 'checkpoint.resume_checkpoint_path': None,
+ 'checkpoint.resume_config_skip_keys': [],
+ 'data.data_module.train_config.batch_size': 40,
+ 'data.data_module.train_config.debug_enumerate_batches': False,
+ 'loss.switch.gt_align_to_pts': False,
+ 'loss.switch.pts_align_to_center': False,
+ 'loss.switch.pts_align_to_gt': False,
+ 'loss.switch.pts_center_world': True,
+ 'max_epochs': 130,
+ 'mode': 'train',
+ 'model.enable_depth': False,
+ 'optim.options.lr.0.scheduler.schedulers.0.end_value': 0.0001,
+ 'optim.warmup_batch_cost_discount': 0.55,
+ 'optim.warmup_epochs': 15,
+ 'postprocess.train.align.center_world.align_pose': True,
+ 'postprocess.train.align.center_world.enabled': True,
+ 'postprocess.train.align.gt_align_to_pts.align_pose': True,
+ 'postprocess.train.align.gt_align_to_pts.conf_percentage': 80,
+ 'postprocess.train.align.gt_align_to_pts.enabled': False,
+ 'postprocess.train.align.pred_center.align_pose': True,
+ 'postprocess.train.align.pred_center.enabled': False,
+ 'postprocess.train.align.pred_center.pr_to_gt': False,
+ 'postprocess.train.align.pts_align_to_gt.align_pose': True,
+ 'postprocess.train.align.pts_align_to_gt.conf_percentage': 80,
+ 'postprocess.train.align.pts_align_to_gt.enabled': False,
+ 'postprocess.train.align.pts_align_to_gt.normalize_depth': False,
+ 'postprocess.train.align.pts_align_to_gt.normalize_pose': False,
+ 'postprocess.train.align.pts_align_to_gt.with_scale': True,
+ 'postprocess.train.align.to_first_cam.enabled': False,
+ 'postprocess.train.align.to_first_cam.points': True,
+ 'postprocess.train.normalize.gt_depth': False,
+ 'postprocess.train.normalize.gt_pts': False,
+ 'postprocess.train.normalize.gt_pts_invariant.enabled': True,
+ 'postprocess.train.normalize.gt_pts_invariant.translate': False,
+ 'postprocess.train.normalize.pr_pts.enabled': False,
+ 'postprocess.train.normalize.pr_pts.metric': False,
+ 'postprocess.train.normalize.pr_pts_invariant.enabled': False,
+ 'postprocess.train.normalize.pr_pts_invariant.translate': False,
+ 'resume_bs': True,
+ 'seed_value': 42,
  'total_run_time_hr': 12.0}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
@@ -337,9 +377,38 @@ def _default_install_libs() -> list[str]:
         return ["hydra-core", "fvcore", "iopath", "einops", "safetensors", "wcmatch", "roma"]
     return []
 
+import subprocess
+import sys
+from packaging import version
+def check_torch_version_above(target: str = "2.6.0"):
+    """
+    Check if installed torch version > target version (NO import torch)
+    """
+    try:
+        # Get version from pip without loading torch
+        output = subprocess.check_output(
+            [sys.executable, "-m", "pip", "show", "torch"],
+            text=True,
+            stderr=subprocess.DEVNULL
+        )
+        
+        # Parse version string
+        for line in output.splitlines():
+            if line.startswith("Version:"):
+                installed_ver = line.split()[1]
+                # Safe version comparison
+                return version.parse(installed_ver) > version.parse(target)
+    except:
+        return False
 def main() -> None:
     project_root = _setup_project_root()
     project_root = _ensure_n3_repo_on_kaggle(project_root)
+    if check_torch_version_above("2.6.0"):
+        install_libs([
+            "torch==2.6.0",
+            "torchvision==0.21.0",
+            "--no-cache-dir"
+        ])
     lib_names = _default_install_libs()
     install_libs(lib_names)
     from hydra import compose, initialize_config_dir

@@ -16,6 +16,7 @@ simple:
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 15
   - optim.warmup_batch_cost_discount: 0.55
+  - optim.val_freq: 1
   - model.enable_depth: false
   - postprocess.train:
       align:
@@ -41,11 +42,16 @@ simple:
           conf_percentage: 80
           align_pose: true
       normalize:
+        gt_pts: false
+        pr_pts:
+          enabled: false
+          metric: False
+        gt_depth: False
         gt_pts_invariant:
           enabled: true
           translate: false
         pr_pts_invariant:
-          enabled: true
+          enabled: false
           translate: false
   - loss.switch:
       pts_center_world: *pts_center_world

@@ -1,6 +1,6 @@
 {
-  "id": "jokerking1/center-world-notrans-r3-42",
-  "title": "center world notrans r3 42",
+  "id": "xulijuan/center-world-notrans-r1-42",
+  "title": "center world notrans r1 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -32,8 +32,6 @@
     "sinayliu/scnt-p12"
   ],
   "competition_sources": [],
-  "kernel_sources": [
-    "jokerking1/center-world-notrans-r2-42"
-  ],
+  "kernel_sources": [],
   "model_sources": []
 }

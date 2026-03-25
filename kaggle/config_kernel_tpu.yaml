@@ -1,0 +1,23 @@
+sleep_time_hr: 1
+poll_interval_minutes: 10
+available_ids:
+- zhoushuqing
+- qcrqcrqcr
+- dingziheng11
+exhausted_ids:
+- sinayliu 0
+running_nodes:
+- id: liucong126
+  left_time: 20
+  notebooks:
+- id: xulijuan
+  left_time: 20
+  notebooks:
+- id: robinrainy
+  left_time: 20
+  notebooks:
+- id: guyuefangyuan6666
+  left_time: 20
+  notebooks: null
+finished_notebooks: []
+error_notebooks: null
