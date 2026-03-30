@@ -49,7 +49,7 @@ def freeze_modules(model: nn.Module, patterns: List[str], recursive: bool = True
         # does *name* match ANY user pattern?
         if any(fnmatch.fnmatch(name, p, flags=GLOB_FLAGS) for p in patterns):
             matched.add(name)
-            _freeze(mod, recursive)
+            freeze(mod, recursive)
 
     _check_every_pattern_used(matched, patterns)
     return model
@@ -58,63 +58,48 @@ def freeze_modules(model: nn.Module, patterns: List[str], recursive: bool = True
 # ------------------------------------------------------------
 # helpers
 # ------------------------------------------------------------
-def unfreeze(mod: nn.Module, recursive: bool) -> None:
+def freeze(mod: nn.Module, recursive: bool = True) -> None:
     """
-    Put *mod* back in train mode and unlock its parameters.
-    Reverses the effect of the _freeze function.
+    Put *mod* in eval mode and disable gradients.
+    Does NOT modify mod.train.
     """
 
-    # 1. Restore the original 'train' method
-    # functools.wraps saves the original function in __wrapped__
-    if hasattr(mod.train, '__wrapped__'):
-        mod.train = mod.train.__wrapped__ # type: ignore[method-assign]
-    # If __wrapped__ doesn't exist, it wasn't frozen by _freeze
-    # or has already been unfrozen. We can still proceed.
-
-    # 2. Set module back to train mode
+    # 1. Set eval mode
     if recursive:
-        mod.train(True)  # Set this module and all submodules to train mode
+        mod.eval()  # affects entire subtree
     else:
-        mod.training = True  # Set only this module to train mode
+        mod.training = False  # only this module
 
-    # 3. Restore requires_grad = True for parameters
-    # Use the same logic as _freeze to select parameters
+    # 2. Disable gradients
     param_iter = (
-        mod.parameters()              # default recurse=True
-        if recursive
-        else mod.parameters(recurse=False)
-    )
-    for p in param_iter:
-        p.requires_grad = True
-
-def _freeze(mod: nn.Module, recursive: bool) -> None:
-    """Put *mod* in eval mode and lock its parameters."""
-
-    if recursive:
-        mod.eval()            # affects the whole subtree
-    else:
-        mod.training = False  # only this exact module
-
-    original_train = mod.train
-
-    @wraps(original_train)
-    def locked_train(mode: bool = True):
-        if recursive:
-            return original_train(False)  # ignore user's *mode*
-        out = original_train(mode)        # children follow user's choice
-        out.training = False              # but this module stays frozen
-        return out
-
-    mod.train = locked_train  # type: ignore[attr-defined]
-
-    param_iter = (
-        mod.parameters()              # default recurse=True
+        mod.parameters()
         if recursive
         else mod.parameters(recurse=False)
     )
     for p in param_iter:
         p.requires_grad = False
 
+
+def unfreeze(mod: nn.Module, recursive: bool = True) -> None:
+    """
+    Put *mod* back in train mode and enable gradients.
+    Does NOT restore previous state — just unfreezes.
+    """
+
+    # 1. Set train mode
+    if recursive:
+        mod.train(True)  # affects entire subtree
+    else:
+        mod.training = True  # only this module
+
+    # 2. Enable gradients
+    param_iter = (
+        mod.parameters()
+        if recursive
+        else mod.parameters(recurse=False)
+    )
+    for p in param_iter:
+        p.requires_grad = True
 
 def _check_every_pattern_used(matched_names: set[str], patterns: List[str]):
     unused = [p for p in patterns if not any(fnmatch.fnmatch(n, p, flags=GLOB_FLAGS)
