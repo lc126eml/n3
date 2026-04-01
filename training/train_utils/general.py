@@ -43,6 +43,12 @@ def check_and_fix_inf_nan(input_tensor, loss_name="default", hard_max=100):
     # Check for inf/nan values
     has_inf_nan = torch.isnan(input_tensor).any() or torch.isinf(input_tensor).any()
     if has_inf_nan:
+        num_nan = torch.isnan(input_tensor).sum().item()
+        if num_nan > input_tensor.numel() / 2:
+            logging.warning(f"Tensor {loss_name} contains inf or nan values. Exiting.")
+            import sys
+            sys.exit(0)
+
         logging.warning(f"Tensor {loss_name} contains inf or nan values. Replacing with zeros.")
         input_tensor = torch.where(
             torch.isnan(input_tensor) | torch.isinf(input_tensor),
@@ -394,4 +400,3 @@ def get_rank():
     if not is_dist_avail_and_initialized():
         return 0
     return dist.get_rank()
-

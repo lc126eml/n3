@@ -47,7 +47,7 @@ data_module:
     augs:
       cojitter: true
       cojitter_ratio: 0.3
-      aug_crop: 10
+      aug_crop: 2
       random_crop_prob: 0.0
       # Optional linear schedules (use one or set to null)
       # random_crop_prob_schedule: null

@@ -5,11 +5,11 @@ desc: center_world_notrans
 # desc: first_cam
 # desc_keys: ["lr"]
 run_id: 0
-total_runs: 8
+total_runs: 10
 seed: 42
 simple:
   - max_epochs: 130
-  - break_at: 30
+  - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: []
   - data.data_module.train_config.batch_size: 40
@@ -17,6 +17,8 @@ simple:
   - optim.warmup_epochs: 15
   - optim.warmup_batch_cost_discount: 0.55
   - optim.val_freq: 1
+  # - optim.frozen_module_names: null
+  - optim.patch_embed_lr_ratio: 0.01
   - model.enable_depth: false
   - postprocess.train:
       align:
@@ -59,11 +61,11 @@ simple:
       gt_align_to_pts: *gt_align_to_pts
       pts_align_to_center: *pts_align_to_center
   # - data.data_module.train_config.num_workers: 4
-  # - data.data_module.train_config.resolution: "[(160,128),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416), (432, 416), (432, 432)]"
+  # - data.data_module.train_config.resolution: "[(160,128),(224, 224),(240, 224),(240, 240)]"
   - lr: 1.0e-4
   - mode: train
   - resume_bs: true
-  - total_run_time_hr: 12.0
+  - total_run_time_hr: 11.0
 #   - logging.log_freq: 100
 #   - break_at: 20
 
@@ -72,7 +74,7 @@ enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false
-resume_source: null
+resume_source: kernel #dataset/kernel
 resume_infer: false
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata

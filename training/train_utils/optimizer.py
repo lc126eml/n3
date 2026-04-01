@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import copy
 import logging
 import itertools
 from typing import Any, Dict, List, Mapping, Iterable, Set, Tuple, Union
@@ -12,6 +13,7 @@ import hydra
 import torch
 import torch.nn as nn
 from torch import Tensor
+from omegaconf import OmegaConf
 
 # -----------------------------------------------------------------------------
 # Optimizer wrapper
@@ -267,7 +269,83 @@ def construct_optimizers(model: nn.Module, optim_conf) -> Union[List[OptimizerWr
     optimizer = construct_optimizer(
         model,
         optim_conf.optimizer,
-        optim_conf.options,
+        _augment_lr_options_with_patch_embed_ratio(optim_conf),
         validate_param_groups=True,
     )
     return [optimizer]
+
+
+def _augment_lr_options_with_patch_embed_ratio(optim_conf):
+    """Optionally assign `aggregator.patch_embed.*` its own LR schedule scaled by a ratio."""
+    options_conf = getattr(optim_conf, "options", None)
+    if not options_conf:
+        return options_conf
+
+    lr_ratio = getattr(optim_conf, "patch_embed_lr_ratio", None)
+    if lr_ratio is None:
+        return options_conf
+
+    lr_ratio = float(lr_ratio)
+    if lr_ratio <= 0:
+        raise ValueError(f"optim.patch_embed_lr_ratio must be > 0, got {lr_ratio}")
+    if lr_ratio == 1.0:
+        return options_conf
+
+    patch_embed_param_names = getattr(
+        optim_conf,
+        "patch_embed_param_names",
+        ["aggregator.patch_embed.*"],
+    )
+    if isinstance(patch_embed_param_names, str):
+        patch_embed_param_names = [patch_embed_param_names]
+
+    options = OmegaConf.create(OmegaConf.to_container(options_conf, resolve=False))
+    lr_cfgs = options.get("lr")
+    if not lr_cfgs:
+        raise ValueError(
+            "optim.patch_embed_lr_ratio is set, but optim.options.lr is missing."
+        )
+
+    scaled_lr_cfgs = []
+    for cfg in lr_cfgs:
+        if cfg.get("param_names") is not None or cfg.get("module_cls_names") is not None:
+            continue
+        scaled_cfg = copy.deepcopy(cfg)
+        scaled_cfg["param_names"] = list(patch_embed_param_names)
+        _scale_scheduler_values_inplace(scaled_cfg.get("scheduler"), lr_ratio)
+        scaled_lr_cfgs.append(scaled_cfg)
+
+    if not scaled_lr_cfgs:
+        raise ValueError(
+            "optim.patch_embed_lr_ratio requires at least one default lr scheduler "
+            "entry without param_names/module_cls_names."
+        )
+
+    options.lr = scaled_lr_cfgs + list(lr_cfgs)
+    return options
+
+
+def _scale_scheduler_values_inplace(node: Any, ratio: float) -> None:
+    if node is None:
+        return
+
+    if OmegaConf.is_list(node):
+        for item in node:
+            _scale_scheduler_values_inplace(item, ratio)
+        return
+    elif OmegaConf.is_dict(node):
+        iterable = node.items()
+    elif isinstance(node, dict):
+        iterable = node.items()
+    elif isinstance(node, list):
+        for item in node:
+            _scale_scheduler_values_inplace(item, ratio)
+        return
+    else:
+        return
+
+    for key, value in iterable:
+        if key in {"start_value", "end_value", "value"} and isinstance(value, (int, float)):
+            node[key] = float(value) * ratio
+            continue
+        _scale_scheduler_values_inplace(value, ratio)

@@ -60,3 +60,5 @@ GT normalized scale to first frame or pts3d center. No translation.
 pred normalized scale to first frame or pts3d center. No translation.
 
     gt_pts_invariant (no translate), pr_pts_invariant (no translate) -> pred_center (gt_to_pr) -> gt_pts, pr_pts?
+
+unfreeze(self.model, True) make metrics worse

@@ -167,6 +167,9 @@ class Trainer:
         self.limit_val_batches = cfg.get("limit_val_batches")
         self.optim_conf = cfg.optim
         self.compile_conf = cfg.get("compile")
+        if self.compile_conf and self.compile_conf.get("enabled"):
+            print("torch.compile is disabled in this trainer; forcing compile.enabled=False.", flush=True)
+            self.compile_conf.enabled = False
         self.env_variables = cfg.get("env_variables")
         self.device_conf = cfg.get("device", "cuda")
         self.cuda_conf = cfg.get("cuda")
@@ -765,6 +768,9 @@ class Trainer:
         if tb_conf:
             self.tb_writer = instantiate(tb_conf, _recursive_=False)
         self.model = instantiate(self.model_conf, _recursive_=False)
+        self._native_frozen_param_names = {
+            name for name, param in self.model.named_parameters() if not param.requires_grad
+        }
         if getattr(self.optim_conf, "frozen_module_names", None):
             logging.info(
                 f"[Start] Freezing modules: {self.optim_conf.frozen_module_names}"
@@ -1258,10 +1264,11 @@ class Trainer:
     def end_warmup(self):
         if self.epoch == self.optim_conf.warmup_epochs:
             unfreeze(self.model, True)
-            # warmup_batch_cost_discount = float(
-            #     getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
-            # )
-            # self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
+            self._restore_native_frozen_params()
+            warmup_batch_cost_discount = float(
+                getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
+            )
+            self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
         if not hasattr(self.optim_conf, "warmup_configs"):
             return
         for warmup_conf in self.optim_conf.warmup_configs:
@@ -1288,6 +1295,14 @@ class Trainer:
 
                 except AttributeError as e:
                     print(f"Warning: Could not apply warmup config for {warmup_conf.attr}. Attribute not found. Error: {e}")
+
+    def _restore_native_frozen_params(self):
+        native_frozen = getattr(self, "_native_frozen_param_names", None)
+        if not native_frozen:
+            return
+        for name, param in self.model.named_parameters():
+            if name in native_frozen:
+                param.requires_grad = False
 
     def _apply_train_sampler_batch_cost_discount(self, discount: float) -> None:
         train_loader = getattr(self, "train_loader", None)
@@ -2050,13 +2065,13 @@ class Trainer:
             if not pts_align_conf.get('pr_to_gt'):
                 gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
                 mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
-                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
+                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world.detach())
             else:
                 aligned_to_center_key = pred_data_keys.get("global_aligned_to_center", "global_aligned_to_center")
                 # with torch.no_grad():
                 pred_to_gt_transform = get_pred_world_to_gt_world_transforms(batch[data_keys.extrinsics], pred[pred_data_keys.extrinsics])
                 mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=pred_to_gt_transform, return_poses=False)
-                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world)
+                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world.detach())
                 pred['pose_aligned'] = True
 
         pts_align_conf = pp_conf.align.get("gt_align_to_pts", {})

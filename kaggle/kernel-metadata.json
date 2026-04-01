@@ -1,6 +1,6 @@
 {
-  "id": "xulijuan/center-world-notrans-r1-42",
-  "title": "center world notrans r1 42",
+  "id": "robinrainy/pts-align-to-gt-normpr-r6-42",
+  "title": "pts align to gt normpr r6 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -32,6 +32,8 @@
     "sinayliu/scnt-p12"
   ],
   "competition_sources": [],
-  "kernel_sources": [],
+  "kernel_sources": [
+    "straghtwizard/pts-align-to-gt-normpr-r5-42"
+  ],
   "model_sources": []
 }

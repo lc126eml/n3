@@ -8,7 +8,7 @@ simple:
   - max_epochs: 130
   - break_at: 30
   - accum_steps: 4
-  - checkpoint.resume_config_skip_keys: [total_run_time_hr, optim.val_freq, optim.warmup_epochs, break_at]
+  - checkpoint.resume_config_skip_keys: [total_run_time_hr, optim.val_freq, optim.warmup_epochs, break_at, data.data_module.train_config.resolution]
   - data.data_module.train_config.batch_size: 40
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 15

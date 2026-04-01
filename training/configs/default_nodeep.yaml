@@ -307,7 +307,7 @@ optim:
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: False
-  warmup_epochs: &warmup_epochs 15
+  warmup_epochs: &warmup_epochs 30
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
   warmup_configs: 
@@ -358,6 +358,9 @@ optim:
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
       - "*patch_embed*"
+  patch_embed_lr_ratio: 1.0e-2
+  patch_embed_param_names:
+      - "aggregator.patch_embed.*"
 
 
   amp:

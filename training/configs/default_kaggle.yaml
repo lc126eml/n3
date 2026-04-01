@@ -365,7 +365,10 @@ optim:
 
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
-  - "*patch_embed*"
+      - "*patch_embed*"
+  patch_embed_lr_ratio: 1.0e-2
+  patch_embed_param_names:
+      - "aggregator.patch_embed.*"
 
 
   amp:

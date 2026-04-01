@@ -66,6 +66,8 @@ def _iter_kernel_ids_from_md(lines, args):
         if args.delete:
             if not (line.startswith("-") or line.endswith("-")):
                 continue
+            if ":" in line:
+                continue
         elif '?' in line:
             continue
             

@@ -1,54 +1,71 @@
 available_ids:
+- cfy002
+- cheaterchow
+- chencaihonga
+- chengchi1007
 - chenhao1213
 - chenrunze11
 - chuasiliu
 - cq1234
+- cshlhs
 - cycyxcy
+- dddd110
+- denghaimeng
+- du55148
 - eastwangwei
 - elong1202
 - fakeid
 - fanhuayang
 - fzzy123
 - geminiyy
-- gloden613
+- gorgeous0912
 - houwen
 - hsdfuieqg
 - huoqiuxia
-- jacksisi
+- hysz0821
 - jcy666
 - jiangshuai0210
+- jinzhanbo
 - jiwei313
 - jjjerry12138
+- jokerking1
 - jufuchao
+- keyongkk
+- kezzymik
 - lemonlaila
-- liucong12601
+- linyunlk243
 - luanjing
-- ly1122
+- maoshuwen0415
 - miratowa1
 - ohyeah00
 - permanentlove
+- phoenixcsw01
+- pycjn666
 - qcx2333
-- qinghui9527
 - qqmail4092
 - quepimao
-- robinrainy
+- rmoope
 - roseqw
-- rqmiraitowa
+- rrrrmm
 - rushly
+- sinayliu
 - smartchaochao
+- sollasi
 - srmmmm
 - sss45633
 - ssss7777
 - starysinger
-- straghtwizard
 - tangjiayuan1004
 - tangjudge
+- tangyujie123
 - tianxianglii
 - top1pcl
 - ttzyty
+- uamadeus
 - wenyangtang
 - wzywzy1227
 - xiaoluoalice
+- xpeng01
 - xulijuan
 - xulin5522
 - xuwenhui123
@@ -58,11 +75,11 @@ available_ids:
 - yangyangchengcheng
 - yccwff
 - ycy1n66
-- yinmengmeng
+- yuanhahah
 - ywhicher
+- yyyyjay
 - zhangtingfengztf
 - zhaotianchi
-- zhikaiwang
 - zhoujiahui0199
 - zhuangminghui
 - zhuxinchen07
@@ -70,61 +87,136 @@ available_ids:
 - zjl001
 - zongjiaxin
 - zzr123123
-- xulijuan
-- zongjiaxin
+exhausted_ids:
+- liucong126
+- sinayliu
 - zzr123123
-- liucong12601
-- cshlhs
-- linyunlk243
+- gloden613
 - asdsad0000
-- xpeng01
-- djiangjiang
 - asssmer
 - autune
 - b201xiaoli
-- keyongkk
 - cdong121
-- cfy002
-- denghaimeng
-- rrrrmm
+- yinmengmeng
 - dusi605
-- rmoope
-- jokerking1
-- kezzymik
-- yuanhahah
-- pycjn666
-- gorgeous0912
-- phoenixcsw01
-- du55148
-- sollasi
-- jinzhanbo
-- tangyujie123
-- uamadeus
-- cheaterchow
-- dddd110
-- kanwenbin
-- yyyyjay
-- hysz0821
-- maoshuwen0415
-- chencaihonga
-- chengchi1007
-exhausted_ids: null
+- jacksisi
+- ly1122
+- straghtwizard
+- rqmiraitowa
+- zhikaiwang
+- liucong12601
 sleep_time_hr: 0
 poll_interval_minutes: 10
 running_nodes:
-- id: xulijuan
-  left_time: 30.0
+- id: qinghui9527
   notebooks:
-  - kernel_id: xulijuan/center-world-notrans-r0-42
-    run_id: 0
+  - kernel_id: qinghui9527/center-world-gt-pts-r7-42
+    run_id: 7
     total_runs: 8
-    start_time: '2026-03-25 11:34:20'
-    resumed_from: null
-    history_ids: []
-  - kernel_id: xulijuan/center-world-notrans-r1-42
-    run_id: 1
+    start_time: '2026-04-08 21:45:28'
+    resumed_from: qinghui9527/center-world-gt-pts-r6-42
+    history_ids:
+    - asssmer/center-world-gt-pts-r0-42
+    - asssmer/center-world-gt-pts-r1-42
+    - jacksisi/center-world-gt-pts-r2-42
+    - jacksisi/center-world-gt-pts-r3-42
+    - straghtwizard/center-world-gt-pts-r4-42
+    - straghtwizard/center-world-gt-pts-r5-42
+  - kernel_id: qinghui9527/pts-align-to-gt-1st-cam-r7-42
+    run_id: 7
     total_runs: 8
-    start_time: '2026-03-25 11:46:45'
-    resumed_from: null
-    history_ids: []
-finished_notebooks: null
+    start_time: '2026-04-08 21:45:39'
+    resumed_from: qinghui9527/pts-align-to-gt-1st-cam-r6-42
+    history_ids:
+    - cdong121/pts-align-to-gt-1st-cam-r0-42
+    - cdong121/pts-align-to-gt-1st-cam-r1-42
+    - ly1122/pts-align-to-gt-1st-cam-r2-42
+    - ly1122/pts-align-to-gt-1st-cam-r3-42
+    - zhikaiwang/pts-align-to-gt-1st-cam-r4-42
+    - zhikaiwang/pts-align-to-gt-1st-cam-r5-42
+  left_time: 4.297285020277778
+- id: djiangjiang
+  notebooks:
+  - kernel_id: djiangjiang/first-cam-freeze01-r7-42
+    run_id: 7
+    total_runs: 8
+    start_time: '2026-04-08 21:45:55'
+    resumed_from: djiangjiang/first-cam-freeze01-r6-42
+    history_ids:
+    - asdsad0000/first-cam-freeze01-r0-42
+    - asdsad0000/first-cam-freeze01-r1-42
+    - gloden613/first-cam-freeze01-r2-42
+    - yinmengmeng/first-cam-freeze01-r3-42
+    - liucong12601/first-cam-freeze01-r4-42
+    - liucong12601/first-cam-freeze01-r5-42
+  left_time: -5.675188672499999
+- id: kanwenbin
+  notebooks:
+  - kernel_id: kanwenbin/center-world-pts-r7-42
+    run_id: 7
+    total_runs: 8
+    start_time: '2026-04-08 21:46:07'
+    resumed_from: kanwenbin/center-world-pts-r6-42
+    history_ids:
+    - asssmer/center-world-pts-r0-42
+    - asssmer/center-world-pts-r1-42
+    - dusi605/center-world-pts-r2-42
+    - dusi605/center-world-pts-r3-42
+    - rqmiraitowa/center-world-pts-r4-42
+    - rqmiraitowa/center-world-pts-r5-42
+  - kernel_id: kanwenbin/pred-center-pr2gt-notrans-r7-42
+    run_id: 7
+    total_runs: 8
+    start_time: '2026-04-08 21:46:19'
+    resumed_from: kanwenbin/pred-center-pr2gt-notrans-r6-42
+    history_ids:
+    - b201xiaoli/pred-center-pr2gt-notrans-r0-42
+    - b201xiaoli/pred-center-pr2gt-notrans-r1-42
+    - ly1122/pred-center-pr2gt-notrans-r2-42
+    - ly1122/pred-center-pr2gt-notrans-r3-42
+    - zhikaiwang/pred-center-pr2gt-notrans-r4-42
+    - zhikaiwang/pred-center-pr2gt-notrans-r5-42
+  left_time: 5.1726226127777775
+- id: robinrainy
+  notebooks:
+  - kernel_id: robinrainy/pts-align-to-gt-normpr-r6-42
+    run_id: 6
+    total_runs: 8
+    start_time: '2026-04-09 08:10:37'
+    resumed_from: straghtwizard/pts-align-to-gt-normpr-r5-42
+    history_ids:
+    - autune/pts-align-to-gt-normpr-r0-42
+    - autune/pts-align-to-gt-normpr-r1-42
+    - jacksisi/pts-align-to-gt-normpr-r2-42
+    - jacksisi/pts-align-to-gt-normpr-r3-42
+    - straghtwizard/pts-align-to-gt-normpr-r4-42
+  left_time: 17.754046200833333
+finished_notebooks:
+- kernel_id: qinghui9527/center-world-notrans-r7-42
+  run_id: 8
+  total_runs: 8
+  start_time: '2026-04-08 08:44:02'
+  resumed_from: qinghui9527/center-world-notrans-r7-42
+  history_ids:
+  - asdsad0000/center-world-notrans-r0-42
+  - asdsad0000/center-world-notrans-r1-42
+  - asdsad0000/center-world-notrans-r2-42
+  - dusi605/center-world-notrans-r3-42
+  - dusi605/center-world-notrans-r4-42
+  - rqmiraitowa/center-world-notrans-r5-42
+  - rqmiraitowa/center-world-notrans-r6-42
+  finished_time: '2026-04-08 08:55:02'
+- kernel_id: robinrainy/first-cam-freeze2-r7-42
+  run_id: 8
+  total_runs: 8
+  start_time: '2026-04-08 09:31:45'
+  resumed_from: robinrainy/first-cam-freeze2-r7-42
+  history_ids:
+  - zzr123123/first-cam-freeze2-r0-42
+  - zzr123123/first-cam-freeze2-r1-42
+  - gloden613/first-cam-freeze2-r2-42
+  - gloden613/first-cam-freeze2-r3-42
+  - yinmengmeng/first-cam-freeze2-r4-42
+  - liucong12601/first-cam-freeze2-r5-42
+  - liucong12601/first-cam-freeze2-r6-42
+  finished_time: '2026-04-08 21:46:30'
