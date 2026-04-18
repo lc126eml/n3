@@ -12,6 +12,14 @@ from dust3r.utils.image import imread_cv2
 # Depth images represent Euclidean distances in meters from the camera center.
 # Euclidean distances (in meters) to the optical center of the camera
 class HyperSim_Multi(BaseMultiViewDataset):
+    DEPTH_STATS_HEADER = "# version=1 columns=valid_min_depth\tvalid_mean_depth\tvalid_max_depth\tvalid_count"
+    DEPTH_STAT_COLUMNS = {
+        "valid_min_depth": 0,
+        "valid_mean_depth": 1,
+        "valid_max_depth": 2,
+        "valid_count": 3,
+    }
+
     def __init__(
         self,
         *args,
@@ -21,6 +29,8 @@ class HyperSim_Multi(BaseMultiViewDataset):
         max_interval=16,
         min_interval=1,
         image_list_path=None,
+        depth_filter_spec=None,
+        depth_filter_fn=None,
         **kwargs,
     ):
         self.video = True
@@ -29,6 +39,8 @@ class HyperSim_Multi(BaseMultiViewDataset):
         self.min_interval = min_interval
         self.samples_per_scene = samples_per_scene
         self.image_list_path = image_list_path
+        self.depth_filter_spec = depth_filter_spec
+        self.depth_filter_fn = depth_filter_fn
         super().__init__(*args, split=split, **kwargs)
 
         # Keep single-root compatibility while supporting multiple roots.
@@ -57,13 +69,15 @@ class HyperSim_Multi(BaseMultiViewDataset):
             "scenes": osp.join(cache_dir, f"{prefix}_scenes.txt"),
             "images": osp.join(cache_dir, f"{prefix}_images_fullpath.txt"),
             "scene_img_list": osp.join(cache_dir, f"{prefix}_scene_img_list.txt"),
+            "depth_stats": osp.join(cache_dir, f"{prefix}_depth_stats.tsv"),
         }
 
     def _read_cache(self):
         cache_files = self._get_cache_files()
         if not cache_files:
             return None
-        if not all(osp.isfile(p) for p in cache_files.values()):
+        required_files = ("scenes", "images", "scene_img_list")
+        if not all(osp.isfile(cache_files[k]) for k in required_files):
             return None
 
         with open(cache_files["scenes"], "r", encoding="utf-8") as f:
@@ -84,9 +98,25 @@ class HyperSim_Multi(BaseMultiViewDataset):
         if not scenes or not image_fullpaths:
             return None
 
-        return scenes, image_fullpaths, scene_img_list
+        depth_stats = None
+        depth_stats_path = cache_files["depth_stats"]
+        if osp.isfile(depth_stats_path):
+            try:
+                depth_stats = np.loadtxt(
+                    depth_stats_path,
+                    delimiter="\t",
+                    comments="#",
+                    dtype=np.float32,
+                )
+            except ValueError:
+                return None
+            depth_stats = np.atleast_2d(depth_stats)
+            if depth_stats.shape != (len(image_fullpaths), 4):
+                return None
 
-    def _write_cache(self, scenes, images, scene_img_list):
+        return scenes, image_fullpaths, scene_img_list, depth_stats
+
+    def _write_cache(self, scenes, images, scene_img_list, depth_stats=None):
         cache_files = self._get_cache_files()
         if not cache_files:
             return
@@ -106,6 +136,124 @@ class HyperSim_Multi(BaseMultiViewDataset):
         with open(cache_files["scene_img_list"], "w", encoding="utf-8") as f:
             for img_ids in scene_img_list:
                 f.write(" ".join(str(i) for i in img_ids) + "\n")
+
+        if depth_stats is not None:
+            np.savetxt(
+                cache_files["depth_stats"],
+                np.asarray(depth_stats),
+                delimiter="\t",
+                fmt=["%.8f", "%.8f", "%.8f", "%d"],
+                header=self.DEPTH_STATS_HEADER,
+                comments="",
+            )
+
+    def _depth_filter_enabled(self):
+        return self.depth_filter_fn is not None or self.depth_filter_spec is not None
+
+    @staticmethod
+    def _depth_stats_for_filter(valid_min_depth, valid_mean_depth, valid_max_depth, valid_count):
+        return {
+            "valid_min_depth": float(valid_min_depth),
+            "valid_mean_depth": float(valid_mean_depth),
+            "valid_max_depth": float(valid_max_depth),
+            "valid_count": int(valid_count),
+        }
+
+    def _normalize_depth_filter_spec(self, spec):
+        aliases = {
+            "valid_min_depth_ge": "valid_min_depth_ge",
+            "min_depth_ge": "valid_min_depth_ge",
+            "valid_min_depth_le": "valid_min_depth_le",
+            "min_depth_le": "valid_min_depth_le",
+            "valid_mean_depth_ge": "valid_mean_depth_ge",
+            "mean_depth_ge": "valid_mean_depth_ge",
+            "valid_mean_depth_le": "valid_mean_depth_le",
+            "mean_depth_le": "valid_mean_depth_le",
+            "valid_max_depth_ge": "valid_max_depth_ge",
+            "max_depth_ge": "valid_max_depth_ge",
+            "valid_max_depth_le": "valid_max_depth_le",
+            "max_depth_le": "valid_max_depth_le",
+            "valid_count_ge": "valid_count_ge",
+            "count_ge": "valid_count_ge",
+            "valid_count_le": "valid_count_le",
+            "count_le": "valid_count_le",
+        }
+
+        normalized_spec = {}
+        for key, value in spec.items():
+            if key not in aliases:
+                raise ValueError(
+                    f"Unsupported depth filter key '{key}'. "
+                    f"Supported keys: {sorted(aliases.keys())}"
+                )
+            normalized_spec[aliases[key]] = value
+
+        return normalized_spec
+
+    def _default_depth_keep_mask(self, depth_stats):
+        keep_mask = np.ones(len(depth_stats), dtype=bool)
+        if not self.depth_filter_spec:
+            return keep_mask
+
+        spec = self._normalize_depth_filter_spec(self.depth_filter_spec)
+        for field, col_idx in self.DEPTH_STAT_COLUMNS.items():
+            ge_key = f"{field}_ge"
+            le_key = f"{field}_le"
+            if ge_key in spec:
+                keep_mask &= depth_stats[:, col_idx] >= float(spec[ge_key])
+            if le_key in spec:
+                keep_mask &= depth_stats[:, col_idx] <= float(spec[le_key])
+
+        return keep_mask
+
+    def _callable_depth_keep_mask(self, images, depth_stats):
+        keep_mask = np.ones(len(depth_stats), dtype=bool)
+        for idx, image_path in enumerate(images):
+            stats_dict = self._depth_stats_for_filter(*depth_stats[idx])
+            keep_mask[idx] = bool(self.depth_filter_fn(image_path, stats_dict, self.depth_filter_spec))
+        return keep_mask
+
+    def _apply_depth_filter(self, scenes, images, scene_img_list, depth_stats):
+        if not self._depth_filter_enabled():
+            return scenes, images, scene_img_list
+        if depth_stats is None:
+            return None
+        if len(depth_stats) != len(images):
+            return None
+
+        if self.depth_filter_fn is not None:
+            keep_mask = self._callable_depth_keep_mask(images, depth_stats)
+        else:
+            keep_mask = self._default_depth_keep_mask(depth_stats)
+
+        filtered_scene_img_list = []
+        for img_ids in scene_img_list:
+            filtered_scene_img_list.append(
+                [idx for idx in img_ids if 0 <= idx < len(images) and keep_mask[idx]]
+            )
+
+        return scenes, images, filtered_scene_img_list
+
+    @staticmethod
+    def _get_depth_path(rgb_path):
+        return rgb_path.replace("rgb.png", "depth.npy")
+
+    def compute_depth_stats(self, rgb_path):
+        depth_path = self._get_depth_path(rgb_path)
+        depthmap = np.load(depth_path).astype(np.float32)
+        valid_mask = np.isfinite(depthmap) & (depthmap > 0)
+        valid_depths = depthmap[valid_mask]
+        if valid_depths.size == 0:
+            return (0.0, 0.0, 0.0, 0)
+        return (
+            float(valid_depths.min()),
+            float(valid_depths.mean()),
+            float(valid_depths.max()),
+            int(valid_depths.size),
+        )
+
+    def build_depth_stats(self, images):
+        return np.asarray([self.compute_depth_stats(rgb_path) for rgb_path in images], dtype=np.float32)
 
     def _revalidate_cached_data(self, scenes, images, scene_img_list):
         cut_off = (
@@ -145,7 +293,13 @@ class HyperSim_Multi(BaseMultiViewDataset):
     def _load_data(self):
         cached = self._read_cache()
         if cached is not None:
-            cached = self._revalidate_cached_data(*cached)
+            scenes, images, scene_img_list, depth_stats = cached
+            if depth_stats is None and self._depth_filter_enabled():
+                depth_stats = self.build_depth_stats(images)
+                self._write_cache(scenes, images, scene_img_list, depth_stats)
+            cached = self._apply_depth_filter(scenes, images, scene_img_list, depth_stats)
+            if cached is not None:
+                cached = self._revalidate_cached_data(*cached)
             if cached is not None:
                 self.scenes, self.images, self.scene_img_list = cached
                 self.all_scenes = sorted({osp.basename(osp.dirname(osp.dirname(p))) for p in self.images})
@@ -207,10 +361,18 @@ class HyperSim_Multi(BaseMultiViewDataset):
             images.extend(scene_rgbs)
             offset += num_imgs
 
-        self.scenes = scenes
-        self.images = images
-        self.scene_img_list = scene_img_list
-        self._write_cache(self.scenes, self.images, self.scene_img_list)
+        depth_stats = self.build_depth_stats(images)
+        self._write_cache(scenes, images, scene_img_list, depth_stats)
+
+        filtered = self._apply_depth_filter(scenes, images, scene_img_list, depth_stats)
+        if filtered is None:
+            raise RuntimeError("Depth filtering requested but depth stats were unavailable.")
+        filtered = self._revalidate_cached_data(*filtered)
+        if filtered is None:
+            raise RuntimeError("Failed to prepare HyperSim cache after depth filtering.")
+
+        self.scenes, self.images, self.scene_img_list = filtered
+        # self.all_scenes = sorted({osp.basename(osp.dirname(osp.dirname(p))) for p in self.images})
 
     def __len__(self):
         return len(self.scenes) * self.samples_per_scene

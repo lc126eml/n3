@@ -148,6 +148,8 @@ class BlendedMVS_Multi(BaseMultiViewDataset):
         for root in self.roots:
             if not osp.isdir(root):
                 continue
+            if osp.isdir( osp.join(root, "blendedmvs")):
+                root = osp.join(root, "blendedmvs")
             for scene in sorted([f for f in os.listdir(root) if os.path.isdir(osp.join(root, f))]):
                 scene_dir = osp.join(root, scene)
                 all_scenes.append(scene)
