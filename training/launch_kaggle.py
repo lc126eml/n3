@@ -16,8 +16,9 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
+KAGGLE_RUNTIME_CONFIG_NAME = None
 KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'break_at': 30,
- 'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/straghtwizard/pts-align-to-gt-normpr-r5-42/logs/ckpts/checkpoint.pt',
+ 'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cdong121/pred-center-gt2pr-notrans-r0-42/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr',
                                         'optim.val_freq',
                                         'optim.warmup_epochs',
@@ -78,6 +79,14 @@ def _apply_kaggle_amp_policy(cfg) -> None:
     else:
         optim_conf.amp.enabled = False
         print("[launch] Kaggle AMP policy: bf16 unsupported, forcing float32 (AMP disabled).")
+
+
+def _resolve_config_name(cli_config_name: str | None) -> str:
+    if cli_config_name:
+        return cli_config_name
+    if isinstance(KAGGLE_RUNTIME_CONFIG_NAME, str) and KAGGLE_RUNTIME_CONFIG_NAME.strip():
+        return KAGGLE_RUNTIME_CONFIG_NAME.strip()
+    return "default_kaggle"
 
 def _find_repo_root(start_file: str) -> Path | None:
     def _candidate_roots() -> list[Path]:
@@ -384,8 +393,8 @@ def main() -> None:
     parser.add_argument(
         "--config_name",
         type=str,
-        default="default_kaggle",
-        help="Name of the config file to use (without .yaml extension).",
+        default=None,
+        help="Name of the config file to use (without .yaml extension). Falls back to Kaggle-managed config_name.",
     )
     parser.add_argument(
         "--no_kaggle_defaults",
@@ -393,6 +402,7 @@ def main() -> None:
         help="Disable automatic Kaggle-friendly Hydra overrides.",
     )
     args = parser.parse_args()
+    config_name = _resolve_config_name(args.config_name)
 
     overrides = []
     if not args.no_kaggle_defaults:
@@ -400,15 +410,18 @@ def main() -> None:
 
     config_dir = (project_root / "training" / "configs").resolve()
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
-        cfg = compose(config_name=args.config_name, overrides=overrides)
+        cfg = compose(config_name=config_name, overrides=overrides)
     if _IS_KAGGLE:
         _apply_kaggle_runtime_overrides(cfg)
         _apply_kaggle_amp_policy(cfg)
 
     if _IS_KAGGLE:
         print(f"[launch] Kaggle detected, project_root={project_root}")
+        print(f"[launch] config_name={config_name}")
         if overrides:
             print(f"[launch] Applied overrides: {overrides}")
+        if KAGGLE_RUNTIME_CONFIG_NAME:
+            print(f"[launch] Kaggle runtime config_name: {KAGGLE_RUNTIME_CONFIG_NAME}")
         if KAGGLE_RUNTIME_CONFIG_OVERRIDES:
             print(f"[launch] Kaggle runtime overrides: {KAGGLE_RUNTIME_CONFIG_OVERRIDES}")
         print(f"{cfg=}")

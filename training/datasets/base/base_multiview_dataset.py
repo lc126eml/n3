@@ -53,7 +53,7 @@ class BaseMultiViewDataset(EasyDataset):
         allow_repeat=False,
         seq_aug_crop=False,
         augs=None,
-        align_poses=False, 
+        align_poses=True, 
         **kwargs,
     ):
         assert num_views is not None, "undefined num_views"

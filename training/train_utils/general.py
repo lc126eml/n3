@@ -46,6 +46,7 @@ def check_and_fix_inf_nan(input_tensor, loss_name="default", hard_max=100):
         num_nan = torch.isnan(input_tensor).sum().item()
         if num_nan > input_tensor.numel() / 2:
             logging.warning(f"Tensor {loss_name} contains inf or nan values. Exiting.")
+            raise ValueError(f"Tensor {loss_name} contains inf or nan values. Exiting.")
             import sys
             sys.exit(0)
 

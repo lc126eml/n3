@@ -267,7 +267,7 @@ def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
             "liucong12601/hsm-train-part04",
             "liucong12601/hsm-train-part05",
             "liucong12601/hsm-test-val",
-            "liucong12601/depth-file-list",
+            "liucong12601/depth-file-list2",
             "sinayliu/temp-db",
             "sinayliu/scnt-p02",
             "sinayliu/scnt-p03",
@@ -280,6 +280,17 @@ def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
             "sinayliu/scnt-p10",
             "sinayliu/scnt-p11",
             "sinayliu/scnt-p12",
+            "qqmail4092/bmvs-01",
+            "qqmail4092/bmvs-02",
+            "qqmail4092/bmvsp-01",
+            "qqmail4092/bmvsp-02",
+            "qqmail4092/bmvsp-03",
+            "qqmail4092/bmvsp-04",
+            "qqmail4092/bmvsp-05",
+            "qqmail4092/bmvspp-01",
+            "qqmail4092/bmvspp-02",
+            "qqmail4092/bmvspp-03",
+            "qqmail4092/bmvspp-04",
         ],
     )
     _unique_extend(dataset_sources, [str(x) for x in _as_list(cfg.get("dataset_sources"))])
@@ -410,6 +421,14 @@ def _runtime_override_alias_map() -> dict[str, str]:
     }
 
 
+def _build_runtime_config_name(cfg: dict) -> str | None:
+    value = cfg.get("config_name")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _build_runtime_config_overrides(cfg: dict) -> dict[str, object]:
     updates = []
     aliases = _runtime_override_alias_map()
@@ -446,7 +465,9 @@ def _launch_py_path() -> Path:
     return (BASE_DIR.parent / "training" / "launch_kaggle.py").resolve()
 
 
-def _load_launch_runtime_overrides(launch_py_path: Path | None = None) -> tuple[Path, dict[str, object], str]:
+def _load_launch_runtime_overrides(
+    launch_py_path: Path | None = None,
+) -> tuple[Path, str | None, dict[str, object], str]:
     path = launch_py_path or _launch_py_path()
     text = path.read_text(encoding="utf-8")
     block_re = re.compile(
@@ -456,6 +477,18 @@ def _load_launch_runtime_overrides(launch_py_path: Path | None = None) -> tuple[
     if not m:
         raise ValueError(f"Managed override block not found in {path}")
     body = m.group(2)
+    config_name_re = re.compile(r"(?m)^\s*KAGGLE_RUNTIME_CONFIG_NAME\s*=\s*(.+)\s*$")
+    config_name_match = config_name_re.search(body)
+    if not config_name_match:
+        raise ValueError(f"KAGGLE_RUNTIME_CONFIG_NAME assignment not found in managed block: {path}")
+    config_name_rhs = config_name_match.group(1).strip()
+    try:
+        config_name = ast.literal_eval(config_name_rhs)
+    except Exception as exc:
+        raise ValueError(f"Failed to parse KAGGLE_RUNTIME_CONFIG_NAME in {path}: {exc}") from exc
+    if config_name is not None and not isinstance(config_name, str):
+        raise ValueError(f"KAGGLE_RUNTIME_CONFIG_NAME must be a string or None in {path}")
+
     assign_re = re.compile(r"(?s)\bKAGGLE_RUNTIME_CONFIG_OVERRIDES\s*=\s*(.+)\Z")
     am = assign_re.search(body.strip())
     if not am:
@@ -467,7 +500,7 @@ def _load_launch_runtime_overrides(launch_py_path: Path | None = None) -> tuple[
         raise ValueError(f"Failed to parse KAGGLE_RUNTIME_CONFIG_OVERRIDES in {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"KAGGLE_RUNTIME_CONFIG_OVERRIDES must be a dict in {path}")
-    return path, data, text
+    return path, config_name, data, text
 
 
 def _apply_runtime_overrides_to_launch_py(
@@ -475,11 +508,14 @@ def _apply_runtime_overrides_to_launch_py(
     *,
     write: bool = True,
 ) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
-    path, old_overrides, text = _load_launch_runtime_overrides()
+    path, old_config_name, old_overrides, text = _load_launch_runtime_overrides()
+    new_config_name = _build_runtime_config_name(cfg)
     new_overrides = _build_runtime_config_overrides(cfg)
 
     all_keys = []
     seen = set()
+    if old_config_name != new_config_name:
+        all_keys.append("config_name")
     for key in [*old_overrides.keys(), *new_overrides.keys()]:
         if key in seen:
             continue
@@ -488,6 +524,9 @@ def _apply_runtime_overrides_to_launch_py(
     changes: list[tuple[str, object, object]] = []
     _missing = object()
     for key in all_keys:
+        if key == "config_name":
+            changes.append((key, old_config_name, new_config_name))
+            continue
         old_value = old_overrides.get(key, _missing)
         new_value = new_overrides.get(key, _missing)
         if old_value is _missing and new_value is _missing:
@@ -497,13 +536,19 @@ def _apply_runtime_overrides_to_launch_py(
             continue
         changes.append((key, old_value, new_value))
 
-    if write and old_overrides != new_overrides:
+    if write and (old_config_name != new_config_name or old_overrides != new_overrides):
         block_re = re.compile(
             rf"(?s)({re.escape(_LAUNCH_OVERRIDE_BEGIN)}\n)(.*?)({re.escape(_LAUNCH_OVERRIDE_END)})"
         )
+        rendered_config_name = pprint.pformat(new_config_name, width=120, sort_dicts=True)
         rendered = pprint.pformat(new_overrides, width=120, sort_dicts=True)
         def _repl(m):
-            return f"{m.group(1)}KAGGLE_RUNTIME_CONFIG_OVERRIDES = {rendered}\n{m.group(3)}"
+            return (
+                f"{m.group(1)}"
+                f"KAGGLE_RUNTIME_CONFIG_NAME = {rendered_config_name}\n"
+                f"KAGGLE_RUNTIME_CONFIG_OVERRIDES = {rendered}\n"
+                f"{m.group(3)}"
+            )
 
         text = block_re.sub(_repl, text, count=1)
         path.write_text(text, encoding="utf-8")

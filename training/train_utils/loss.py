@@ -776,6 +776,8 @@ def regression_loss(
         loss_conf = check_and_fix_inf_nan(loss_conf, f"loss_conf_depth")
         if valid_range > 0:
             loss_conf = filter_by_quantile_mean(loss_conf, valid_range)
+        else:
+            loss_conf = loss_conf.mean()
     else:
         loss_conf = (0.0 * pred).mean()
 
@@ -784,6 +786,8 @@ def regression_loss(
         loss_reg = check_and_fix_inf_nan(loss_reg, f"loss_reg_depth")
         if valid_range > 0:
             loss_reg = filter_by_quantile_mean(loss_reg, valid_range)
+        else:
+            loss_conf = loss_conf.mean()
     else:
         loss_reg = (0.0 * pred).mean()
 
@@ -1003,8 +1007,8 @@ def filter_by_quantile_mean(loss_tensor, valid_range, min_elements=1000, hard_ma
         Filtered and clamped loss tensor
     """
     if loss_tensor.numel() <= min_elements:
-        # Too few elements, just return as-is
-        return loss_tensor
+        # Too few elements for stable quantile filtering; still reduce to a scalar.
+        return loss_tensor.mean()
 
     # Randomly sample if tensor is too large to avoid memory issues
     if loss_tensor.numel() > 100000000:

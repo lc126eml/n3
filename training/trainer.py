@@ -2063,15 +2063,23 @@ class Trainer:
         pts_align_conf = pp_conf.align.get("pred_center", {})
         if pts_align_conf.get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             if not pts_align_conf.get('pr_to_gt'):
-                gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
-                mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
-                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world.detach())
+                # Keep the frame-estimation step detached from optimization.
+                # The aligned GT target should not move via gradients flowing
+                # through predicted-pose inversion and SVD-based pose centering.
+                with torch.no_grad():
+                    gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
+                    mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
+                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
             else:
                 aligned_to_center_key = pred_data_keys.get("global_aligned_to_center", "global_aligned_to_center")
-                # with torch.no_grad():
-                pred_to_gt_transform = get_pred_world_to_gt_world_transforms(batch[data_keys.extrinsics], pred[pred_data_keys.extrinsics])
-                mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=pred_to_gt_transform, return_poses=False)
-                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world.detach())
+                # Do not backprop through the pose-centering transform itself here.
+                # This branch otherwise differentiates through predicted-pose inversion
+                # and the SVD-based mean-pose estimate, which becomes numerically unstable
+                # once predicted poses drift away from a valid SE(3) manifold.
+                with torch.no_grad():
+                    pred_to_gt_transform = get_pred_world_to_gt_world_transforms(batch[data_keys.extrinsics], pred[pred_data_keys.extrinsics])
+                    mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=pred_to_gt_transform, return_poses=False)
+                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world)
                 pred['pose_aligned'] = True
 
         pts_align_conf = pp_conf.align.get("gt_align_to_pts", {})
