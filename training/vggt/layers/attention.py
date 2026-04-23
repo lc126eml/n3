@@ -57,6 +57,11 @@ class Attention(nn.Module):
             q = self.rope(q, pos)
             k = self.rope(k, pos)
 
+        if k.dtype != q.dtype:
+            k = k.to(dtype=q.dtype)
+        if v.dtype != q.dtype:
+            v = v.to(dtype=q.dtype)
+
         if self.fused_attn:
             x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0)
         else:

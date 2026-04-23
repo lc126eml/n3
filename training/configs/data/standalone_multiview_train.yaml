@@ -61,7 +61,7 @@ data_module:
       prot: 0.5
       pcrop: 0.95
       scales: [0.8, 1.2]
-      aspects: [1.0, 1.5]
+      aspects: [0.33, 1.0]
       color_jitter:
         brightness: 0.5
         contrast: 0.5
@@ -73,6 +73,7 @@ data_module:
 
   validation_config:
     num_views: 6
+    distributed_sampler_mode: drop_last
     datasets:
       - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
@@ -92,6 +93,7 @@ data_module:
 
   test_config:
     num_views: 6
+    distributed_sampler_mode: drop_last
     datasets:
       - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})

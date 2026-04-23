@@ -94,6 +94,11 @@ def sdpa_attention_forward(
             # Convert to boolean type, making sdpa to force call FlashAttentionScore to improve performance.
             attention_mask = torch.logical_not(attention_mask.bool()).to(query.device)
 
+    if key.dtype != query.dtype:
+        key = key.to(dtype=query.dtype)
+    if value.dtype != query.dtype:
+        value = value.to(dtype=query.dtype)
+
     attn_output = torch.nn.functional.scaled_dot_product_attention(
         query,
         key,

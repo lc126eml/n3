@@ -1,9 +1,9 @@
 defaults:
-- data: kaggle_multiview_train
+- data: kaggle_tpu_train
 
 exp_name: aug_ablation
 seed_value: 42
-accum_steps: 4
+accum_steps: 1
 
 limit_train_batches:
 limit_val_batches:
@@ -23,6 +23,16 @@ compile:
   mode: "reduce-overhead"
   fullgraph: false
   dynamic: true
+
+tpu_memory_debug_interval: 1
+tpu_memory_debug_rank: 0
+tpu_check_loss_finite: false
+tpu_mp_loader_prefetch_size: 1
+tpu_mp_device_prefetch_size: 1
+tpu_debug_cpu_first_batch: true
+tpu_debug_first_train_step: true
+tpu_debug_skip_first_optimizer_step: false
+tpu_xla_metrics_debug: true
 
 env_variables:
   LOSS_CHECKS_ENABLED: "0"
@@ -168,7 +178,7 @@ postprocess:
         enabled: true
         points: false
       pts_align_to_gt:
-        enabled: true
+        enabled: false
         conf_percentage: 80
         with_scale: true
         align_pose: false
@@ -194,7 +204,7 @@ postprocess:
       depth:
         enabled: false
       recon:
-        pts_err: true
+        pts_err: false
         from_cam_err: false
         from_depth_err: false
     transform:
@@ -239,12 +249,12 @@ checkpoint:
 
 
 loss:
-  _target_: train_utils.loss.MultitaskLoss
+  _target_: train_utils.loss_tpu.MultitaskLoss
   camera:
     weight: 1.0
-    weight_focal: 0
-    weight_trans: 0
-    weight_rot: 0
+    weight_focal: 0.5
+    weight_trans: 0.5
+    weight_rot: 0.5
     pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
     loss_type: "l1"
     beta: 1.0
@@ -304,14 +314,13 @@ loss:
     enabled: true
     scale_weight: 0.3
     translation_weight: 0
-  vggt: false
+  vggt: true
   enabled: true
   track:
 
 
 optim:
   val_freq: 5
-  accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: false
   warmup_epochs: &warmup_epochs 15
@@ -362,6 +371,7 @@ optim:
   optimizer:
     _target_: torch.optim.AdamW
     weight_decay: 0.05
+    foreach: false
 
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
@@ -375,22 +385,10 @@ optim:
     enabled: false
     amp_dtype: bfloat16
   gradient_clip:
-    _target_: train_utils.gradient_clip.GradientClipper
+    _target_: train_utils.gradient_clip_tpu.GradientClipperTPU
     configs:
-    - module_name: ["aggregator"]
+    - module_name: ["*"]
       max_norm: 1.0
-      norm_type: 2
-    - module_name: ["shared_dpt"]
-      max_norm: 5.0
-      norm_type: 2
-    - module_name: ["point_head"]
-      max_norm: 1.0
-      norm_type: 2
-    - module_name: ["depth"]
-      max_norm: 5.0     # feel free to reduce this if you see instabilities
-      norm_type: 2
-    - module_name: ["camera"]
-      max_norm: 0.5     # feel free to reduce this if you see instabilities
       norm_type: 2
   options:
     lr:

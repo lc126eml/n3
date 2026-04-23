@@ -13,9 +13,9 @@ data_keys:
   images: img
 data_module:
   _target_: training.datasets.base.standalone_multiview_datamodule.StandaloneMultiViewDataModule
-  pin_memory: true
-  persistent_workers: true
-  prefetch_factor: 2
+  pin_memory: false
+  persistent_workers: false
+  prefetch_factor: null
   seed: 42
   train_config:
     # resolution: '[(154,126),(224, 224),(238, 224),(238, 238),(392, 392), (392, 336), (392, 238), (392, 224), (238, 224), (392, 126)]'
@@ -24,6 +24,7 @@ data_module:
     resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416)]'
     num_views: 6
     debug_enumerate_batches: false
+    dynamic_schedule: epoch
     fixed_length: false
     datasets:
     - "HyperSim_Multi(allow_repeat=False, split='train', ROOT=[ '/kaggle/input/datasets/liucong12601/hsm-train-part01', '/kaggle/input/datasets/liucong12601/hsm-train-part02', '/kaggle/input/datasets/liucong12601/hsm-train-part03', '/kaggle/input/datasets/liucong12601/hsm-train-part04', '/kaggle/input/datasets/liucong12601/hsm-train-part05', ], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
@@ -43,7 +44,7 @@ data_module:
             "/kaggle/input/datasets/sinayliu/scnt-p11",
             "/kaggle/input/datasets/sinayliu/scnt-p12"], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list2", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs})
     batch_size: 6
-    num_workers: 4
+    num_workers: 0
     augs:
       cojitter: true
       cojitter_ratio: 0.3
@@ -85,7 +86,7 @@ data_module:
       gau_blur: false
   validation_config:
     num_views: 6
-    distributed_sampler_mode: drop_last
+    distributed_sampler_mode: uneven
     datasets:
     - "HyperSim_Multi(allow_repeat=False, split='val', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/val'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, samples_per_scene=1)"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
@@ -93,7 +94,7 @@ data_module:
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(504, 378), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384
     batch_size: 2
-    num_workers: 3
+    num_workers: 0
     augs:
       cojitter: false
       cojitter_ratio: 0.5
@@ -106,7 +107,7 @@ data_module:
       gau_blur: false
   test_config:
     num_views: 6
-    distributed_sampler_mode: drop_last
+    distributed_sampler_mode: uneven
     datasets:
     - "HyperSim_Multi(allow_repeat=False, split='test', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/test'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
@@ -114,5 +115,5 @@ data_module:
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384, 504, 378
     batch_size: 1
-    num_workers: 2
+    num_workers: 0
     augs: ${..validation_config.augs}

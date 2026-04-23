@@ -10,16 +10,321 @@ import torch.nn.functional as F
 import copy
 
 from dataclasses import dataclass
-from vggt.utils.pose_enc import (
-    extri_intri_to_pose_encoding,
-    intri_to_fov_encoding,
-    intri_to_logk_encoding,
-    extri_to_pose_encoding,
-)
 from train_utils.general import check_and_fix_inf_nan # as _check_and_fix_inf_nan
 from math import ceil, floor
 
-from train_utils.camera_loss import CameraPoseLoss, PoseEncodingLoss
+LOSS_CHECKS_ENABLED = os.getenv("LOSS_CHECKS_ENABLED", "0") != "0"
+
+
+# def check_and_fix_inf_nan(input_tensor, loss_name="default", hard_max=100):
+#     if not LOSS_CHECKS_ENABLED:
+#         return input_tensor
+#     return _check_and_fix_inf_nan(input_tensor, loss_name=loss_name, hard_max=hard_max)
+
+
+def check_and_fix_inf_nan(input_tensor, loss_name="default", hard_max=100):
+    del loss_name
+    if input_tensor is None:
+        return input_tensor
+    if not LOSS_CHECKS_ENABLED:
+        return input_tensor
+    if hard_max is not None:
+        input_tensor = torch.clamp(input_tensor, min=-hard_max, max=hard_max)
+    return torch.nan_to_num(input_tensor, nan=0.0, posinf=hard_max or 0.0, neginf=-(hard_max or 0.0))
+
+
+def _tpu_masked_filtered_mean(values, mask, valid_range, hard_max: float = 100.0):
+    values = values.clamp(max=hard_max)
+    del valid_range
+    weights = mask.to(dtype=values.dtype)
+    denom = weights.sum().clamp_min(1.0)
+    return (values * weights).sum() / denom
+
+
+def _masked_batch_mean(values, batch_mask):
+    weights = batch_mask.to(dtype=values.dtype)
+    while weights.ndim < values.ndim:
+        weights = weights.unsqueeze(-1)
+    denom = weights.sum().clamp_min(1.0)
+    values_per_batch = values.reshape(values.shape[0], -1).mean(dim=1)
+    return (values_per_batch * batch_mask.to(dtype=values.dtype)).sum() / denom
+
+
+def _tpu_standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
+    return torch.where(quaternions[..., 3:4] < 0, -quaternions, quaternions)
+
+
+def _tpu_sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
+    return torch.sqrt(torch.clamp(x, min=0.0))
+
+
+def _tpu_mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
+    if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+        raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
+
+    batch_dim = matrix.shape[:-2]
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(
+        matrix.reshape(batch_dim + (9,)), dim=-1
+    )
+
+    q_abs = _tpu_sqrt_positive_part(
+        torch.stack(
+            [
+                1.0 + m00 + m11 + m22,
+                1.0 + m00 - m11 - m22,
+                1.0 - m00 + m11 - m22,
+                1.0 - m00 - m11 + m22,
+            ],
+            dim=-1,
+        )
+    )
+
+    quat_by_rijk = torch.stack(
+        [
+            torch.stack([q_abs[..., 0] ** 2, m21 - m12, m02 - m20, m10 - m01], dim=-1),
+            torch.stack([m21 - m12, q_abs[..., 1] ** 2, m10 + m01, m02 + m20], dim=-1),
+            torch.stack([m02 - m20, m10 + m01, q_abs[..., 2] ** 2, m12 + m21], dim=-1),
+            torch.stack([m10 - m01, m20 + m02, m21 + m12, q_abs[..., 3] ** 2], dim=-1),
+        ],
+        dim=-2,
+    )
+
+    floor = q_abs.new_tensor(0.1)
+    quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].clamp_min(floor))
+    gather_idx = q_abs.argmax(dim=-1)[..., None, None].expand(batch_dim + (1, 4))
+    out = torch.gather(quat_candidates, dim=-2, index=gather_idx).squeeze(-2)
+    out = out[..., [1, 2, 3, 0]]
+    return _tpu_standardize_quaternion(out)
+
+
+def intri_to_fov_encoding(intrinsics: torch.Tensor, image_size_hw) -> torch.Tensor:
+    if image_size_hw is None:
+        raise ValueError("image_size_hw must be provided to calculate field of view.")
+    height, width = image_size_hw
+    fx = intrinsics[..., 0, 0]
+    fy = intrinsics[..., 1, 1]
+    fov_h = 2 * torch.atan((height / 2) / fy)
+    fov_w = 2 * torch.atan((width / 2) / fx)
+    return torch.stack([fov_h, fov_w], dim=-1).float()
+
+
+def intri_to_logk_encoding(intrinsics: torch.Tensor, image_size_hw, eps: float = 1e-8) -> torch.Tensor:
+    if image_size_hw is None:
+        raise ValueError("image_size_hw must be provided to calculate logK.")
+    height, width = image_size_hw
+    fx = intrinsics[..., 0, 0]
+    fy = intrinsics[..., 1, 1]
+    cx = intrinsics[..., 0, 2]
+    cy = intrinsics[..., 1, 2]
+    return torch.stack(
+        [
+            torch.log(torch.clamp(fx / width, min=eps)),
+            torch.log(torch.clamp(fy / height, min=eps)),
+            torch.log(torch.clamp(cx / width, min=eps)),
+            torch.log(torch.clamp(cy / height, min=eps)),
+        ],
+        dim=-1,
+    ).float()
+
+
+def extri_to_pose_encoding(extrinsics, pose_encoding_type="absT_quaR"):
+    if pose_encoding_type != "absT_quaR":
+        raise NotImplementedError
+    rot = extrinsics[:, :, :3, :3]
+    trans = extrinsics[:, :, :3, 3]
+    quat = _tpu_mat_to_quat(rot)
+    return torch.cat([trans, quat], dim=-1).float()
+
+
+def extri_intri_to_pose_encoding(
+    extrinsics,
+    intrinsics,
+    image_size_hw=None,
+    pose_encoding_type="absT_quaR_FoV",
+):
+    rot = extrinsics[:, :, :3, :3]
+    trans = extrinsics[:, :, :3, 3]
+    quat = _tpu_mat_to_quat(rot)
+    if pose_encoding_type == "absT_quaR_FoV":
+        intri_enc = intri_to_fov_encoding(intrinsics, image_size_hw)
+    elif pose_encoding_type == "absT_quaR_logK":
+        intri_enc = intri_to_logk_encoding(intrinsics, image_size_hw)
+    else:
+        raise NotImplementedError
+    return torch.cat([trans, quat, intri_enc], dim=-1).float()
+
+
+class PoseEncodingLoss(torch.nn.Module):
+    """Dense TPU-local pose encoding loss; avoids importing GPU camera_loss.py."""
+
+    def __init__(self, loss_type: str = "l1", beta: float = 1.0):
+        super().__init__()
+        self.loss_type = loss_type
+        self.beta = beta
+        if loss_type not in ("l1", "l2", "smooth_l1"):
+            raise ValueError(f"Unknown loss type: {loss_type}")
+
+    def forward(self, pred_pose_enc: torch.Tensor, gt_pose_enc: torch.Tensor, max_val=None) -> torch.Tensor:
+        zero = (0.0 * pred_pose_enc).sum()
+        if pred_pose_enc.numel() == 0:
+            return zero
+
+        if self.loss_type == "l1":
+            loss = (pred_pose_enc - gt_pose_enc).abs()
+        elif self.loss_type == "l2":
+            loss = torch.norm(pred_pose_enc - gt_pose_enc, p=2, dim=-1)
+        else:
+            loss = F.smooth_l1_loss(
+                pred_pose_enc,
+                gt_pose_enc,
+                reduction="none",
+                beta=self.beta,
+            )
+
+        loss = check_and_fix_inf_nan(loss, "loss_pose_enc")
+        if max_val is not None:
+            loss = loss.clamp(max=max_val)
+        return loss.mean()
+
+
+class _TPUCameraPoseLoss(torch.nn.Module):
+    """
+    TPU/XLA-friendly camera pose loss.
+
+    This intentionally avoids boolean indexing such as rel[:, mask], which lowers
+    through aten::nonzero and can create dynamic-shape graph fragments on XLA.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        compute_relative: bool = True,
+        compute_absolute: bool = False,
+        relative_neighbors: int = -1,
+        loss_type: str = "l2",
+        beta: float = 1.0,
+    ):
+        super().__init__()
+        self.alpha = alpha
+        self.compute_relative = compute_relative
+        self.compute_absolute = compute_absolute
+        self.relative_neighbors = relative_neighbors
+        self.loss_type = loss_type
+        self.beta = beta
+
+    def forward(self, pred_poses, gt_poses, compute_relative=None, compute_absolute=None, relative_neighbors=None):
+        if compute_relative is None:
+            compute_relative = self.compute_relative
+        if compute_absolute is None:
+            compute_absolute = self.compute_absolute
+        if relative_neighbors is None:
+            relative_neighbors = self.relative_neighbors
+
+        zero = (0.0 * pred_poses).mean()
+        if pred_poses.numel() == 0 or (not compute_absolute and not compute_relative):
+            return zero, zero, zero, zero
+
+        pred_trans = pred_poses[..., :3, 3]
+        gt_trans = gt_poses[..., :3, 3]
+        pred_rot = pred_poses[..., :3, :3]
+        gt_rot = gt_poses[..., :3, :3]
+
+        abs_trans_err = zero
+        abs_rot_err = zero
+        if compute_absolute:
+            abs_trans_err = self._trans_error(pred_trans, gt_trans).mean()
+            abs_rot_err = self._geodesic_distance_from_matrices(pred_rot, gt_rot).mean()
+
+        rel_trans_err = zero
+        rel_rot_err = zero
+        if compute_relative and pred_poses.shape[1] > 1:
+            if relative_neighbors <= 0:
+                rel_trans_err, rel_rot_err = self.compute_relative_pose_loss(
+                    pred_trans, pred_rot, gt_trans, gt_rot
+                )
+            else:
+                rel_trans_err, rel_rot_err = self.compute_relative_pose_loss_k1(
+                    pred_trans, pred_rot, gt_trans, gt_rot
+                )
+
+        return abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err
+
+    @staticmethod
+    def _geodesic_distance_from_matrices(r1, r2):
+        eps = 1e-6
+        r_rel = torch.matmul(r1, r2.transpose(-1, -2))
+        trace = r_rel.diagonal(offset=0, dim1=-2, dim2=-1).sum(-1)
+        cos_theta = torch.clamp((trace - 1) / 2.0, -1.0 + eps, 1.0 - eps)
+        return torch.acos(cos_theta)
+
+    @staticmethod
+    def _relative_pose_from_matrices(t1, r1, t2, r2):
+        r1_inv = r1.transpose(-1, -2)
+        t_rel = torch.matmul(r1_inv, (t2 - t1).unsqueeze(-1)).squeeze(-1)
+        r_rel = torch.matmul(r1_inv, r2)
+        return t_rel, r_rel
+
+    def _trans_error(self, pred_trans, gt_trans):
+        if self.loss_type == "l2":
+            return torch.norm(pred_trans - gt_trans, dim=-1)
+        if self.loss_type == "l1":
+            return (pred_trans - gt_trans).abs().mean(dim=-1)
+        if self.loss_type == "smooth_l1":
+            return F.smooth_l1_loss(
+                pred_trans,
+                gt_trans,
+                reduction="none",
+                beta=self.beta,
+            ).mean(dim=-1)
+        raise ValueError(f"Unknown loss type: {self.loss_type}")
+
+    def compute_relative_pose_loss(self, pred_trans, pred_rot, gt_trans, gt_rot):
+        batch_size, num_views, _ = pred_trans.shape
+
+        gt_trans1 = gt_trans.unsqueeze(2).expand(-1, -1, num_views, -1)
+        gt_trans2 = gt_trans.unsqueeze(1).expand(-1, num_views, -1, -1)
+        pred_trans1 = pred_trans.unsqueeze(2).expand(-1, -1, num_views, -1)
+        pred_trans2 = pred_trans.unsqueeze(1).expand(-1, num_views, -1, -1)
+
+        gt_rot1 = gt_rot.unsqueeze(2).expand(-1, -1, num_views, -1, -1)
+        gt_rot2 = gt_rot.unsqueeze(1).expand(-1, num_views, -1, -1, -1)
+        pred_rot1 = pred_rot.unsqueeze(2).expand(-1, -1, num_views, -1, -1)
+        pred_rot2 = pred_rot.unsqueeze(1).expand(-1, num_views, -1, -1, -1)
+
+        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(gt_trans1, gt_rot1, gt_trans2, gt_rot2)
+        pred_t_rel, pred_r_rel = self._relative_pose_from_matrices(
+            pred_trans1, pred_rot1, pred_trans2, pred_rot2
+        )
+
+        rel_trans_err = self._trans_error(pred_t_rel, gt_t_rel)
+        rel_rot_err_rad = self._geodesic_distance_from_matrices(pred_r_rel, gt_r_rel)
+
+        pair_weights = torch.triu(
+            torch.ones(num_views, num_views, device=pred_trans.device, dtype=rel_trans_err.dtype),
+            diagonal=1,
+        )
+        pair_weights = pair_weights.unsqueeze(0)
+        denom = (pair_weights.sum() * rel_trans_err.new_tensor(batch_size)).clamp_min(1.0)
+        rel_trans_err_mean = (rel_trans_err * pair_weights).sum() / denom
+        rel_rot_err_mean = (rel_rot_err_rad * pair_weights).sum() / denom
+
+        return rel_trans_err_mean, rel_rot_err_mean
+
+    def compute_relative_pose_loss_k1(self, pred_trans, pred_rot, gt_trans, gt_rot):
+        pred_trans2 = torch.roll(pred_trans, shifts=-1, dims=1)
+        gt_trans2 = torch.roll(gt_trans, shifts=-1, dims=1)
+        pred_rot2 = torch.roll(pred_rot, shifts=-1, dims=1)
+        gt_rot2 = torch.roll(gt_rot, shifts=-1, dims=1)
+
+        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(gt_trans, gt_rot, gt_trans2, gt_rot2)
+        pred_t_rel, pred_r_rel = self._relative_pose_from_matrices(
+            pred_trans, pred_rot, pred_trans2, pred_rot2
+        )
+
+        rel_trans_err = self._trans_error(pred_t_rel, gt_t_rel)
+        rel_rot_err_rad = self._geodesic_distance_from_matrices(pred_r_rel, gt_r_rel)
+
+        return rel_trans_err.mean(), rel_rot_err_rad.mean()
 
 
 @dataclass(eq=False)
@@ -48,7 +353,7 @@ class MultitaskLoss(torch.nn.Module):
         self.pose_enc_loss = PoseEncodingLoss(loss_type="l1")
 
         if angle_pose is not None: # and (angle_pose.get("compute_absolute") or angle_pose.get("compute_relative")):
-            self.pose_loss = CameraPoseLoss(
+            self.pose_loss = _TPUCameraPoseLoss(
                 alpha=angle_pose.get("alpha", 1.0),
                 compute_relative=angle_pose.get("compute_relative", False),
                 compute_absolute=angle_pose.get("compute_absolute", False),
@@ -62,9 +367,13 @@ class MultitaskLoss(torch.nn.Module):
             self.pose_loss = None      
 
 
-        self.point_no_conf_percent = {k: v for k, v in self.point.items() if k != "conf_percentage"}
-        self.aligned_point = copy.deepcopy(self.point)
-        self.aligned_point.valid_range = self.aligned_point.aligned_valid_range
+        if self.point is not None:
+            self.point_no_conf_percent = {k: v for k, v in self.point.items() if k != "conf_percentage"}
+            self.aligned_point = copy.deepcopy(self.point)
+            self.aligned_point.valid_range = self.aligned_point.aligned_valid_range
+        else:
+            self.point_no_conf_percent = None
+            self.aligned_point = None
 
     def forward(self, predictions, batch, data_keys, pred_data_keys) -> torch.Tensor:
         """
@@ -77,7 +386,11 @@ class MultitaskLoss(torch.nn.Module):
         Returns:
             Dict containing individual losses and total objective
         """
-        total_loss = 0
+        first_prediction = next(iter(predictions.values()), None)
+        if torch.is_tensor(first_prediction):
+            total_loss = (0.0 * first_prediction).mean()
+        else:
+            total_loss = torch.zeros((), device=batch["img"].device, dtype=batch["img"].dtype)
         loss_dict = {}
         
         # Camera pose loss - if pose encodings are predicted
@@ -238,7 +551,11 @@ class MultitaskLoss(torch.nn.Module):
         if self.regulize_scale is not None and self.regulize_scale.get("enabled"):
             scale = predictions.get("scale", None)
             translation = None #predictions.get("translation", None)
-            loss_scale_reg, loss_trans_reg = regulize_scale_loss(translation, scale)
+            loss_scale_reg, loss_trans_reg = regulize_scale_loss(
+                translation,
+                scale,
+                reference=total_loss,
+            )
             total_loss = total_loss + self.regulize_scale.get("scale_weight") * loss_scale_reg
             # + self.regulize_scale.get("translation_weight") * loss_trans_reg
             loss_dict["loss_scale"] = loss_scale_reg
@@ -252,20 +569,31 @@ class MultitaskLoss(torch.nn.Module):
 
         return loss_dict
 
-def regulize_scale_loss(translation=None, scale=None):
-    loss_trans_reg = 0.0
+def regulize_scale_loss(translation=None, scale=None, reference=None):
+    if reference is not None:
+        zero = reference * 0.0
+    elif scale is not None:
+        zero = (0.0 * scale).mean()
+    elif translation is not None:
+        zero = (0.0 * translation).mean()
+    else:
+        raise ValueError("regulize_scale_loss requires reference, scale, or translation for device-safe zero fallback")
+
     if translation is not None:
         target_trans = torch.zeros_like(translation)
         loss_trans_reg = torch.nn.functional.mse_loss(translation, target_trans)
+    else:
+        loss_trans_reg = zero
     
     # 3. Compute Loss directly on parameters
-    loss_scale_reg = 0.0
     if scale is not None:
         # log_val = torch.log(scale + 1e-12)
         # target_scale = torch.zeros_like(log_val)
         # loss_scale_reg = torch.nn.functional.mse_loss(log_val, target_scale)        
         target_scale = torch.ones_like(scale)
         loss_scale_reg = torch.nn.functional.mse_loss(scale, target_scale)
+    else:
+        loss_scale_reg = zero
     return loss_scale_reg, loss_trans_reg
 def compute_camera_loss_one(
     pred_dict: dict,               # Predictions dict, contains the pose encoding tensor
@@ -303,16 +631,6 @@ def compute_camera_loss_one(
     # A frame is considered valid if it has more than 100 valid points
     valid_frame_mask = point_masks[:, 0].sum(dim=[-1, -2]) > 100
 
-    # If there are no valid frames in the batch, return zero losses
-    if not valid_frame_mask.any():
-        zero_loss = (pred_pose_encoding * 0).mean()
-        return {
-            "loss_camera": zero_loss,
-            "loss_T": zero_loss,
-            "loss_R": zero_loss,
-            "loss_FL": zero_loss,
-        }
-
     # Get ground truth camera extrinsics and intrinsics
     gt_extrinsics = batch_data["camera_pose"]
     gt_intrinsics = batch_data["camera_intrinsics"]
@@ -323,13 +641,41 @@ def compute_camera_loss_one(
         gt_extrinsics, gt_intrinsics, image_hw, pose_encoding_type=pose_encoding_type
     )
 
-    # Compute loss only on the valid frames
-    loss_T, loss_R, loss_FL = camera_loss_single(
-        pred_pose_encoding[valid_frame_mask],
-        gt_pose_encoding[valid_frame_mask],
-        loss_type=loss_type,
-        beta=beta,
-    )
+    # Compute loss on dense tensors and reduce by mask. Boolean gathers create
+    # dynamic shapes that are expensive for XLA.
+    if loss_type == "l1":
+        loss_T_map = (pred_pose_encoding[..., :3] - gt_pose_encoding[..., :3]).abs()
+        loss_R_map = (pred_pose_encoding[..., 3:7] - gt_pose_encoding[..., 3:7]).abs()
+        loss_FL_map = (pred_pose_encoding[..., 7:] - gt_pose_encoding[..., 7:]).abs()
+    elif loss_type == "l2":
+        loss_T_map = (pred_pose_encoding[..., :3] - gt_pose_encoding[..., :3]).norm(dim=-1, keepdim=True)
+        loss_R_map = (pred_pose_encoding[..., 3:7] - gt_pose_encoding[..., 3:7]).norm(dim=-1)
+        loss_FL_map = (pred_pose_encoding[..., 7:] - gt_pose_encoding[..., 7:]).norm(dim=-1)
+    elif loss_type == "smooth_l1":
+        loss_T_map = F.smooth_l1_loss(
+            pred_pose_encoding[..., :3],
+            gt_pose_encoding[..., :3],
+            reduction="none",
+            beta=beta,
+        ).mean(dim=-1, keepdim=True)
+        loss_R_map = F.smooth_l1_loss(
+            pred_pose_encoding[..., 3:7],
+            gt_pose_encoding[..., 3:7],
+            reduction="none",
+            beta=beta,
+        ).mean(dim=-1)
+        loss_FL_map = F.smooth_l1_loss(
+            pred_pose_encoding[..., 7:],
+            gt_pose_encoding[..., 7:],
+            reduction="none",
+            beta=beta,
+        ).mean(dim=-1)
+    else:
+        raise ValueError(f"Unknown loss type: {loss_type}")
+
+    loss_T = _masked_batch_mean(check_and_fix_inf_nan(loss_T_map, "loss_T").clamp(max=100), valid_frame_mask)
+    loss_R = _masked_batch_mean(check_and_fix_inf_nan(loss_R_map, "loss_R"), valid_frame_mask)
+    loss_FL = _masked_batch_mean(check_and_fix_inf_nan(loss_FL_map, "loss_FL"), valid_frame_mask)
 
     # Compute the total weighted camera loss
     total_camera_loss = (
@@ -446,13 +792,7 @@ def compute_point_loss(
     
     gt_points = check_and_fix_inf_nan(gt_points, loss_name=gt_pts_name)
     
-    if gt_points_mask.sum() < 100:
-        # If there are less than 100 valid points, skip this batch
-        dummy_loss = (0.0 * pred_points).mean()
-        loss_dict = {f"{prefix}loss_conf_point": dummy_loss,
-                    f"{prefix}loss_reg_point": dummy_loss,
-                    f"{prefix}loss_grad_point": dummy_loss,}
-        return loss_dict, dummy_loss
+    valid_enough = (gt_points_mask.to(dtype=pred_points.dtype).sum() >= 100).to(dtype=pred_points.dtype)
     
     need_conf_reg = (conf_weight > 0) or (reg_weight > 0)
     need_grad = (grad_weight > 0) and bool(gradient_loss_fn)
@@ -475,6 +815,10 @@ def compute_point_loss(
     else:
         dummy_loss = (0.0 * pred_points).mean()
         loss_conf, loss_grad, loss_reg = dummy_loss, dummy_loss, dummy_loss
+
+    loss_conf = loss_conf * valid_enough
+    loss_grad = loss_grad * valid_enough
+    loss_reg = loss_reg * valid_enough
     
     loss_dict = {
         f"{prefix}loss_conf_point": loss_conf,
@@ -521,15 +865,9 @@ def compute_depth_loss(
     gt_depth = check_and_fix_inf_nan(gt_depth, "gt_depth")
     if gt_depth.shape[-1] != 1:
         gt_depth = gt_depth[..., None]              # (B, S, H, W, 1)
-    gt_depth_mask = batch['valid_mask'].clone()   # 3D points derived from depth map, so we use the same mask
+    gt_depth_mask = batch['valid_mask']   # 3D points derived from depth map, so we use the same mask
 
-    if gt_depth_mask.sum() < 100:
-        # If there are less than 100 valid points, skip this batch
-        dummy_loss = (0.0 * pred_depth).mean()
-        loss_dict = {f"loss_conf_depth": dummy_loss,
-                    f"loss_reg_depth": dummy_loss,
-                    f"loss_grad_depth": dummy_loss,}
-        return loss_dict
+    valid_enough = (gt_depth_mask.to(dtype=pred_depth.dtype).sum() >= 100).to(dtype=pred_depth.dtype)
 
     if scale_invariant:
         pred_depth = align_depth_scale(
@@ -560,6 +898,10 @@ def compute_depth_loss(
     else:
         dummy_loss = (0.0 * pred_depth).mean()
         loss_conf, loss_grad, loss_reg = dummy_loss, dummy_loss, dummy_loss
+
+    loss_conf = loss_conf * valid_enough
+    loss_grad = loss_grad * valid_enough
+    loss_reg = loss_reg * valid_enough
 
     loss_dict = {
         f"loss_conf_depth": loss_conf,
@@ -634,24 +976,16 @@ def silog_loss(pred, gt, mask, variance_focus=0.85, eps=1e-6, conf=None, gamma=1
     """
     pred_vals = pred[..., 0].clamp_min(eps)
     gt_vals = gt[..., 0].clamp_min(eps)
-    valid = mask > 0
-    # valid = valid & torch.isfinite(pred_vals) & torch.isfinite(gt_vals)
-    if valid.sum() < 10:
-        dummy = (0.0 * pred_vals).mean()
-        return dummy, None
-
-    log_diff = torch.log(pred_vals[valid]) - torch.log(gt_vals[valid])
+    valid = (mask > 0).to(dtype=pred_vals.dtype)
+    log_diff = torch.log(pred_vals) - torch.log(gt_vals)
     loss_conf = None
-    mean = log_diff.mean()
-    var = (log_diff * log_diff).mean() - mean * mean
+    denom = valid.sum().clamp_min(1.0)
+    mean = (log_diff * valid).sum() / denom
+    var = ((log_diff - mean) * (log_diff - mean) * valid).sum() / denom
     if conf is not None:
-        weights = conf[valid].clamp_min(eps)
-        weight_sum = weights.sum()
-        if weight_sum < eps:
-            dummy = (0.0 * pred_vals).mean()
-            return dummy, None
-        loss_conf = gamma * log_diff.abs() * weights - alpha * torch.log(weights)
-        loss_conf = loss_conf.sum() / weight_sum
+        safe_conf = conf.clamp_min(eps)
+        loss_conf_map = gamma * log_diff.abs() * safe_conf - alpha * torch.log(safe_conf)
+        loss_conf = (loss_conf_map * valid).sum() / denom
     silog = torch.sqrt(torch.clamp(var + variance_focus * mean * mean, min=0.0))
     return silog, loss_conf
 
@@ -694,48 +1028,44 @@ def regression_loss(
     """
     bb, ss, hh, ww, nc = pred.shape
 
-    combined_mask = mask
-    if conf_percentage is not None:
-        if not (0 < conf_percentage <= 100):
-            raise ValueError("conf_percentage must be between 0 and 100.")
-        
-        valid_conf_scores = conf[mask]
-            
-        if valid_conf_scores.numel() > 0:
-            percentile_value = torch.quantile(valid_conf_scores.float(), (100 - conf_percentage) / 100.0)
-            combined_mask = mask & (conf >= percentile_value)
+    # XLA/TPU is sensitive to boolean gathers and quantile/kthvalue in the loss
+    # graph. Keep this path dense and fixed-shape, then reduce with masks.
+    if conf_percentage is not None and not (0 < conf_percentage <= 100):
+        raise ValueError("conf_percentage must be between 0 and 100.")
+    combined_mask = mask.bool()
 
     if compute_conf_reg:
         # Compute L1/L2/SmoothL1 distance between predicted and ground truth points
         if reg_loss_type == "l2":
-            diff = gt[combined_mask] - pred[combined_mask]
-            loss_reg = torch.norm(diff, dim=-1)
+            diff = gt - pred
+            loss_reg_map = torch.linalg.vector_norm(diff, dim=-1)
         elif reg_loss_type == "l1":
-            diff = gt[combined_mask] - pred[combined_mask]
-            loss_reg = diff.abs().mean(dim=-1)
+            diff = gt - pred
+            loss_reg_map = diff.abs().mean(dim=-1)
         elif reg_loss_type == "smooth_l1":
-            loss_reg = F.smooth_l1_loss(
-                pred[combined_mask],
-                gt[combined_mask],
+            loss_reg_map = F.smooth_l1_loss(
+                pred,
+                gt,
                 reduction="none",
                 beta=reg_loss_beta,
             ).mean(dim=-1)
         else:
             raise ValueError(f"Unsupported reg_loss_type: {reg_loss_type}")
         # NaNs unlikely for loss_reg; keep guard for safety.
-        loss_reg = check_and_fix_inf_nan(loss_reg, "loss_reg")
+        loss_reg_map = check_and_fix_inf_nan(loss_reg_map, "loss_reg")
 
         # Confidence-weighted loss: gamma * loss * conf - alpha * log(conf)
         # This encourages the model to be confident on easy examples and less confident on hard ones
-        loss_conf = gamma * loss_reg * conf[combined_mask] - alpha * torch.log(conf[combined_mask])
+        safe_conf = conf.clamp_min(1e-6) if conf is not None else torch.ones_like(loss_reg_map)
+        loss_conf_map = gamma * loss_reg_map * safe_conf - alpha * torch.log(safe_conf)
         # conf_activation="expp1" => conf >= 1, so log(conf) is safe; keep guard anyway.
-        loss_conf = check_and_fix_inf_nan(loss_conf, "loss_conf")
+        loss_conf_map = check_and_fix_inf_nan(loss_conf_map, "loss_conf")
     else:
-        loss_conf = (0.0 * pred).mean()
-        loss_reg = (0.0 * pred).mean()
+        loss_conf_map = None
+        loss_reg_map = None
         
     # Initialize gradient loss
-    loss_grad = 0
+    loss_grad = (0.0 * pred).mean()
 
     # Prepare confidence for gradient loss if needed
     if gradient_loss_fn and ("conf" in gradient_loss_fn):
@@ -764,24 +1094,11 @@ def regression_loss(
             conf=to_feed_conf,
         )
 
-    # Process confidence-weighted loss
-    if loss_conf.numel() > 0:
-        loss_conf = check_and_fix_inf_nan(loss_conf, f"loss_conf_depth")
-        if valid_range > 0:
-            loss_conf = filter_by_quantile_mean(loss_conf, valid_range)
-        else:
-            loss_conf = loss_conf.mean()
+    if compute_conf_reg:
+        loss_conf = _tpu_masked_filtered_mean(loss_conf_map, combined_mask, valid_range)
+        loss_reg = _tpu_masked_filtered_mean(loss_reg_map, combined_mask, valid_range)
     else:
         loss_conf = (0.0 * pred).mean()
-
-    # Process regular regression loss
-    if loss_reg.numel() > 0:
-        loss_reg = check_and_fix_inf_nan(loss_reg, f"loss_reg_depth")
-        if valid_range > 0:
-            loss_reg = filter_by_quantile_mean(loss_reg, valid_range)
-        else:
-            loss_reg = loss_reg.mean()
-    else:
         loss_reg = (0.0 * pred).mean()
 
     return loss_conf, loss_grad, loss_reg
@@ -800,7 +1117,7 @@ def gradient_loss_multi_scale_wrapper(prediction, target, mask, scales=4, gradie
         gradient_loss_fn: Gradient loss function to apply
         conf: (B, H, W) confidence weights (optional)
     """
-    total = 0
+    total = prediction.new_zeros(())
     for scale in range(scales):
         step = pow(2, scale)  # Subsample by 2^scale
 
@@ -838,15 +1155,6 @@ def normal_loss(prediction, target, mask, cos_eps=1e-8, conf=None, gamma=1.0, al
     # Only consider regions where both predicted and GT normals are valid
     all_valid = pred_valids & gt_valids  # shape: (4, B, H, W)
 
-    # Early return if not enough valid points
-    divisor = torch.sum(all_valid)
-    if divisor < 10:
-        return 0
-
-    # Extract valid normals
-    pred_normals = pred_normals[all_valid].clone()
-    gt_normals = gt_normals[all_valid].clone()
-
     # Compute cosine similarity between corresponding normals
     dot = torch.sum(pred_normals * gt_normals, dim=-1)
 
@@ -855,22 +1163,15 @@ def normal_loss(prediction, target, mask, cos_eps=1e-8, conf=None, gamma=1.0, al
 
     # Compute loss as 1 - cos(theta), instead of arccos(dot) for numerical stability
     loss = 1 - dot
+    loss = check_and_fix_inf_nan(loss, "normal_loss")
 
-    # Return mean loss if we have enough valid points
-    if loss.numel() < 10:
-        return 0
-    else:
-        loss = check_and_fix_inf_nan(loss, "normal_loss")
+    valid = all_valid.to(dtype=loss.dtype)
+    if conf is not None:
+        conf = conf[None, ...].expand_as(loss).clamp_min(1e-6)
+        loss = gamma * loss * conf - alpha * torch.log(conf)
 
-        if conf is not None:
-            # Apply confidence weighting
-            conf = conf[None, ...].expand(4, -1, -1, -1)
-            conf = conf[all_valid].clone()
-
-            loss = gamma * loss * conf - alpha * torch.log(conf)
-            return loss.mean()
-        else:
-            return loss.mean()
+    denom = valid.sum().clamp_min(1.0)
+    return (loss * valid).sum() / denom
 
 
 def gradient_loss(prediction, target, mask, conf=None, gamma=1.0, alpha=0.2):
@@ -909,23 +1210,18 @@ def gradient_loss(prediction, target, mask, conf=None, gamma=1.0, alpha=0.2):
 
     # Apply confidence weighting if provided
     if conf is not None:
-        conf = conf[..., None].expand(-1, -1, -1, prediction.shape[-1])
+        conf = conf[..., None].expand(-1, -1, -1, prediction.shape[-1]).clamp_min(1e-6)
         conf_x = conf[:, :, 1:]
         conf_y = conf[:, 1:, :]
 
-        grad_x = gamma * grad_x * conf_x - alpha * torch.log(conf_x)
-        grad_y = gamma * grad_y * conf_y - alpha * torch.log(conf_y)
+        grad_x = (gamma * grad_x * conf_x - alpha * torch.log(conf_x)) * mask_x
+        grad_y = (gamma * grad_y * conf_y - alpha * torch.log(conf_y)) * mask_y
 
     # Sum gradients and normalize by number of valid pixels
     grad_loss = torch.sum(grad_x, (1, 2, 3)) + torch.sum(grad_y, (1, 2, 3))
     divisor = torch.sum(M)
 
-    if divisor == 0:
-        return 0
-    else:
-        grad_loss = torch.sum(grad_loss) / divisor
-
-    return grad_loss
+    return torch.sum(grad_loss) / divisor.clamp_min(1.0)
 
 
 def point_map_to_normal(point_map, mask, eps=1e-6):
@@ -944,330 +1240,40 @@ def point_map_to_normal(point_map, mask, eps=1e-6):
         normals: (4, B, H, W, 3) normal vectors for each of the 4 cross-product directions
         valids: (4, B, H, W) corresponding valid masks
     """
-    with torch.amp.autocast(device_type='cuda', enabled=False):
-        # Pad inputs to avoid boundary issues
-        padded_mask = F.pad(mask, (1, 1, 1, 1), mode='constant', value=0)
-        pts = F.pad(point_map.permute(0, 3, 1, 2), (1,1,1,1), mode='constant', value=0).permute(0, 2, 3, 1)
+    # Pad inputs to avoid boundary issues
+    padded_mask = F.pad(mask, (1, 1, 1, 1), mode='constant', value=0)
+    pts = F.pad(point_map.permute(0, 3, 1, 2), (1,1,1,1), mode='constant', value=0).permute(0, 2, 3, 1)
 
-        # Get neighboring points for each pixel
-        center = pts[:, 1:-1, 1:-1, :]   # B,H,W,3
-        up     = pts[:, :-2,  1:-1, :]
-        left   = pts[:, 1:-1, :-2 , :]
-        down   = pts[:, 2:,   1:-1, :]
-        right  = pts[:, 1:-1, 2:,   :]
+    # Get neighboring points for each pixel
+    center = pts[:, 1:-1, 1:-1, :]   # B,H,W,3
+    up     = pts[:, :-2,  1:-1, :]
+    left   = pts[:, 1:-1, :-2 , :]
+    down   = pts[:, 2:,   1:-1, :]
+    right  = pts[:, 1:-1, 2:,   :]
 
-        # Compute direction vectors from center to neighbors
-        up_dir    = up    - center
-        left_dir  = left  - center
-        down_dir  = down  - center
-        right_dir = right - center
+    # Compute direction vectors from center to neighbors
+    up_dir    = up    - center
+    left_dir  = left  - center
+    down_dir  = down  - center
+    right_dir = right - center
 
-        # Compute four cross products for different normal directions
-        n1 = torch.cross(up_dir,   left_dir,  dim=-1)  # up x left
-        n2 = torch.cross(left_dir, down_dir,  dim=-1)  # left x down
-        n3 = torch.cross(down_dir, right_dir, dim=-1)  # down x right
-        n4 = torch.cross(right_dir,up_dir,    dim=-1)  # right x up
+    # Compute four cross products for different normal directions
+    n1 = torch.cross(up_dir,   left_dir,  dim=-1)  # up x left
+    n2 = torch.cross(left_dir, down_dir,  dim=-1)  # left x down
+    n3 = torch.cross(down_dir, right_dir, dim=-1)  # down x right
+    n4 = torch.cross(right_dir,up_dir,    dim=-1)  # right x up
 
-        # Validity masks - require both direction pixels to be valid
-        v1 = padded_mask[:, :-2,  1:-1] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 1:-1, :-2]
-        v2 = padded_mask[:, 1:-1, :-2 ] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 2:,   1:-1]
-        v3 = padded_mask[:, 2:,   1:-1] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 1:-1, 2:]
-        v4 = padded_mask[:, 1:-1, 2:  ] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, :-2,  1:-1]
+    # Validity masks - require both direction pixels to be valid
+    v1 = padded_mask[:, :-2,  1:-1] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 1:-1, :-2]
+    v2 = padded_mask[:, 1:-1, :-2 ] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 2:,   1:-1]
+    v3 = padded_mask[:, 2:,   1:-1] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, 1:-1, 2:]
+    v4 = padded_mask[:, 1:-1, 2:  ] & padded_mask[:, 1:-1, 1:-1] & padded_mask[:, :-2,  1:-1]
 
-        # Stack normals and validity masks
-        normals = torch.stack([n1, n2, n3, n4], dim=0)  # shape [4, B, H, W, 3]
-        valids  = torch.stack([v1, v2, v3, v4], dim=0)  # shape [4, B, H, W]
+    # Stack normals and validity masks
+    normals = torch.stack([n1, n2, n3, n4], dim=0)  # shape [4, B, H, W, 3]
+    valids  = torch.stack([v1, v2, v3, v4], dim=0)  # shape [4, B, H, W]
 
-        # Normalize normal vectors
-        normals = F.normalize(normals, p=2, dim=-1, eps=eps)
+    # Normalize normal vectors
+    normals = F.normalize(normals, p=2, dim=-1, eps=eps)
 
     return normals, valids
-
-
-def filter_by_quantile_mean(loss_tensor, valid_range, min_elements=1000, hard_max=100):
-    """
-    Filter loss tensor by keeping only values below a certain quantile threshold.
-    
-    This helps remove outliers that could destabilize training.
-    
-    Args:
-        loss_tensor: Tensor containing loss values
-        valid_range: Float between 0 and 1 indicating the quantile threshold
-        min_elements: Minimum number of elements required to apply filtering
-        hard_max: Maximum allowed value for any individual loss
-    
-    Returns:
-        Filtered and clamped loss tensor
-    """
-    if loss_tensor.numel() <= min_elements:
-        # Too few elements for stable quantile filtering; still reduce to a scalar.
-        return loss_tensor.mean()
-
-    # Randomly sample if tensor is too large to avoid memory issues
-    if loss_tensor.numel() > 100000000:
-        # Flatten and randomly select 1M elements
-        indices = torch.randperm(loss_tensor.numel(), device=loss_tensor.device)[:1_000_000]
-        loss_tensor = loss_tensor.view(-1)[indices]
-
-    # First clamp individual values to prevent extreme outliers
-    loss_tensor = loss_tensor.clamp(max=hard_max)
-
-    # Compute quantile threshold
-    quantile_thresh = torch_quantile(loss_tensor.detach(), valid_range)
-    quantile_thresh = min(quantile_thresh, hard_max)
-
-    # Apply quantile filtering if enough elements remain
-    quantile_mask = loss_tensor < quantile_thresh
-
-    num_valid_elements = quantile_mask.sum()
-
-    # If enough elements remain, compute the masked mean efficiently
-    if num_valid_elements > min_elements:
-        # Zero out values above the threshold to perform a masked sum
-        masked_loss = torch.where(quantile_mask, loss_tensor, 0.0)
-        # Compute the mean by dividing the sum by the number of valid elements
-        return masked_loss.sum() / num_valid_elements
-    
-    return loss_tensor.mean()
-
-def filter_by_quantile(loss_tensor, valid_range, min_elements=1000, hard_max=100):
-    """
-    Filter loss tensor by keeping only values below a certain quantile threshold.
-    
-    This helps remove outliers that could destabilize training.
-    
-    Args:
-        loss_tensor: Tensor containing loss values
-        valid_range: Float between 0 and 1 indicating the quantile threshold
-        min_elements: Minimum number of elements required to apply filtering
-        hard_max: Maximum allowed value for any individual loss
-    
-    Returns:
-        Filtered and clamped loss tensor
-    """
-    if loss_tensor.numel() <= min_elements:
-        # Too few elements, just return as-is
-        return loss_tensor
-
-    # Randomly sample if tensor is too large to avoid memory issues
-    if loss_tensor.numel() > 100000000:
-        # Flatten and randomly select 1M elements
-        indices = torch.randperm(loss_tensor.numel(), device=loss_tensor.device)[:1_000_000]
-        loss_tensor = loss_tensor.view(-1)[indices]
-
-    # First clamp individual values to prevent extreme outliers
-    loss_tensor = loss_tensor.clamp(max=hard_max)
-
-    # Compute quantile threshold
-    quantile_thresh = torch_quantile(loss_tensor.detach(), valid_range)
-    quantile_thresh = min(quantile_thresh, hard_max)
-
-    # Apply quantile filtering if enough elements remain
-    quantile_mask = loss_tensor < quantile_thresh
-    if quantile_mask.sum() > min_elements:
-        return loss_tensor[quantile_mask]
-    return loss_tensor
-
-
-def torch_quantile(
-    input,
-    q,
-    dim = None,
-    keepdim: bool = False,
-    *,
-    interpolation: str = "nearest",
-    out: torch.Tensor = None,
-) -> torch.Tensor:
-    """Better torch.quantile for one SCALAR quantile.
-
-    Using torch.kthvalue. Better than torch.quantile because:
-        - No 2**24 input size limit (pytorch/issues/67592),
-        - Much faster, at least on big input sizes.
-
-    Arguments:
-        input (torch.Tensor): See torch.quantile.
-        q (float): See torch.quantile. Supports only scalar input
-            currently.
-        dim (int | None): See torch.quantile.
-        keepdim (bool): See torch.quantile. Supports only False
-            currently.
-        interpolation: {"nearest", "lower", "higher"}
-            See torch.quantile.
-        out (torch.Tensor | None): See torch.quantile. Supports only
-            None currently.
-    """
-    # https://github.com/pytorch/pytorch/issues/64947
-    # Sanitization: q
-    try:
-        q = float(q)
-        assert 0 <= q <= 1
-    except Exception:
-        raise ValueError(f"Only scalar input 0<=q<=1 is currently supported (got {q})!")
-
-    # Handle dim=None case
-    if dim_was_none := dim is None:
-        dim = 0
-        input = input.reshape((-1,) + (1,) * (input.ndim - 1))
-
-    # Set interpolation method
-    if interpolation == "nearest":
-        inter = round
-    elif interpolation == "lower":
-        inter = floor
-    elif interpolation == "higher":
-        inter = ceil
-    else:
-        raise ValueError(
-            "Supported interpolations currently are {'nearest', 'lower', 'higher'} "
-            f"(got '{interpolation}')!"
-        )
-
-    # Validate out parameter
-    if out is not None:
-        raise ValueError(f"Only None value is currently supported for out (got {out})!")
-
-    # Compute k-th value
-    k = inter(q * (input.shape[dim] - 1)) + 1
-    out = torch.kthvalue(input, k, dim, keepdim=True, out=out)[0]
-
-    # Handle keepdim and dim=None cases
-    if keepdim:
-        return out
-    if dim_was_none:
-        return out.squeeze()
-    else:
-        return out.squeeze(dim)
-
-    return out
-
-
-########################################################################################
-########################################################################################
-
-# Dirty code for tracking loss:
-
-########################################################################################
-########################################################################################
-
-'''
-def _compute_losses(self, coord_preds, vis_scores, conf_scores, batch):
-    """Compute tracking losses using sequence_loss"""
-    gt_tracks = batch["tracks"]  # B, S, N, 2
-    gt_track_vis_mask = batch["track_vis_mask"]  # B, S, N
-
-    # if self.training and hasattr(self, "train_query_points"):
-    train_query_points = coord_preds[-1].shape[2]
-    gt_tracks = gt_tracks[:, :, :train_query_points]
-    gt_tracks = check_and_fix_inf_nan(gt_tracks, "gt_tracks", hard_max=None)
-
-    gt_track_vis_mask = gt_track_vis_mask[:, :, :train_query_points]
-
-    # Create validity mask that filters out tracks not visible in first frame
-    valids = torch.ones_like(gt_track_vis_mask)
-    mask = gt_track_vis_mask[:, 0, :] == True
-    valids = valids * mask.unsqueeze(1)
-
-
-
-    if not valids.any():
-        print("No valid tracks found in first frame")
-        print("seq_name: ", batch["seq_name"])
-        print("ids: ", batch["ids"])
-        print("time: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-
-        dummy_coord = coord_preds[0].mean() * 0          # keeps graph & grads
-        dummy_vis = vis_scores.mean() * 0
-        if conf_scores is not None:
-            dummy_conf = conf_scores.mean() * 0
-        else:
-            dummy_conf = 0
-        return dummy_coord, dummy_vis, dummy_conf                # three scalar zeros
-
-
-    # Compute tracking loss using sequence_loss
-    track_loss = sequence_loss(
-        flow_preds=coord_preds,
-        flow_gt=gt_tracks,
-        vis=gt_track_vis_mask,
-        valids=valids,
-        **self.loss_kwargs
-    )
-
-    vis_loss = F.binary_cross_entropy_with_logits(vis_scores[valids], gt_track_vis_mask[valids].float())
-
-    vis_loss = check_and_fix_inf_nan(vis_loss, "vis_loss", hard_max=None)
-
-
-    # within 3 pixels
-    if conf_scores is not None:
-        gt_conf_mask = (gt_tracks - coord_preds[-1]).norm(dim=-1) < 3
-        conf_loss = F.binary_cross_entropy_with_logits(conf_scores[valids], gt_conf_mask[valids].float())
-        conf_loss = check_and_fix_inf_nan(conf_loss, "conf_loss", hard_max=None)
-    else:
-        conf_loss = 0
-
-    return track_loss, vis_loss, conf_loss
-
-
-
-def reduce_masked_mean(x, mask, dim=None, keepdim=False):
-    for a, b in zip(x.size(), mask.size()):
-        assert a == b
-    prod = x * mask
-
-    if dim is None:
-        numer = torch.sum(prod)
-        denom = torch.sum(mask)
-    else:
-        numer = torch.sum(prod, dim=dim, keepdim=keepdim)
-        denom = torch.sum(mask, dim=dim, keepdim=keepdim)
-
-    mean = numer / denom.clamp(min=1)
-    mean = torch.where(denom > 0,
-                       mean,
-                       torch.zeros_like(mean))
-    return mean
-
-
-def sequence_loss(flow_preds, flow_gt, vis, valids, gamma=0.8, vis_aware=False, huber=False, delta=10, vis_aware_w=0.1, **kwargs):
-    """Loss function defined over sequence of flow predictions"""
-    B, S, N, D = flow_gt.shape
-    assert D == 2
-    B, S1, N = vis.shape
-    B, S2, N = valids.shape
-    assert S == S1
-    assert S == S2
-    n_predictions = len(flow_preds)
-    flow_loss = 0.0
-
-    for i in range(n_predictions):
-        i_weight = gamma ** (n_predictions - i - 1)
-        flow_pred = flow_preds[i]
-
-        i_loss = (flow_pred - flow_gt).abs()  # B, S, N, 2
-        i_loss = check_and_fix_inf_nan(i_loss, f"i_loss_iter_{i}", hard_max=None)
-
-        i_loss = torch.mean(i_loss, dim=3) # B, S, N
-
-        # Combine valids and vis for per-frame valid masking.
-        combined_mask = torch.logical_and(valids, vis)
-
-        num_valid_points = combined_mask.sum()
-
-        if vis_aware:
-            combined_mask = combined_mask.float() * (1.0 + vis_aware_w)  # Add, don't add to the mask itself.
-            flow_loss += i_weight * reduce_masked_mean(i_loss, combined_mask)
-        else:
-            if num_valid_points > 2:
-                i_loss = i_loss[combined_mask]
-                flow_loss += i_weight * i_loss.mean()
-            else:
-                i_loss = check_and_fix_inf_nan(i_loss, f"i_loss_iter_safe_check_{i}", hard_max=None)
-                flow_loss += 0 * i_loss.mean()
-
-    # Avoid division by zero if n_predictions is 0 (though it shouldn't be).
-    if n_predictions > 0:
-        flow_loss = flow_loss / n_predictions
-
-    return flow_loss
-'''
