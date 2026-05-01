@@ -47,7 +47,7 @@ data_module:
     augs:
       cojitter: true
       cojitter_ratio: 0.3
-      aug_crop: 2
+      aug_crop: 9
       random_crop_prob: 0.0
       # Optional linear schedules (use one or set to null)
       # random_crop_prob_schedule: null
@@ -68,7 +68,7 @@ data_module:
       #   start_epoch: 0
       #   end_epoch: 0
       prot: 0.0
-      pcrop: 0.95
+      pcrop: 0.0
       scales:
       - 0.8
       - 1.2
@@ -96,7 +96,7 @@ data_module:
     num_workers: 3
     augs:
       cojitter: false
-      cojitter_ratio: 0.5
+      cojitter_ratio: 0.3
       scales:
       aspects:
       - 1.0
@@ -113,6 +113,6 @@ data_module:
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384, 504, 378
-    batch_size: 1
+    batch_size: 8
     num_workers: 2
     augs: ${..validation_config.augs}

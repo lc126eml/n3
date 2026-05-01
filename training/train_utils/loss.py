@@ -701,7 +701,7 @@ def regression_loss(
         
         valid_conf_scores = conf[mask]
             
-        if valid_conf_scores.numel() > 0:
+        if valid_conf_scores.numel() > 100:
             percentile_value = torch.quantile(valid_conf_scores.float(), (100 - conf_percentage) / 100.0)
             combined_mask = mask & (conf >= percentile_value)
 

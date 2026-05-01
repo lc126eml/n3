@@ -106,9 +106,9 @@ postprocess:
   train:
     to_extri: true
     align:
-      to_first_cam:
-        enabled: false
-        points: false
+      to_first_cam: 
+        enabled: True 
+        points: True
       pr_align_cam:
         enabled: false
         points: false
@@ -142,11 +142,11 @@ postprocess:
         conf_percentage: 80
         pose: false
     normalize:
-      gt_pts: false
+      gt_pts: true
       gt_depth: false
       gt_pts_invariant:
-        enabled: true
-        translate: true
+        enabled: false
+        translate: false
       pr_pts:
         enabled: false
         metric: false
@@ -163,7 +163,7 @@ postprocess:
     align:
       to_first_cam:
         enabled: true
-        points: false
+        points: true
       pr_align_cam:
         enabled: true
         points: false
@@ -241,12 +241,12 @@ checkpoint:
 loss:
   _target_: train_utils.loss.MultitaskLoss
   camera:
-    weight: 1.0
-    weight_focal: 0.5
-    weight_trans: 0.5
-    weight_rot: 0.5
+    weight: 5.0
+    weight_focal: 0
+    weight_trans: 0
+    weight_rot: 0
     pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
-    loss_type: "l1"
+    loss_type: "l2"
     beta: 1.0
   angle_pose:
     weight: 1.0
@@ -254,8 +254,8 @@ loss:
     weight_rot: 1.0
     relative_weight: 0.5
     absolute_weight: 0.5
-    compute_relative: true
-    compute_absolute: true
+    compute_relative: false
+    compute_absolute: false
     relative_neighbors: 1
     loss_type: "l2"
     beta: 1.0
@@ -279,7 +279,7 @@ loss:
   # If you want to enable point, use the following config
   point:
     weight: 1.0
-    global_aligned_weight: 1.0
+    global_aligned_weight: 0.1
     global_from_cam_weight: 0.05
     global_from_depth_weight: 0.05
     cam_from_depth_weight: 0.05
@@ -301,7 +301,7 @@ loss:
     pts_align_to_center: *pts_align_to_center
     pts_center_world: *pts_center_world
   regulize_scale:
-    enabled: true
+    enabled: false
     scale_weight: 0.3
     translation_weight: 0
   vggt: true
@@ -337,15 +337,15 @@ optim:
     # - attr: "loss.camera.weight"
     #   value: 5.0
     #   epoch: *warmup_epochs
-  # - attr: "loss.camera.weight_focal"
-  #   value: 0.5
-  #   epoch: *warmup_epoch2
-  # - attr: "loss.camera.weight_trans"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
-  # - attr: "loss.camera.weight_rot"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_focal"
+    value: 0.5
+    epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_trans"
+    value: 1.0
+    epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_rot"
+    value: 1.0
+    epoch: *warmup_epoch2
   - attr: "loss.depth.gradient_loss_fn"
     value: "grad"
     epoch: *warmup_epoch3
@@ -438,7 +438,7 @@ model:
   # rope_freq: 100
   rope_freq: -1
   init_values: 0.01
-  first_cam: false
+  first_cam: true
   intermediate_layer_idx: [2, 5, 8, 11]
   pose_encoding_type: *pose_encoding_type
   # intermediate_layer_idx: [4, 11, 17, 23]

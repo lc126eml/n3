@@ -322,9 +322,9 @@ optim:
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
-  # - attr: "loss.regulize_scale.scale_weight"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
+  - attr: "loss.regulize_scale.scale_weight"
+    value: 1.0
+    epoch: *warmup_epoch2
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
@@ -337,15 +337,15 @@ optim:
     # - attr: "loss.camera.weight"
     #   value: 5.0
     #   epoch: *warmup_epochs
-  # - attr: "loss.camera.weight_focal"
-  #   value: 0.5
-  #   epoch: *warmup_epoch2
-  # - attr: "loss.camera.weight_trans"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
-  # - attr: "loss.camera.weight_rot"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_focal"
+    value: 0.5
+    epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_trans"
+    value: 1.0
+    epoch: *warmup_epoch2
+  - attr: "loss.camera.weight_rot"
+    value: 1.0
+    epoch: *warmup_epoch2
   - attr: "loss.depth.gradient_loss_fn"
     value: "grad"
     epoch: *warmup_epoch3
@@ -381,13 +381,13 @@ optim:
       max_norm: 1.0
       norm_type: 2
     - module_name: ["shared_dpt"]
-      max_norm: 5.0
+      max_norm: 1.0
       norm_type: 2
     - module_name: ["point_head"]
       max_norm: 1.0
       norm_type: 2
     - module_name: ["depth"]
-      max_norm: 5.0     # feel free to reduce this if you see instabilities
+      max_norm: 1.0     # feel free to reduce this if you see instabilities
       norm_type: 2
     - module_name: ["camera"]
       max_norm: 0.5     # feel free to reduce this if you see instabilities
