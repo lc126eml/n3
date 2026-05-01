@@ -370,7 +370,7 @@ class Trainer:
         parts = path_obj.parts
         if path_obj.is_absolute():
             if len(parts) < 4:
-                return None
+                return None            
             search_root = Path(parts[0], parts[1], parts[2], parts[3], parts[4])
         else:
             if len(parts) < 3:
@@ -380,6 +380,16 @@ class Trainer:
         if not search_root.is_dir():
             return None
 
+        for found in search_root.rglob("checkpoint.pt"):
+            if found.is_file():
+                print(
+                    "resume_checkpoint_path '%s' is not a file; using discovered checkpoint '%s'"
+                    % (requested_path, found),
+                    flush=True,
+                )
+                return str(found)
+        if parts[1] == "kaggle":
+            search_root = Path(parts[0], parts[1], parts[2], parts[3], parts[5])
         for found in search_root.rglob("checkpoint.pt"):
             if found.is_file():
                 print(

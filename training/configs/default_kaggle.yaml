@@ -369,6 +369,8 @@ optim:
   patch_embed_lr_ratio: 1.0e-2
   patch_embed_param_names:
       - "aggregator.patch_embed.*"
+      - "camera_head.*"
+      - "point_head.*"
 
 
   amp:
@@ -384,7 +386,7 @@ optim:
       max_norm: 5.0
       norm_type: 2
     - module_name: ["point_head"]
-      max_norm: 5.0
+      max_norm: 1.0
       norm_type: 2
     - module_name: ["depth"]
       max_norm: 5.0     # feel free to reduce this if you see instabilities
