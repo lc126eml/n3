@@ -170,6 +170,8 @@ checkpoint:
   save_freq: *max_epochs
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
   resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
+  resume_optimizer: true
+  lazy_resume_optimizer: true
   strict: False
   filter_keys:
     enabled: True

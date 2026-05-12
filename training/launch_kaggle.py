@@ -17,30 +17,28 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'break_at': 30,
- 'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cdong121/pred-center-gt2pr-notrans-r0-42/logs/ckpts/checkpoint.pt',
- 'checkpoint.resume_config_skip_keys': ['total_run_time_hr',
-                                        'optim.val_freq',
-                                        'optim.warmup_epochs',
-                                        'break_at',
-                                        'data.data_module.train_config.resolution'],
- 'optim.val_freq': 1,
- 'optim.warmup_epochs': 15,
- 'total_run_time_hr': 12.0}
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/rqmiraitowa/pred-center-pr2gt-r4-42/logs/ckpts/checkpoint.pt',
+ 'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
+ 'total_run_time_hr': 11.5}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
 
 def _apply_kaggle_runtime_overrides(cfg) -> None:
     overrides = KAGGLE_RUNTIME_CONFIG_OVERRIDES
-    if not isinstance(overrides, dict) or not overrides:
+    if not isinstance(overrides, dict):
         return
+    from datetime import datetime
+
     from omegaconf import OmegaConf
+
+    overrides = dict(overrides)
+    overrides["current_datetime"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     applied = []
     for key, value in overrides.items():
         if not isinstance(key, str) or not key:
             continue
-        OmegaConf.update(cfg, key, value, merge=False)
+        OmegaConf.update(cfg, key, value, merge=False, force_add=(key == "current_datetime"))
         applied.append(key)
     if applied:
         print(f"[launch] Applied runtime config overrides: {applied}")
@@ -150,7 +148,6 @@ def _setup_project_root() -> Path:
 def _looks_like_n3_repo(path: Path) -> bool:
     return (
         path.is_dir()
-        and (path / ".project-root").exists()
         and (path / "training").is_dir()
         and (path / "dust3r").is_dir()
     )
@@ -350,7 +347,16 @@ def _default_install_libs() -> list[str]:
         raw = raw.replace(",", " ")
         return [x for x in (s.strip() for s in raw.split()) if x]
     if _IS_KAGGLE:
-        return ["hydra-core", "fvcore", "iopath", "einops", "safetensors", "wcmatch", "roma"]
+        return [
+            "hydra-core",
+            "fvcore",
+            "iopath",
+            "einops",
+            "safetensors",
+            "wcmatch",
+            "roma",
+            "huggingface-hub>=1.0.0,<2.0",
+        ]
     return []
 
 import subprocess

@@ -14,7 +14,9 @@ simple:
   - optim.warmup_batch_cost_discount: 0.55
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
-  - optim.patch_embed_lr_ratio: 0.01
+  - optim.lr_multipliers.0.ratio: 0.01
+  - optim.lr_multipliers.1.ratio: 0.01
+  - optim.lr_multipliers.2.ratio: 0.01
   - model.enable_depth: false
   - postprocess.train:
       align:
@@ -61,7 +63,7 @@ simple:
   - lr: 1.0e-4
   - mode: train
   - resume_bs: true
-  - total_run_time_hr: 11.0
+  - total_run_time_hr: 11.6
 #   - logging.log_freq: 100
 #   - break_at: 20
 

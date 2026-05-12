@@ -218,9 +218,13 @@ checkpoint:
   save_dir: logs/ckpts
   save_freq: 1 #*max_epochs
   resume_checkpoint_path:
+  resume_optimizer: true
+  lazy_resume_optimizer: true
   # When resuming, checkpoint trainer_config is preferred by default.
   # Hardcoded current-config overrides are always applied for:
   # - checkpoint.resume_checkpoint_path
+  # - checkpoint.resume_optimizer
+  # - checkpoint.lazy_resume_optimizer
   # - checkpoint.resume_config_skip_keys
   # - logging.run_folder_name
   # List only additional dot-path overrides here.
@@ -376,9 +380,11 @@ optim:
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
       - "*patch_embed*"
-  patch_embed_lr_ratio: 1.0e-2
-  patch_embed_param_names:
-      - "aggregator.patch_embed.*"
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
 
 
   amp:

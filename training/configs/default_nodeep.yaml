@@ -208,6 +208,8 @@ checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: 1 #*max_epochs
   resume_checkpoint_path: null
+  resume_optimizer: true
+  lazy_resume_optimizer: true
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
   # resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
   # strict: False
@@ -358,9 +360,11 @@ optim:
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
       - "*patch_embed*"
-  patch_embed_lr_ratio: 1.0e-2
-  patch_embed_param_names:
-      - "aggregator.patch_embed.*"
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
 
 
   amp:
@@ -382,7 +386,7 @@ optim:
         max_norm: 5.0   # feel free to reduce this if you see instabilities
         norm_type: 2
       - module_name: ["camera"]
-        max_norm: 1.0   # feel free to reduce this if you see instabilities
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
         norm_type: 2
   options:
     lr:

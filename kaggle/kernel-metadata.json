@@ -1,6 +1,6 @@
 {
-  "id": "robinrainy/pts-align-to-gt-normpr-r6-42",
-  "title": "pts align to gt normpr r6 42",
+  "id": "rqmiraitowa/pred-center-pr2gt-r5-42",
+  "title": "pred center pr2gt r5 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -17,7 +17,7 @@
     "liucong12601/hsm-train-part04",
     "liucong12601/hsm-train-part05",
     "liucong12601/hsm-test-val",
-    "liucong12601/depth-file-list",
+    "liucong12601/depth-file-list2",
     "sinayliu/temp-db",
     "sinayliu/scnt-p02",
     "sinayliu/scnt-p03",
@@ -29,11 +29,22 @@
     "sinayliu/scnt-p09",
     "sinayliu/scnt-p10",
     "sinayliu/scnt-p11",
-    "sinayliu/scnt-p12"
+    "sinayliu/scnt-p12",
+    "qqmail4092/bmvs-01",
+    "qqmail4092/bmvs-02",
+    "qqmail4092/bmvsp-01",
+    "qqmail4092/bmvsp-02",
+    "qqmail4092/bmvsp-03",
+    "qqmail4092/bmvsp-04",
+    "qqmail4092/bmvsp-05",
+    "qqmail4092/bmvspp-01",
+    "qqmail4092/bmvspp-02",
+    "qqmail4092/bmvspp-03",
+    "qqmail4092/bmvspp-04"
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "straghtwizard/pts-align-to-gt-normpr-r5-42"
+    "rqmiraitowa/pred-center-pr2gt-r4-42"
   ],
   "model_sources": []
 }

@@ -265,8 +265,7 @@ def closed_form_inverse_se3(se3, R=None, T=None):
     else:
         R_transposed = R.transpose(1, 2)  # (N,3,3)
         top_right = -torch.bmm(R_transposed, T)  # (N,3,1)
-        inverted_matrix = torch.eye(4, 4)[None].repeat(len(R), 1, 1)
-        inverted_matrix = inverted_matrix.to(R.dtype).to(R.device)
+        inverted_matrix = torch.eye(4, 4, device=R.device, dtype=R.dtype)[None].repeat(len(R), 1, 1)
 
     inverted_matrix[:, :3, :3] = R_transposed
     inverted_matrix[:, :3, 3:] = top_right

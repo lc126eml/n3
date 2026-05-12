@@ -8,7 +8,8 @@ simple:
   - max_epochs: 130
   - break_at: 30
   - accum_steps: 4
-  - checkpoint.resume_config_skip_keys: [total_run_time_hr, optim.val_freq, optim.warmup_epochs, break_at, data.data_module.train_config.resolution]
+  - checkpoint.resume_config_skip_keys: [total_run_time_hr]
+  # - checkpoint.resume_config_skip_keys: [total_run_time_hr, optim.val_freq, optim.warmup_epochs, break_at, data.data_module.train_config.resolution]
   - data.data_module.train_config.batch_size: 40
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 15
@@ -19,7 +20,7 @@ simple:
   - lr: 2.0e-5
   - mode: train
   - resume_bs: true
-  - total_run_time_hr: 12.0
+  - total_run_time_hr: 11.5
 # simple:
 #   - data.data_module.train_config.datasets.0: "HyperSim_Multi(allow_repeat=False, split='train', ROOT=['${data.data_root}/hypersim_processed'], image_list_path='/kaggle/working', transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
 # simple:

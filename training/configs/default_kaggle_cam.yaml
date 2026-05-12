@@ -208,9 +208,13 @@ checkpoint:
   save_dir: logs/ckpts
   save_freq: 1 #*max_epochs
   resume_checkpoint_path:
+  resume_optimizer: true
+  lazy_resume_optimizer: true
   # When resuming, checkpoint trainer_config is preferred by default.
   # Hardcoded current-config overrides are always applied for:
   # - checkpoint.resume_checkpoint_path
+  # - checkpoint.resume_optimizer
+  # - checkpoint.lazy_resume_optimizer
   # - checkpoint.resume_config_skip_keys
   # - logging.run_folder_name
   # List only additional dot-path overrides here.
@@ -291,7 +295,7 @@ loss:
     reg_loss_beta: 1.0
     conf_weight: 1.0
     reg_weight: 1.0
-    grad_weight: 0.1
+    grad_weight: 1.0
     aligned_valid_range: 0.8
     conf_percentage: 90
   switch:
@@ -366,11 +370,23 @@ optim:
   frozen_module_names:
       # - "*aggregator*"  # example, freeze the aggregator
       - "*patch_embed*"
-  patch_embed_lr_ratio: 1.0e-2
-  patch_embed_param_names:
-      - "aggregator.patch_embed.*"
-      - "camera_head.*"
-      - "point_head.*"
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
+    - name: camera_head
+      ratio: 0.01
+      param_names:
+        - "camera_head.*"
+    - name: point_head
+      ratio: 0.01
+      param_names:
+        - "point_head.*"
+    - name: depth_head
+      ratio: 1.0e-2
+      param_names:
+        - "depth_head.*"
 
 
   amp:
@@ -383,16 +399,16 @@ optim:
       max_norm: 1.0
       norm_type: 2
     - module_name: ["shared_dpt"]
-      max_norm: 1.0
+      max_norm: 5.0
       norm_type: 2
     - module_name: ["point_head"]
-      max_norm: 1.0
+      max_norm: 5.0
       norm_type: 2
     - module_name: ["depth"]
-      max_norm: 1.0     # feel free to reduce this if you see instabilities
+      max_norm: 5.0     # feel free to reduce this if you see instabilities
       norm_type: 2
     - module_name: ["camera"]
-      max_norm: 0.5     # feel free to reduce this if you see instabilities
+      max_norm: 5.0     # feel free to reduce this if you see instabilities
       norm_type: 2
   options:
     lr:

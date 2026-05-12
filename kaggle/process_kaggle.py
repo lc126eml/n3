@@ -237,6 +237,16 @@ def _build_kernel_id(cfg: dict) -> str:
     return f"{owner}/{slug}"
 
 
+def _launch_script_name(cfg: dict | None = None) -> str:
+    if cfg is not None and bool(cfg.get("enable_tpu", False)):
+        return "launch_kaggle_tpu.py"
+    return "launch_kaggle.py"
+
+
+def _launch_code_file(cfg: dict | None = None) -> str:
+    return f"../training/{_launch_script_name(cfg)}"
+
+
 def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
     meta_path = BASE_DIR / "kernel-metadata.json"
     meta = {}
@@ -245,7 +255,7 @@ def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
 
     meta["id"] = _build_kernel_id(cfg)
     meta["title"] = str(cfg.get("title") or _build_kernel_id(cfg).split("/", 1)[1].replace("-", " "))
-    meta["code_file"] = "../training/launch_kaggle.py"
+    meta["code_file"] = _launch_code_file(cfg)
     meta["language"] = "python"
     meta["kernel_type"] = "script"
     enable_tpu = bool(cfg.get("enable_tpu", False))
@@ -461,8 +471,8 @@ def _build_runtime_config_overrides(cfg: dict) -> dict[str, object]:
     return out
 
 
-def _launch_py_path() -> Path:
-    return (BASE_DIR.parent / "training" / "launch_kaggle.py").resolve()
+def _launch_py_path(cfg: dict | None = None) -> Path:
+    return (BASE_DIR.parent / "training" / _launch_script_name(cfg)).resolve()
 
 
 def _load_launch_runtime_overrides(
@@ -508,7 +518,7 @@ def _apply_runtime_overrides_to_launch_py(
     *,
     write: bool = True,
 ) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
-    path, old_config_name, old_overrides, text = _load_launch_runtime_overrides()
+    path, old_config_name, old_overrides, text = _load_launch_runtime_overrides(_launch_py_path(cfg))
     new_config_name = _build_runtime_config_name(cfg)
     new_overrides = _build_runtime_config_overrides(cfg)
 

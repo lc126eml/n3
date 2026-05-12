@@ -319,6 +319,12 @@ class Trainer:
                 if resume_cfg:
                     self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
             self._load_resuming_checkpoint(self._resume_ckpt_path, checkpoint=self._resume_checkpoint)
+            self._resume_checkpoint.clear()
+            self._resume_checkpoint = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
 
         # Save the full config for reproducibility (after applying resume overrides).
         if self.mode != "val":

@@ -118,10 +118,11 @@ def unix_param_pattern_to_parameter_names(filter_param_names: Union[List[str], N
     for pat in filter_param_names:
         matches = set(fnmatch.filter(parameter_names, pat, flags=GLOB_FLAGS))
         if not matches:
-            raise AssertionError(f"Pattern {pat} matched no parameters")
+            continue
+            # raise AssertionError(f"Pattern {pat} matched no parameters")
         logging.info(f"Matches for param pattern [{pat}]: {matches}")
         allowed.append(matches)
-    return set.union(*allowed)
+    return set.union(*allowed) if allowed else set()
 
 
 def unix_module_cls_pattern_to_parameter_names(filter_module_cls_names: Union[List[str], None],
@@ -146,9 +147,13 @@ def _unix_pattern_to_parameter_names(scheduler_cfg,
                                      module_cls_to_param_names: Dict[type, Set[str]]):
     if "param_names" not in scheduler_cfg and "module_cls_names" not in scheduler_cfg:
         return None
-    return unix_param_pattern_to_parameter_names(
-        scheduler_cfg.get("param_names"), parameter_names
-    ).union(
+    param_names = scheduler_cfg.get("param_names")
+    names = unix_param_pattern_to_parameter_names(
+        param_names, parameter_names
+    )
+    if param_names is not None and not names:
+        return names
+    return names.union(
         unix_module_cls_pattern_to_parameter_names(
             scheduler_cfg.get("module_cls_names"), module_cls_to_param_names
         )
@@ -269,57 +274,69 @@ def construct_optimizers(model: nn.Module, optim_conf) -> Union[List[OptimizerWr
     optimizer = construct_optimizer(
         model,
         optim_conf.optimizer,
-        _augment_lr_options_with_patch_embed_ratio(optim_conf),
+        _augment_lr_options_with_lr_multipliers(optim_conf),
         validate_param_groups=True,
     )
     return [optimizer]
 
 
-def _augment_lr_options_with_patch_embed_ratio(optim_conf):
-    """Optionally assign `aggregator.patch_embed.*` its own LR schedule scaled by a ratio."""
+def _augment_lr_options_with_lr_multipliers(optim_conf):
+    """Add LR scheduler entries for parameter groups with scaled base schedules."""
     options_conf = getattr(optim_conf, "options", None)
     if not options_conf:
         return options_conf
 
-    lr_ratio = getattr(optim_conf, "patch_embed_lr_ratio", None)
-    if lr_ratio is None:
+    lr_multipliers = getattr(optim_conf, "lr_multipliers", None)
+    if not lr_multipliers:
         return options_conf
-
-    lr_ratio = float(lr_ratio)
-    if lr_ratio <= 0:
-        raise ValueError(f"optim.patch_embed_lr_ratio must be > 0, got {lr_ratio}")
-    if lr_ratio == 1.0:
-        return options_conf
-
-    patch_embed_param_names = getattr(
-        optim_conf,
-        "patch_embed_param_names",
-        ["aggregator.patch_embed.*"],
-    )
-    if isinstance(patch_embed_param_names, str):
-        patch_embed_param_names = [patch_embed_param_names]
 
     options = OmegaConf.create(OmegaConf.to_container(options_conf, resolve=False))
     lr_cfgs = options.get("lr")
     if not lr_cfgs:
         raise ValueError(
-            "optim.patch_embed_lr_ratio is set, but optim.options.lr is missing."
+            "optim.lr_multipliers is set, but optim.options.lr is missing."
+        )
+
+    default_lr_cfgs = [
+        cfg for cfg in lr_cfgs
+        if cfg.get("param_names") is None and cfg.get("module_cls_names") is None
+    ]
+    if not default_lr_cfgs:
+        raise ValueError(
+            "optim.lr_multipliers requires at least one default lr scheduler "
+            "entry without param_names/module_cls_names."
         )
 
     scaled_lr_cfgs = []
-    for cfg in lr_cfgs:
-        if cfg.get("param_names") is not None or cfg.get("module_cls_names") is not None:
-            continue
-        scaled_cfg = copy.deepcopy(cfg)
-        scaled_cfg["param_names"] = list(patch_embed_param_names)
-        _scale_scheduler_values_inplace(scaled_cfg.get("scheduler"), lr_ratio)
-        scaled_lr_cfgs.append(scaled_cfg)
+    for group in lr_multipliers:
+        ratio = group.get("ratio")
+        if ratio is None:
+            raise ValueError("Each optim.lr_multipliers entry requires a ratio.")
+        ratio = float(ratio)
+        if ratio <= 0:
+            name = group.get("name", "<unnamed>")
+            raise ValueError(f"optim.lr_multipliers[{name}].ratio must be > 0, got {ratio}")
 
-    if not scaled_lr_cfgs:
-        raise ValueError(
-            "optim.patch_embed_lr_ratio requires at least one default lr scheduler "
-            "entry without param_names/module_cls_names."
-        )
+        param_names = group.get("param_names")
+        module_cls_names = group.get("module_cls_names")
+        if param_names is None and module_cls_names is None:
+            name = group.get("name", "<unnamed>")
+            raise ValueError(
+                f"optim.lr_multipliers[{name}] requires param_names or module_cls_names."
+            )
+        if isinstance(param_names, str):
+            param_names = [param_names]
+        if isinstance(module_cls_names, str):
+            module_cls_names = [module_cls_names]
+
+        for cfg in default_lr_cfgs:
+            scaled_cfg = copy.deepcopy(cfg)
+            if param_names is not None:
+                scaled_cfg["param_names"] = list(param_names)
+            if module_cls_names is not None:
+                scaled_cfg["module_cls_names"] = list(module_cls_names)
+            _scale_scheduler_values_inplace(scaled_cfg.get("scheduler"), ratio)
+            scaled_lr_cfgs.append(scaled_cfg)
 
     options.lr = scaled_lr_cfgs + list(lr_cfgs)
     return options

@@ -1,24 +1,35 @@
 id: 
+config_name: default_kaggle
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
-desc: center_world_notrans
+# desc: center_world
 # desc: first_cam
+desc: gt_align_to_pts_normpr_point1
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 10
 seed: 42
 simple:
+  - total_run_time_hr: 11.0
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
-  - checkpoint.resume_config_skip_keys: []
+  - checkpoint.resume_config_skip_keys: [total_run_time_hr]
   - data.data_module.train_config.batch_size: 40
   - data.data_module.train_config.debug_enumerate_batches: false
-  - optim.warmup_epochs: 15
+  - optim.warmup_epochs: 20
   - optim.warmup_batch_cost_discount: 0.55
   - optim.val_freq: 1
+  - optim.gradient_clip.configs.0.max_norm: 1.0
+  - optim.gradient_clip.configs.1.max_norm: 1.0
+  - optim.gradient_clip.configs.2.max_norm: 1.0
+  - optim.gradient_clip.configs.3.max_norm: 1.0
+  - optim.gradient_clip.configs.4.max_norm: 5.0
   # - optim.frozen_module_names: null
-  - optim.patch_embed_lr_ratio: 0.01
+  # - optim.lr_multipliers.0.ratio: 0.01
+  # - optim.lr_multipliers.1.ratio: 0.005
+  # - optim.lr_multipliers.2.ratio: 0.005
+  # - optim.lr_multipliers.3.ratio: 0.005
   - model.enable_depth: false
   - postprocess.train:
       align:
@@ -26,7 +37,7 @@ simple:
           enabled: false
           points: true
         center_world:
-          enabled: &pts_center_world true
+          enabled: &pts_center_world false
           align_pose: true
         pred_center:
           enabled: false
@@ -40,21 +51,21 @@ simple:
           normalize_depth: false
           normalize_pose: false
         gt_align_to_pts:
-          enabled: &gt_align_to_pts false
+          enabled: &gt_align_to_pts true
           conf_percentage: 80
           align_pose: true
       normalize:
         gt_pts: false
         pr_pts:
           enabled: false
-          metric: False
-        gt_depth: False
+          metric: false
+        gt_depth: false
         gt_pts_invariant:
           enabled: true
-          translate: false
+          translate: true
         pr_pts_invariant:
-          enabled: false
-          translate: false
+          enabled: true
+          translate: true
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt
@@ -65,7 +76,6 @@ simple:
   - lr: 1.0e-4
   - mode: train
   - resume_bs: true
-  - total_run_time_hr: 11.0
 #   - logging.log_freq: 100
 #   - break_at: 20
 
@@ -74,7 +84,7 @@ enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false
-resume_source: null
+resume_source: kernel #dataset/kernel
 resume_infer: false
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata
