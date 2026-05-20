@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from .attention import CausalSelfAttention, LinearKMaskedBias, SelfAttention
+from .attention import CausalSelfAttention, LinearKMaskedBias, SelfAttention, init_masked_qkv_bias_buffers
 from .block import CausalSelfAttentionBlock, SelfAttentionBlock
 from .ffn_layers import Mlp, SwiGLUFFN
 from .layer_scale import LayerScale
@@ -17,6 +17,7 @@ __all__ = [
     "CausalSelfAttentionBlock",
     "LayerScale",
     "LinearKMaskedBias",
+    "init_masked_qkv_bias_buffers",
     "Mlp",
     "PatchEmbed",
     "RMSNorm",

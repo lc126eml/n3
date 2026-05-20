@@ -96,6 +96,7 @@ from eval_utils.align_utils.depth_median_scaling import median_scale_depth_torch
 from eval_utils.normalize_utils.normalize_pc import normalize_pointcloud_vggt, normalize_pr_pointcloud, normalize_pointcloud_invariant, calculate_depth_scale
 from eval_utils.transform_utils import global_points_from_cam, cam_points_from_depth
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
+from vggt_omega.utils.pose_enc import encoding_to_camera as omega_pose_encoding_to_extri_intri
 from dust3r.utils.camera import center_c2w_poses_batch, get_pred_world_to_gt_world_transforms
 
 def get_amp_type(amp_dtype: str):
@@ -115,6 +116,8 @@ class Trainer:
     _RESUME_CONFIG_SKIP_KEYS_HARDCODED = (
         "checkpoint.resume_checkpoint_path",
         "checkpoint.resume_config_skip_keys",
+        "checkpoint.resume_optimizer",
+        "checkpoint.lazy_resume_optimizer",
         "logging.run_folder_name",
         "total_run_time_hr",
     )
@@ -195,7 +198,7 @@ class Trainer:
         ]:
             if align_conf.get(key, {}).get("enabled"):
                 suffix_parts.append(key)
-        if not self.postprocess_conf.get("train", {}).get("align", {}).get("pred_center", {}).get('enabled'):
+        if not self.postprocess_conf.get("train", {}).get("align", {}).get("pred_center", {}).get('enabled') and self.loss_conf.switch is not None:
             self.loss_conf.switch.pts_align_to_center = False
             
         train_augs = self.data_conf.data_module.get("train_config", {}).get("augs", {})
@@ -457,8 +460,8 @@ class Trainer:
         if resume_cfg is None:
             raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
         self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
-        base_cfg = OmegaConf.create(resume_cfg)
-        merged = OmegaConf.merge(cfg, base_cfg)
+        merged = OmegaConf.create(resume_cfg)
+        # merged = OmegaConf.merge(cfg, base_cfg, force_add=True)
         resume_skip_keys = self._normalize_resume_skip_keys(cfg)
         _missing = object()
         for key_path in resume_skip_keys:
@@ -472,7 +475,7 @@ class Trainer:
                     f"Failed to apply resume_config_skip_keys override for '{key_path}': {exc}",
                     flush=True,
                 )
-        base_log_dir = base_cfg.get("logging", {}).get("log_dir")
+        base_log_dir = merged.get("logging", {}).get("log_dir")
         new_run_folder = merged.get("logging", {}).get("run_folder_name")
         if base_log_dir and new_run_folder:
             base_parent = os.path.dirname(os.path.normpath(base_log_dir))
@@ -502,6 +505,74 @@ class Trainer:
                 return None
         with g_pathmgr.open(ckpt_path, "rb") as f:
             return torch.load(f, map_location="cpu", weights_only=False)
+
+    def _is_vggt_omega_model(self) -> bool:
+        target = self.model_conf.get("_target_", "")
+        return isinstance(target, str) and "vggt_omega" in target
+
+    def _decode_pose_encoding(self, pose_enc: torch.Tensor, image_size_hw, build_intrinsics: bool = True):
+        if self._is_vggt_omega_model():
+            extrinsics, intrinsics = omega_pose_encoding_to_extri_intri(
+                pose_enc,
+                image_size_hw=image_size_hw,
+                build_intrinsics=build_intrinsics,
+            )
+            if extrinsics is not None and extrinsics.shape[-2:] == (3, 4):
+                bottom = torch.zeros(*extrinsics.shape[:-2], 1, 4, device=extrinsics.device, dtype=extrinsics.dtype)
+                bottom[..., 0, 3] = 1.0
+                extrinsics = torch.cat([extrinsics, bottom], dim=-2)
+            return extrinsics, intrinsics
+
+        return pose_encoding_to_extri_intri(
+            pose_enc,
+            image_size_hw=image_size_hw,
+            build_intrinsics=build_intrinsics,
+        )
+
+    def _extract_model_state_dict(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+        for key in ("model", "state_dict", "module", "model_state_dict"):
+            candidate = checkpoint.get(key)
+            if isinstance(candidate, Mapping):
+                return dict(candidate)
+        return dict(checkpoint)
+
+    def _strip_state_dict_prefix_if_present(self, state_dict: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+        if not state_dict:
+            return state_dict
+        if all(isinstance(key, str) and key.startswith(prefix) for key in state_dict.keys()):
+            return {key[len(prefix):]: value for key, value in state_dict.items()}
+        return state_dict
+
+    def _normalize_model_state_dict(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+        model_state_dict = self._extract_model_state_dict(checkpoint)
+        for prefix in ("module.", "model."):
+            model_state_dict = self._strip_state_dict_prefix_if_present(model_state_dict, prefix)
+        return model_state_dict
+
+    def _filter_mismatched_model_state_dict(self, model_state_dict: Dict[str, Any]) -> Dict[str, Any]:
+        if self.checkpoint_conf.strict:
+            return model_state_dict
+
+        current_state = self.model.state_dict()
+        filtered = {}
+        skipped = []
+        for key, value in model_state_dict.items():
+            current_value = current_state.get(key)
+            if current_value is not None and torch.is_tensor(value) and torch.is_tensor(current_value):
+                if tuple(value.shape) != tuple(current_value.shape):
+                    skipped.append((key, tuple(value.shape), tuple(current_value.shape)))
+                    continue
+            filtered[key] = value
+
+        if skipped:
+            preview = ", ".join(f"{key}: ckpt{src}->model{dst}" for key, src, dst in skipped[:20])
+            suffix = "" if len(skipped) <= 20 else f", ... +{len(skipped) - 20} more"
+            logging.warning(
+                "Skipping checkpoint tensors with mismatched shapes because checkpoint.strict=False: "
+                f"{preview}{suffix}"
+            )
+
+        return filtered
 
     def _maybe_to_container(self, cfg: Any) -> Any:
         if cfg is None:
@@ -655,7 +726,7 @@ class Trainer:
             logging.warning("Checkpoint could not be loaded; skipping resume.")
             return
             
-        model_state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+        model_state_dict = self._normalize_model_state_dict(checkpoint)
         
         if self.checkpoint_conf.get("filter_keys") and self.checkpoint_conf.filter_keys.get("enabled"):
             if "trainer_config" in checkpoint:
@@ -670,6 +741,7 @@ class Trainer:
                     default_keep=filter_conf.get("default_keep", True)
                 )
 
+        model_state_dict = self._filter_mismatched_model_state_dict(model_state_dict)
         missing_keys, unexpected_keys = self.model.load_state_dict(model_state_dict, strict=self.checkpoint_conf.strict)
         
         if missing_keys:
@@ -681,22 +753,30 @@ class Trainer:
             logging.warning(f"Unexpected keys when loading model state dict: {unexpected_keys}")
         else:
             logging.info(f"No unexpected keys when loading model state dict")
-        logging.info(f"Loading the optimizer state dict")
-        if "optimizer" in checkpoint and self.optims:
+        if not self.checkpoint_conf.get("resume_optimizer", True):
+            logging.info("Skipping optimizer state restore because checkpoint.resume_optimizer=False")
+        elif "optimizer" in checkpoint and self.optims:
+            logging.info(f"Loading the optimizer state dict")
             opt_state = checkpoint["optimizer"]
-            if isinstance(opt_state, list):
-                if len(opt_state) != len(self.optims):
-                    logging.warning(
-                        f"Optimizer state count ({len(opt_state)}) does not match current optimizers "
-                        f"({len(self.optims)}); restoring the first {min(len(opt_state), len(self.optims))} only."
-                    )
-                for optim, state in zip(self.optims, opt_state):
-                    optim.optimizer.load_state_dict(state)
-            else:
-                if len(self.optims) == 1:
-                    self.optims[0].optimizer.load_state_dict(opt_state)
+            try:
+                if isinstance(opt_state, list):
+                    if len(opt_state) != len(self.optims):
+                        logging.warning(
+                            f"Optimizer state count ({len(opt_state)}) does not match current optimizers "
+                            f"({len(self.optims)}); restoring the first {min(len(opt_state), len(self.optims))} only."
+                        )
+                    for optim, state in zip(self.optims, opt_state):
+                        optim.optimizer.load_state_dict(state)
                 else:
-                    logging.warning("Optimizer state is not a list but multiple optimizers exist; skipping restore.")
+                    if len(self.optims) == 1:
+                        self.optims[0].optimizer.load_state_dict(opt_state)
+                    else:
+                        logging.warning("Optimizer state is not a list but multiple optimizers exist; skipping restore.")
+            except Exception as exc:
+                if self.checkpoint_conf.get("lazy_resume_optimizer", False):
+                    logging.warning(f"Skipping optimizer state restore after load failure: {exc}")
+                else:
+                    raise
 
         loaded_epoch = None
         if "epoch" in checkpoint:
@@ -1991,8 +2071,16 @@ class Trainer:
         if pp_conf.get('to_extri'):
            # The image tensor `batch['img']` has a shape of (B, S, C, H, W).
            # We extract the last two dimensions (Height, Width) for the image size.
-           image_size_hw = batch['img'].shape[-2:]
-           pred[pred_data_keys.extrinsics], pred[pred_data_keys.intrinsics]= pose_encoding_to_extri_intri(pred["pose_enc"], image_size_hw=image_size_hw, build_intrinsics=True)
+           if "pose_enc" in pred:
+               image_size_hw = batch['img'].shape[-2:]
+               pred[pred_data_keys.extrinsics], pred[pred_data_keys.intrinsics] = self._decode_pose_encoding(
+                   pred["pose_enc"],
+                   image_size_hw=image_size_hw,
+                   build_intrinsics=True,
+               )
+           else:
+               pred[pred_data_keys.extrinsics] = None
+               pred[pred_data_keys.intrinsics] = None
 
         if pp_conf.align.get('to_first_cam', {}).get('enabled'):
             with torch.no_grad():

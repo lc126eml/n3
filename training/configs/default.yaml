@@ -224,7 +224,7 @@ checkpoint:
   # resume_checkpoint_path: /lc/code/pretrained/dinov2/dinov2_vitl14_reg4_pretrain.pth
   strict: False
   filter_keys:
-    enabled: True
+    enabled: False
     heads_to_keep: 
       - ['layer', 'aggregator.patch_embed.blocks']
       # - ['*', 'aggregator.patch_embed.']
@@ -376,14 +376,8 @@ optim:
       - module_name: ["aggregator"]
         max_norm: 1.0   
         norm_type: 2
-      - module_name: ["shared_dpt"]
-        max_norm: 5.0   
-        norm_type: 2
-      - module_name: ["point_head"]
-        max_norm: 5.0   
-        norm_type: 2
-      - module_name: ["depth"]
-        max_norm: 5.0   # feel free to reduce this if you see instabilities
+      - module_name: ["dense_head"]
+        max_norm: 5.0
         norm_type: 2
       - module_name: ["camera"]
         max_norm: 5.0   # feel free to reduce this if you see instabilities
@@ -408,36 +402,24 @@ optim:
 
 
 model:
-  _target_: vggt.models.vggt.VGGT
+  _target_: vggt_omega.models.vggt_omega.VGGTOmega
   conf_logit_max: null
   enable_camera: True
   enable_depth: false
   enable_point: True
   enable_cam_point: False
-  enable_track: False
+  # VGGTOmega constructor defaults are intentionally left in the model code.
+  # Override only the values needed for an experiment, e.g.:
+  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16"
+  patch_size: 16
   embed_dim: 768
   depth: 12
-  num_heads: 16
-  mlp_ratio: 4.0
-  num_register_tokens: 4
-  qkv_bias: True
-  proj_bias: True
-  ffn_bias: True
-  # patch_embed: "dinov2_vitl14_reg"
-  # patch_embed: "/lc/code/pretrained/dinov3/vitl16" 
-  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16" 
-  patch_size: 16
-  dpt_frames_chunk_size: 8
-  aa_order: ["frame", "global"]
-  aa_block_size: 1
-  qk_norm: True
-  # rope_freq: 100
+  cached_layer_indices: [2, 5, 8, 11]
+  register_attention_block_indices: [2, 4, 7, 10]
+  # register_attention_block_indices: [2, 6, 9, 14, 20]
+  # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1
-  init_values: 0.01
-  first_cam: False
-  intermediate_layer_idx: [2, 5, 8, 11]
-  pose_encoding_type: *pose_encoding_type 
-  # intermediate_layer_idx: [4, 11, 17, 23]
+  first_cam: false
 
 
 distributed:

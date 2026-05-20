@@ -47,6 +47,22 @@ class LinearKMaskedBias(nn.Linear):
         return F.linear(input, self.weight, masked_bias)
 
 
+def init_masked_qkv_bias_buffers(module: nn.Module) -> None:
+    for child in module.modules():
+        bias_mask = getattr(child, "bias_mask", None)
+        if bias_mask is None:
+            continue
+        if getattr(child, "bias", None) is None:
+            continue
+
+        out_features = child.out_features
+        if out_features % 3 != 0:
+            raise ValueError(f"Masked qkv bias layer has invalid out_features={out_features}")
+        with torch.no_grad():
+            bias_mask.fill_(1)
+            bias_mask[out_features // 3 : 2 * out_features // 3].fill_(0)
+
+
 class SelfAttention(nn.Module):
     def __init__(
         self,

@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vggt_omega.models.layers import SelfAttentionBlock
+from vggt_omega.models.layers import SelfAttentionBlock, init_masked_qkv_bias_buffers
 
 
 class TextAlignmentHead(nn.Module):
@@ -37,6 +37,7 @@ class TextAlignmentHead(nn.Module):
                 for _ in range(4)
             ]
         )
+        init_masked_qkv_bias_buffers(self.readout_blocks)
         self.language_token_norm = nn.LayerNorm(dim_in, eps=1e-5)
         self.embedding_projector = nn.Sequential(
             nn.Linear(dim_in, dim_in // 2, bias=True),

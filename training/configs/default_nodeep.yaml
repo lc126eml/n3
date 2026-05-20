@@ -376,14 +376,8 @@ optim:
       - module_name: ["aggregator"]
         max_norm: 1.0   
         norm_type: 2
-      - module_name: ["shared_dpt"]
-        max_norm: 5.0   
-        norm_type: 2
-      - module_name: ["point_head"]
-        max_norm: 5.0   
-        norm_type: 2
-      - module_name: ["depth"]
-        max_norm: 5.0   # feel free to reduce this if you see instabilities
+      - module_name: ["dense_head"]
+        max_norm: 5.0
         norm_type: 2
       - module_name: ["camera"]
         max_norm: 5.0   # feel free to reduce this if you see instabilities

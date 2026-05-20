@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 
-from vggt_omega.models.layers import Mlp, RopePositionEmbedding, SelfAttentionBlock
+from vggt_omega.models.layers import Mlp, PatchEmbed, RopePositionEmbedding, SelfAttentionBlock, init_masked_qkv_bias_buffers
 from vggt_omega.models.layers.vision_transformer import DinoVisionTransformer
 
 
@@ -22,22 +22,36 @@ class Aggregator(nn.Module):
         self,
         patch_size: int = 16,
         embed_dim: int = 1024,
+        patch_embed: str | None = None,
         depth: int = 24,
         num_heads: int = 16,
         mlp_ratio: float = 4.0,
         num_register_tokens: int = 16,
         register_attention_block_indices: list[int] = [2, 6, 9, 14, 20],
         cached_layer_indices: tuple[int, ...] = (4, 11, 17, 23),
+        rope_freq: int = 100,
+        first_cam: bool = True,
     ) -> None:
         super().__init__()
 
-        self.patch_embed = _build_patch_embed(patch_size=patch_size, embed_dim=embed_dim)
-        self.rope_embed = RopePositionEmbedding(
+        self.patch_token_start = 1 + num_register_tokens
+        self.dinov3_hf_patch_embed = False
+        self.__build_patch_embed__(
+            patch_embed=patch_embed,
+            patch_size=patch_size,
+            num_register_tokens=num_register_tokens,
             embed_dim=embed_dim,
-            num_heads=num_heads,
-            base=100,
-            normalize_coords="max",
-            dtype=torch.float32,
+        )
+        self.rope_embed = (
+            RopePositionEmbedding(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                base=rope_freq,
+                normalize_coords="max",
+                dtype=torch.float32,
+            )
+            if rope_freq > 0
+            else None
         )
 
         self.frame_blocks = nn.ModuleList(
@@ -78,9 +92,10 @@ class Aggregator(nn.Module):
         self.depth = depth
         self.patch_size = patch_size
         self.cached_layer_indices = set(cached_layer_indices)
-        self.camera_token = nn.Parameter(torch.empty(1, 2, 1, embed_dim))
-        self.register_token = nn.Parameter(torch.empty(1, 2, num_register_tokens, embed_dim))
-        self.patch_token_start = 1 + num_register_tokens
+        self.first_cam = first_cam
+        num_special_token_sets = 2 if first_cam else 1
+        self.camera_token = nn.Parameter(torch.empty(1, num_special_token_sets, 1, embed_dim))
+        self.register_token = nn.Parameter(torch.empty(1, num_special_token_sets, num_register_tokens, embed_dim))
 
         self.inter_frame_attention_types = ["global"] * depth
         for idx in register_attention_block_indices:
@@ -96,6 +111,59 @@ class Aggregator(nn.Module):
     def init_weights(self) -> None:
         nn.init.normal_(self.camera_token, std=1e-3)
         nn.init.normal_(self.register_token, std=1e-3)
+        init_masked_qkv_bias_buffers(self.frame_blocks)
+        init_masked_qkv_bias_buffers(self.inter_frame_blocks)
+
+    def __build_patch_embed__(
+        self,
+        patch_embed: str | None,
+        patch_size: int,
+        num_register_tokens: int,
+        embed_dim: int,
+    ) -> None:
+        """
+        Build the patch embed layer. If 'conv', use a simple PatchEmbed conv layer.
+        If a DINOv3 checkpoint path/name is provided, load it through transformers.
+        Otherwise, keep VGGT-Omega's built-in DINOv3-style patch embed.
+        """
+        if patch_embed is None:
+            self.patch_embed = _build_local_patch_embed(patch_size=patch_size, embed_dim=embed_dim)
+            return
+
+        if "conv" in patch_embed:
+            self.patch_embed = PatchEmbed(
+                img_size=224,
+                patch_size=patch_size,
+                in_chans=3,
+                embed_dim=embed_dim,
+            )
+            return
+
+        if "dinov3" in patch_embed or "dino-ds" in patch_embed:
+            from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTModel
+
+            self.patch_embed = DINOv3ViTModel.from_pretrained(patch_embed)
+            hidden_size = getattr(self.patch_embed.config, "hidden_size", embed_dim)
+            if hidden_size != embed_dim:
+                raise ValueError(
+                    f"DINOv3 patch_embed hidden_size ({hidden_size}) must match VGGTOmega embed_dim ({embed_dim})."
+                )
+
+            checkpoint_patch_size = getattr(self.patch_embed.config, "patch_size", patch_size)
+            if checkpoint_patch_size != patch_size:
+                raise ValueError(
+                    f"DINOv3 patch_embed patch_size ({checkpoint_patch_size}) must match "
+                    f"VGGTOmega patch_size ({patch_size})."
+                )
+
+            self.dinov3_hf_patch_embed = True
+            self.patch_token_start = 1 + self.patch_embed.config.num_register_tokens + self.patch_token_start
+
+            if hasattr(self.patch_embed, "mask_token"):
+                self.patch_embed.mask_token.requires_grad_(False)
+            return
+
+        raise ValueError(f"Unknown patch_embed type for VGGTOmega: {patch_embed!r}")
 
     def forward(
         self,
@@ -112,19 +180,25 @@ class Aggregator(nn.Module):
         register_token = slice_expand_and_flatten(self.register_token, batch_size, num_frames)
 
         patch_tokens = self.patch_embed(images)
-        if isinstance(patch_tokens, dict):
+        if self.dinov3_hf_patch_embed:
+            patch_tokens = patch_tokens.last_hidden_state
+        elif isinstance(patch_tokens, dict):
             patch_tokens = patch_tokens["x_norm_patchtokens"]
+        elif patch_tokens.ndim == 4:
+            patch_tokens = patch_tokens.flatten(1, 2)
 
         tokens = torch.cat([camera_token, register_token, patch_tokens], dim=1)
         _, num_tokens, embed_dim = tokens.shape
 
         patch_grid_size = (height // self.patch_size, width // self.patch_size)
-        with torch.no_grad():
-            rope_sin, rope_cos = self.rope_embed(H=patch_grid_size[0], W=patch_grid_size[1])
-            frame_rope = (
-                rope_sin.to(device=patch_tokens.device, dtype=torch.float32),
-                rope_cos.to(device=patch_tokens.device, dtype=torch.float32),
-            )
+        frame_rope = None
+        if self.rope_embed is not None:
+            with torch.no_grad():
+                rope_sin, rope_cos = self.rope_embed(H=patch_grid_size[0], W=patch_grid_size[1])
+                frame_rope = (
+                    rope_sin.to(device=patch_tokens.device, dtype=torch.float32),
+                    rope_cos.to(device=patch_tokens.device, dtype=torch.float32),
+                )
 
         outputs = []
         for block_idx in range(self.depth):
@@ -161,7 +235,7 @@ class Aggregator(nn.Module):
         num_tokens: int,
         embed_dim: int,
         block_idx: int,
-        rope_sincos: tuple[torch.Tensor, torch.Tensor],
+        rope_sincos: tuple[torch.Tensor, torch.Tensor] | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         tokens = tokens.view(batch_size * num_frames, num_tokens, embed_dim)
         tokens = self.frame_blocks[block_idx](tokens, rope_sincos)
@@ -217,7 +291,7 @@ class Aggregator(nn.Module):
         return torch.cat([camera_and_register_tokens, patch_tokens], dim=2)
 
 
-def _build_patch_embed(patch_size: int, embed_dim: int) -> DinoVisionTransformer:
+def _build_local_patch_embed(patch_size: int, embed_dim: int) -> DinoVisionTransformer:
     model = DinoVisionTransformer(
         img_size=224,
         patch_size=patch_size,
@@ -243,7 +317,14 @@ def _build_patch_embed(patch_size: int, embed_dim: int) -> DinoVisionTransformer
     return model
 
 
+
 def slice_expand_and_flatten(token_tensor: torch.Tensor, batch_size: int, num_frames: int) -> torch.Tensor:
+    if token_tensor.shape[1] == 1:
+        return token_tensor.expand(batch_size, num_frames, *token_tensor.shape[2:]).reshape(
+            batch_size * num_frames,
+            *token_tensor.shape[2:],
+        )
+
     first_frame_token = token_tensor[:, 0:1].expand(batch_size, 1, *token_tensor.shape[2:])
     other_frame_tokens = token_tensor[:, 1:].expand(batch_size, num_frames - 1, *token_tensor.shape[2:])
     tokens = torch.cat([first_frame_token, other_frame_tokens], dim=1)

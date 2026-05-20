@@ -26,6 +26,10 @@ class DenseHead(nn.Module):
         features: int = 256,
         out_channels: list[int] = [256, 512, 1024, 1024],
         intermediate_layer_idx: list[int] = [4, 11, 17, 23],
+        enable_depth: bool = True,
+        enable_point: bool = False,
+        enable_cam_point: bool = False,
+        conf_logit_max: float | None = None,
     ) -> None:
         super().__init__()
 
@@ -38,6 +42,10 @@ class DenseHead(nn.Module):
         self.patch_size = patch_size
         self.intermediate_layer_idx = intermediate_layer_idx
         self.final_shuffle_factor = patch_size // 4
+        self.enable_depth = enable_depth
+        self.enable_point = enable_point
+        self.enable_cam_point = enable_cam_point
+        self.conf_logit_max = conf_logit_max
         self.norm = nn.LayerNorm(dim_in, eps=1e-5)
 
         self.projects = nn.ModuleList(
@@ -59,15 +67,36 @@ class DenseHead(nn.Module):
         self.scratch.refinenet3 = _make_fusion_block(features)
         self.scratch.refinenet4 = _make_fusion_block(features, has_residual=False)
 
-        self.proj = _make_prediction_head(
-            features,
-            self.final_shuffle_factor**2,
-        )
-        self.proj_conf = _make_prediction_head(
-            features,
-            self.final_shuffle_factor**2,
-        )
-        _init_small_conf_prediction_head(self.proj_conf)
+        if enable_depth:
+            self.proj = _make_prediction_head(
+                features,
+                self.final_shuffle_factor**2,
+            )
+            self.proj_conf = _make_prediction_head(
+                features,
+                self.final_shuffle_factor**2,
+            )
+            _init_small_conf_prediction_head(self.proj_conf)
+        else:
+            self.proj = None
+            self.proj_conf = None
+
+        self.point_proj = None
+        self.point_proj_conf = None
+        if enable_point:
+            self.point_proj = _make_prediction_head(features, 3 * self.final_shuffle_factor**2)
+            self.point_proj_conf = _make_prediction_head(features, self.final_shuffle_factor**2)
+            _init_small_conf_prediction_head(self.point_proj_conf)
+
+        self.cam_point_proj = None
+        self.cam_point_proj_conf = None
+        if enable_cam_point:
+            self.cam_point_proj = _make_prediction_head(features, 3 * self.final_shuffle_factor**2)
+            self.cam_point_proj_conf = _make_prediction_head(features, self.final_shuffle_factor**2)
+            _init_small_conf_prediction_head(self.cam_point_proj_conf)
+
+        if not (enable_depth or enable_point or enable_cam_point):
+            raise ValueError("DenseHead requires at least one enabled prediction branch")
 
     def forward(
         self,
@@ -75,7 +104,7 @@ class DenseHead(nn.Module):
         images: torch.Tensor,
         patch_token_start: int,
         frames_chunk_size: int | None = 8,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         if patch_token_start is None:
             raise ValueError("patch_token_start is required for DenseHead")
 
@@ -86,21 +115,20 @@ class DenseHead(nn.Module):
 
         assert frames_chunk_size > 0
 
-        depth_chunks = []
-        depth_conf_chunks = []
+        prediction_chunks: dict[str, list[torch.Tensor]] = {}
         for frames_start_idx in range(0, num_frames, frames_chunk_size):
             frames_end_idx = min(frames_start_idx + frames_chunk_size, num_frames)
-            depth_chunk, depth_conf_chunk = self._forward_impl(
+            chunk = self._forward_impl(
                 aggregated_tokens_list,
                 images,
                 patch_token_start,
                 frames_start_idx,
                 frames_end_idx,
             )
-            depth_chunks.append(depth_chunk)
-            depth_conf_chunks.append(depth_conf_chunk)
+            for key, value in chunk.items():
+                prediction_chunks.setdefault(key, []).append(value)
 
-        return torch.cat(depth_chunks, dim=1), torch.cat(depth_conf_chunks, dim=1)
+        return {key: torch.cat(value, dim=1) for key, value in prediction_chunks.items()}
 
     def _forward_impl(
         self,
@@ -109,7 +137,7 @@ class DenseHead(nn.Module):
         patch_token_start: int,
         frames_start_idx: int | None = None,
         frames_end_idx: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         if frames_start_idx is not None and frames_end_idx is not None:
             images = images[:, frames_start_idx:frames_end_idx].contiguous()
 
@@ -138,24 +166,80 @@ class DenseHead(nn.Module):
         fused = self.scratch_forward(multi_scale_features)
         fused = self._apply_pos_embed(fused, width, height)
 
-        depth_logits = self.proj(fused)
-        depth_logits = F.pixel_shuffle(depth_logits, self.final_shuffle_factor)
-        depth_logits = depth_logits.permute(0, 2, 3, 1)
+        predictions = {}
+        if self.enable_depth:
+            depth, depth_conf = self._predict_branch(
+                fused,
+                self.proj,
+                self.proj_conf,
+                batch_size,
+                num_frames,
+                activation="exp",
+            )
+            predictions["depth"] = depth
+            predictions["depth_conf"] = depth_conf
 
-        confidence_logits = self.proj_conf(fused)
+        if self.enable_point:
+            pts3d, pts3d_conf = self._predict_branch(
+                fused,
+                self.point_proj,
+                self.point_proj_conf,
+                batch_size,
+                num_frames,
+                activation="inv_log",
+            )
+            predictions["pts3d"] = pts3d
+            predictions["world_points_conf"] = pts3d_conf
+
+        if self.enable_cam_point:
+            pts3d_cam, pts3d_cam_conf = self._predict_branch(
+                fused,
+                self.cam_point_proj,
+                self.cam_point_proj_conf,
+                batch_size,
+                num_frames,
+                activation="inv_log",
+            )
+            predictions["pts3d_cam"] = pts3d_cam
+            predictions["cam_points_conf"] = pts3d_cam_conf
+
+        for key, value in predictions.items():
+            if value.dtype != torch.float32:
+                raise TypeError(f"DenseHead output {key} must be fp32, got {value.dtype}")
+
+        return predictions
+
+    def _predict_branch(
+        self,
+        fused: torch.Tensor,
+        value_proj: nn.Module,
+        conf_proj: nn.Module,
+        batch_size: int,
+        num_frames: int,
+        activation: str,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        value_logits = value_proj(fused)
+        value_logits = F.pixel_shuffle(value_logits, self.final_shuffle_factor)
+        value_logits = value_logits.permute(0, 2, 3, 1)
+
+        confidence_logits = conf_proj(fused)
         confidence_logits = F.pixel_shuffle(confidence_logits, self.final_shuffle_factor)
         confidence_logits = confidence_logits.permute(0, 2, 3, 1).squeeze(-1)
 
-        depth = torch.exp(depth_logits)
-        depth_conf = 1.0 + torch.exp(confidence_logits)
+        if activation == "exp":
+            values = torch.exp(value_logits)
+        elif activation == "inv_log":
+            values = _inverse_log_transform(value_logits)
+        else:
+            raise ValueError(f"Unknown dense branch activation: {activation}")
 
-        depth = depth.view(batch_size, num_frames, *depth.shape[1:])
-        depth_conf = depth_conf.view(batch_size, num_frames, *depth_conf.shape[1:])
+        if self.conf_logit_max is not None:
+            confidence_logits = confidence_logits.clamp(max=self.conf_logit_max)
+        confidence = 1.0 + torch.exp(confidence_logits)
 
-        if depth.dtype != torch.float32 or depth_conf.dtype != torch.float32:
-            raise TypeError(f"DenseHead outputs must be fp32, got depth={depth.dtype}, conf={depth_conf.dtype}")
-
-        return depth, depth_conf
+        values = values.view(batch_size, num_frames, *values.shape[1:])
+        confidence = confidence.view(batch_size, num_frames, *confidence.shape[1:])
+        return values, confidence
 
     def _apply_pos_embed(self, x: torch.Tensor, width: int, height: int, ratio: float = 0.1) -> torch.Tensor:
         patch_w = x.shape[-1]
@@ -205,6 +289,10 @@ def _make_dense_resize_layer(channels: int, resize_scale: float) -> nn.Module:
 
 def _make_prediction_head(in_channels: int, out_channels: int) -> nn.Module:
     return nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=True)
+
+
+def _inverse_log_transform(y: torch.Tensor) -> torch.Tensor:
+    return torch.sign(y) * torch.expm1(torch.abs(y))
 
 
 def _init_small_conf_prediction_head(proj: nn.Module) -> None:

@@ -14,22 +14,58 @@ from vggt_omega.models.heads import CameraHead, DenseHead, TextAlignmentHead
 
 
 class VGGTOmega(nn.Module):
-    """Minimal VGGT-Omega inference model for camera and depth prediction."""
+    """Minimal VGGT-Omega inference model for camera and dense prediction."""
 
     def __init__(
         self,
         patch_size: int = 16,
         embed_dim: int = 1024,
+        patch_embed: str | None = None,
+        depth: int = 24,
+        num_heads: int = 16,
+        mlp_ratio: float = 4.0,
+        num_register_tokens: int = 16,
+        register_attention_block_indices: list[int] = [2, 6, 9, 14, 20],
+        cached_layer_indices: tuple[int, ...] = (4, 11, 17, 23),
         enable_camera: bool = True,
+        enable_point: bool = False,
+        enable_cam_point: bool = False,
         enable_depth: bool = True,
         enable_alignment: bool = False,
+        rope_freq: int = 100,
+        first_cam: bool = True,
+        conf_logit_max: float | None = None,
     ) -> None:
         super().__init__()
 
-        self.aggregator = Aggregator(patch_size=patch_size, embed_dim=embed_dim)
+        self.aggregator = Aggregator(
+            patch_size=patch_size,
+            embed_dim=embed_dim,
+            patch_embed=patch_embed,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            num_register_tokens=num_register_tokens,
+            register_attention_block_indices=register_attention_block_indices,
+            cached_layer_indices=cached_layer_indices,
+            rope_freq=rope_freq,
+            first_cam=first_cam,
+        )
         _warn_if_rope_not_max(self.aggregator)
         self.camera_head = CameraHead(dim_in=2 * embed_dim) if enable_camera else None
-        self.dense_head = DenseHead(dim_in=2 * embed_dim, patch_size=patch_size) if enable_depth else None
+        self.dense_head = (
+            DenseHead(
+                dim_in=2 * embed_dim,
+                patch_size=patch_size,
+                intermediate_layer_idx=list(cached_layer_indices),
+                enable_depth=enable_depth,
+                enable_point=enable_point,
+                enable_cam_point=enable_cam_point,
+                conf_logit_max=conf_logit_max,
+            )
+            if enable_depth or enable_point or enable_cam_point
+            else None
+        )
         self.text_alignment_head = TextAlignmentHead(dim_in=2 * embed_dim) if enable_alignment else None
 
     def forward(self, images: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -55,13 +91,13 @@ class VGGTOmega(nn.Module):
                 )
 
             if self.dense_head is not None:
-                depth, depth_conf = self.dense_head(
-                    aggregated_tokens_list,
-                    images=images,
-                    patch_token_start=patch_token_start,
+                predictions.update(
+                    self.dense_head(
+                        aggregated_tokens_list,
+                        images=images,
+                        patch_token_start=patch_token_start,
+                    )
                 )
-                predictions["depth"] = depth
-                predictions["depth_conf"] = depth_conf
 
             if self.text_alignment_head is not None:
                 predictions.update(
@@ -79,6 +115,8 @@ class VGGTOmega(nn.Module):
 def _warn_if_rope_not_max(aggregator: nn.Module) -> None:
     for name, module in (("aggregator.patch_embed", aggregator.patch_embed), ("aggregator", aggregator)):
         rope_embed = getattr(module, "rope_embed", None)
+        if rope_embed is None:
+            continue
         normalize_coords = getattr(rope_embed, "normalize_coords", None)
         if normalize_coords != "max":
             warnings.warn(

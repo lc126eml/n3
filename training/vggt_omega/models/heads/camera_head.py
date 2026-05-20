@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vggt_omega.models.layers import SelfAttentionBlock
+from vggt_omega.models.layers import SelfAttentionBlock, init_masked_qkv_bias_buffers
 
 
 class CameraHead(nn.Module):
@@ -36,6 +36,7 @@ class CameraHead(nn.Module):
             ]
         )
         self.trunk_norm = nn.LayerNorm(dim_in, eps=1e-5)
+        init_masked_qkv_bias_buffers(self.trunk)
         self.camera_branch = nn.Sequential(
             nn.Linear(dim_in, dim_in // 2, bias=True),
             nn.GELU(),
