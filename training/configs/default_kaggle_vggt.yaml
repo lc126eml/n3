@@ -315,7 +315,7 @@ loss:
 
 
 optim:
-  val_freq: 5
+  val_freq: 1
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: false
@@ -435,10 +435,10 @@ model:
   embed_dim: 768
   depth: 12
   cached_layer_indices: [2, 5, 8, 11]
-  register_attention_block_indices: [2, 4, 7, 10]
+  register_attention_block_indices: [2, 4, 6, 8, 10]
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
-  rope_freq: -1
+  rope_freq: 100
   first_cam: true
 
 

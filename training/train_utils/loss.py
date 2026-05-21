@@ -329,6 +329,9 @@ def compute_camera_loss_one(
         gt_pose_encoding[valid_frame_mask],
         loss_type=loss_type,
         beta=beta,
+        compute_trans=weight_trans > 0,
+        compute_rot=weight_rot > 0,
+        compute_focal=weight_focal > 0,
     )
 
     # Compute the total weighted camera loss
@@ -346,7 +349,15 @@ def compute_camera_loss_one(
         "loss_FL": loss_FL,
     }
 
-def camera_loss_single(pred_pose_enc, gt_pose_enc, loss_type="l1", beta: float = 1.0):
+def camera_loss_single(
+    pred_pose_enc,
+    gt_pose_enc,
+    loss_type="l1",
+    beta: float = 1.0,
+    compute_trans=True,
+    compute_rot=True,
+    compute_focal=True,
+):
     """
     Computes translation, rotation, and focal loss for a batch of pose encodings.
     
@@ -394,15 +405,23 @@ def camera_loss_single(pred_pose_enc, gt_pose_enc, loss_type="l1", beta: float =
     else:
         raise ValueError(f"Unknown loss type: {loss_type}")
 
-    # Check/fix numerical issues (nan/inf) for each loss component
-    loss_T = check_and_fix_inf_nan(loss_T, "loss_T")
-    loss_R = check_and_fix_inf_nan(loss_R, "loss_R")
-    loss_FL = check_and_fix_inf_nan(loss_FL, "loss_FL")
+    zero = pred_pose_enc.new_zeros(())
 
-    # Clamp outlier translation loss to prevent instability, then average
-    loss_T = loss_T.clamp(max=100).mean()
-    loss_R = loss_R.mean()
-    loss_FL = loss_FL.mean()
+    # Check/fix numerical issues only for components that contribute to the loss.
+    if compute_trans:
+        loss_T = check_and_fix_inf_nan(loss_T, "loss_T").clamp(max=100).mean()
+    else:
+        loss_T = zero
+
+    if compute_rot:
+        loss_R = check_and_fix_inf_nan(loss_R, "loss_R").mean()
+    else:
+        loss_R = zero
+
+    if compute_focal:
+        loss_FL = check_and_fix_inf_nan(loss_FL, "loss_FL").mean()
+    else:
+        loss_FL = zero
 
     return loss_T, loss_R, loss_FL
 

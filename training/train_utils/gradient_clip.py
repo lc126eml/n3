@@ -26,6 +26,7 @@ class GradientClipper:
         self.configs = []
         self.params_to_clip_by_config = None
         self.is_initialized = False
+        self.found_nonfinite = False
         
         for config in configs:
             module_names = config['module_name']
@@ -95,19 +96,33 @@ class GradientClipper:
             raise RuntimeError("GradientClipper must be initialized with setup_clipping() before use")
         
         grad_norms = {}
+        self.found_nonfinite = False
         for config, params_to_clip in self.params_to_clip_by_config:
             if not params_to_clip or config['max_norm'] is None:
                 continue
 
-            grad_norm = nn.utils.clip_grad_norm_(
-                params_to_clip,
-                max_norm=config['max_norm'],
-                norm_type=config['norm_type']
-            )
+            group_name = ",".join(config['module_names'])
+            try:
+                grad_norm = nn.utils.clip_grad_norm_(
+                    params_to_clip,
+                    max_norm=config['max_norm'],
+                    norm_type=config['norm_type'],
+                    error_if_nonfinite=True,
+                )
+            except RuntimeError as exc:
+                logging.warning(
+                    "Nonfinite gradient norm for %s; skipping optimizer step. Error: %s",
+                    group_name,
+                    exc,
+                )
+                self.found_nonfinite = True
+                device = params_to_clip[0].device
+                grad_norms[group_name] = torch.tensor(float("nan"), device=device)
+                continue
 
             if grad_norm is None:
                 continue
             
-            grad_norms[",".join(config['module_names'])] = grad_norm.detach()
+            grad_norms[group_name] = grad_norm.detach()
 
         return grad_norms

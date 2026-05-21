@@ -1775,6 +1775,7 @@ class Trainer:
             #         batch = self._process_batch(batch)
 
             batch = copy_data_to_device(batch, self.device, non_blocking=True)
+            logging.debug(f"shape: {batch["img"].shape}")
 
             batch_size = batch["img"].shape[0]
             batch_img_shape = tuple(batch["img"].shape)
@@ -1845,6 +1846,7 @@ class Trainer:
                         )
 
                 # Clipping gradients and detecting diverging gradients
+                skip_optimizer_step = False
                 if self.gradient_clipper is not None:
                     for optim in self.optims:
                         self.scaler.unscale_(optim.optimizer)
@@ -1853,11 +1855,18 @@ class Trainer:
 
                     for key, grad_norm in grad_norm_dict.items():
                         loss_meters[f"Grad/{key}"].update(grad_norm)
+                    skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
-                # Optimizer step
-                for optim in self.optims:
-                    self.scaler.step(optim.optimizer)
-                self.scaler.update()
+                if skip_optimizer_step:
+                    logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
+                    self.scaler.update()
+                    for optim in self.optims:
+                        optim.zero_grad(set_to_none=True)
+                else:
+                    # Optimizer step
+                    for optim in self.optims:
+                        self.scaler.step(optim.optimizer)
+                    self.scaler.update()
             else:
                 accum_steps = self.accum_steps
                 should_step = ((data_iter + 1) % accum_steps == 0) or (data_iter + 1 == limit_train_batches)
@@ -1930,6 +1939,7 @@ class Trainer:
                                 self.steps[phase],
                             )
 
+                    skip_optimizer_step = False
                     if self.gradient_clipper is not None:
                         for optim in self.optims:
                             self.scaler.unscale_(optim.optimizer)
@@ -1938,10 +1948,15 @@ class Trainer:
 
                         for key, grad_norm in grad_norm_dict.items():
                             loss_meters[f"Grad/{key}"].update(grad_norm)
+                        skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
-                    for optim in self.optims:
-                        self.scaler.step(optim.optimizer)
-                    self.scaler.update()
+                    if skip_optimizer_step:
+                        logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
+                        self.scaler.update()
+                    else:
+                        for optim in self.optims:
+                            self.scaler.step(optim.optimizer)
+                        self.scaler.update()
                     for optim in self.optims:
                         optim.zero_grad(set_to_none=True)
 
