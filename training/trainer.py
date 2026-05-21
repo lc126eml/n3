@@ -1775,7 +1775,7 @@ class Trainer:
             #         batch = self._process_batch(batch)
 
             batch = copy_data_to_device(batch, self.device, non_blocking=True)
-            logging.debug(f"shape: {batch["img"].shape}")
+            # logging.debug(f"data_iter shape: {batch["img"].shape}")
 
             batch_size = batch["img"].shape[0]
             batch_img_shape = tuple(batch["img"].shape)
@@ -1860,13 +1860,13 @@ class Trainer:
                 if skip_optimizer_step:
                     logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
                     self.scaler.update()
-                    for optim in self.optims:
-                        optim.zero_grad(set_to_none=True)
+                    self._clear_optimizer_step_memory()
                 else:
                     # Optimizer step
                     for optim in self.optims:
                         self.scaler.step(optim.optimizer)
                     self.scaler.update()
+                    self._clear_optimizer_step_memory()
             else:
                 accum_steps = self.accum_steps
                 should_step = ((data_iter + 1) % accum_steps == 0) or (data_iter + 1 == limit_train_batches)
@@ -1957,8 +1957,7 @@ class Trainer:
                         for optim in self.optims:
                             self.scaler.step(optim.optimizer)
                         self.scaler.update()
-                    for optim in self.optims:
-                        optim.zero_grad(set_to_none=True)
+                    self._clear_optimizer_step_memory()
 
             # Measure elapsed time
             batch_time.update(time.time() - end)
@@ -1979,6 +1978,14 @@ class Trainer:
             torch.cuda.empty_cache()
 
         return True
+
+
+
+    def _clear_optimizer_step_memory(self) -> None:
+        for optim in self.optims:
+            optim.zero_grad(set_to_none=True)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 

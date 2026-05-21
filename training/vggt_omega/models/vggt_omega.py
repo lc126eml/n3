@@ -35,6 +35,7 @@ class VGGTOmega(nn.Module):
         rope_freq: int = 100,
         first_cam: bool = True,
         conf_logit_max: float | None = None,
+        dpt_frames_chunk_size: int | None = 8,
     ) -> None:
         super().__init__()
 
@@ -67,6 +68,7 @@ class VGGTOmega(nn.Module):
             else None
         )
         self.text_alignment_head = TextAlignmentHead(dim_in=2 * embed_dim) if enable_alignment else None
+        self.dpt_frames_chunk_size = dpt_frames_chunk_size
 
     def forward(self, images: torch.Tensor) -> dict[str, torch.Tensor]:
         if len(images.shape) == 4:
@@ -96,6 +98,7 @@ class VGGTOmega(nn.Module):
                         aggregated_tokens_list,
                         images=images,
                         patch_token_start=patch_token_start,
+                        frames_chunk_size=self.dpt_frames_chunk_size,
                     )
                 )
 

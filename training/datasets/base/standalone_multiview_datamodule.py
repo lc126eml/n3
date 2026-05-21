@@ -96,6 +96,7 @@ class StandaloneMultiViewDataModule:
             seed=self.seed,
             accum_steps=self.train_config.get("accum_steps", self.accum_steps),
             debug_enumerate_batches=self.train_config.get("debug_enumerate_batches", False),
+            resolution_cost_power=self.train_config.get("resolution_cost_power", 1.0),
             persistent_workers=self.persistent_workers,
             prefetch_factor=self.prefetch_factor,
         )

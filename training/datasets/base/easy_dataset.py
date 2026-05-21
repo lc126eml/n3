@@ -67,6 +67,7 @@ class EasyDataset:
         seed=None,
         accum_steps=1,
         debug_enumerate_batches=False,
+        resolution_cost_power=1.0,
     ):
         """
         Creates and returns a DynamicResolutionSampler which acts as a batch sampler.
@@ -93,6 +94,7 @@ class EasyDataset:
             min_view_size=min_views,
             max_view_size=max_views,
             accum_steps=accum_steps,
+            resolution_cost_power=resolution_cost_power,
             debug_enumerate_batches=debug_enumerate_batches,
             drop_last=drop_last,
             world_size=world_size,

@@ -55,6 +55,7 @@ def get_data_loader(
     seed=None,
     accum_steps=1,
     debug_enumerate_batches=False,
+    resolution_cost_power=1.0,
 ):
     import torch
 
@@ -72,6 +73,7 @@ def get_data_loader(
             seed=seed,
             accum_steps=accum_steps,
             debug_enumerate_batches=debug_enumerate_batches,
+            resolution_cost_power=resolution_cost_power,
         )
         dataset.seed = seed
         shuffle = False

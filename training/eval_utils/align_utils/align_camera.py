@@ -96,7 +96,7 @@ def align_camera_and_points_batch_ext(
     if world_points is not None:
         pts_shape = world_points.shape
         B = pts_shape[0]
-        pts_reshaped = world_points.view(B, -1, 3)
+        pts_reshaped = world_points.reshape(B, -1, 3)
         
         ones = torch.ones((B, pts_reshaped.shape[1], 1), device=world_points.device, dtype=world_points.dtype)
         world_points_homog = torch.cat([pts_reshaped, ones], dim=-1)

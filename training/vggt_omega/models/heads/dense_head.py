@@ -237,8 +237,8 @@ class DenseHead(nn.Module):
             confidence_logits = confidence_logits.clamp(max=self.conf_logit_max)
         confidence = 1.0 + torch.exp(confidence_logits)
 
-        values = values.view(batch_size, num_frames, *values.shape[1:])
-        confidence = confidence.view(batch_size, num_frames, *confidence.shape[1:])
+        values = values.view(batch_size, num_frames, *values.shape[1:]).contiguous()
+        confidence = confidence.view(batch_size, num_frames, *confidence.shape[1:]).contiguous()
         return values, confidence
 
     def _apply_pos_embed(self, x: torch.Tensor, width: int, height: int, ratio: float = 0.1) -> torch.Tensor:

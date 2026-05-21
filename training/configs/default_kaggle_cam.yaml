@@ -384,7 +384,6 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "dense_head.*"
-      
 
 
   amp:
@@ -422,36 +421,25 @@ optim:
 
 
 model:
-  _target_: vggt.models.vggt.VGGT
-  conf_logit_max:
-  enable_camera: true
+  _target_: vggt_omega.models.vggt_omega.VGGTOmega
+  conf_logit_max: null
+  enable_camera: True
   enable_depth: false
-  enable_point: true
-  enable_cam_point: false
-  enable_track: false
-  embed_dim: 768
-  depth: 12
-  num_heads: 16
-  mlp_ratio: 4.0
-  num_register_tokens: 4
-  qkv_bias: true
-  proj_bias: true
-  ffn_bias: true
-  # patch_embed: "dinov2_vitl14_reg"
-  # patch_embed: "/lc/code/pretrained/dinov3/vitl16" 
+  enable_point: True
+  enable_cam_point: False
+  # VGGTOmega constructor defaults are intentionally left in the model code.
+  # Override only the values needed for an experiment, e.g.:
   patch_embed: "/kaggle/input/datasets/sinayliu/dino-ds/vitb16"
   patch_size: 16
+  embed_dim: 768
+  depth: 12
+  cached_layer_indices: [2, 5, 8, 11]
+  register_attention_block_indices: [2, 4, 6, 8, 10]
   dpt_frames_chunk_size: 8
-  aa_order: ["frame", "global"]
-  aa_block_size: 1
-  qk_norm: true
-  # rope_freq: 100
+  # register_attention_block_indices: [2, 6, 9, 14, 20]
+  # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1
-  init_values: 0.01
   first_cam: false
-  intermediate_layer_idx: [2, 5, 8, 11]
-  pose_encoding_type: *pose_encoding_type
-  # intermediate_layer_idx: [4, 11, 17, 23]
 
 
 distributed:

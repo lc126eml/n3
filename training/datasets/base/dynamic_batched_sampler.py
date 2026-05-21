@@ -54,6 +54,7 @@ class DynamicResolutionSampler(BatchSampler):
         cost_batch_mode: str = "micro",
         patch_size: int = 16,
         cost_mode: str = "vit_tokens",
+        resolution_cost_power: float = 1.13,
         debug_enumerate_batches: bool = True,
         drop_last: bool = True,
         world_size: int = 1,
@@ -73,6 +74,7 @@ class DynamicResolutionSampler(BatchSampler):
         self.cost_batch_mode = str(cost_batch_mode)
         self.patch_size = int(patch_size)
         self.cost_mode = str(cost_mode)
+        self.resolution_cost_power = float(resolution_cost_power)
         self.debug_enumerate_batches = bool(debug_enumerate_batches)
         self.drop_last = drop_last
         self.world_size = world_size
@@ -81,6 +83,8 @@ class DynamicResolutionSampler(BatchSampler):
             raise ValueError("patch_size must be > 0")
         if self.accum_steps <= 0:
             raise ValueError("accum_steps must be > 0")
+        if self.resolution_cost_power <= 0:
+            raise ValueError("resolution_cost_power must be > 0")
         valid_batch_modes = {"micro", "global"}
         if self.cost_batch_mode not in valid_batch_modes:
             raise ValueError(
@@ -100,6 +104,7 @@ class DynamicResolutionSampler(BatchSampler):
         # Calculate the target batch cost used to determine dynamic batch sizes.
         base_res_h, base_res_w = self.resolutions[0]
         self._base_tokens = self._num_tokens(base_res_h, base_res_w)
+        self._base_raw_resolution_cost = self._raw_resolution_cost(base_res_h, base_res_w)
         base_batch_for_cost = (
             math.ceil(self.base_batch_size / self.accum_steps)
             if self.cost_batch_mode == "micro"
@@ -112,12 +117,12 @@ class DynamicResolutionSampler(BatchSampler):
         )
         self._base_target_batch_cost = float(self.target_batch_cost)
         self._target_batch_cost_discount = 1.0
-        # Per-resolution view cap uses a less conservative linear-token proxy.
-        # This better matches observed memory envelopes than mixed quadratic cost.
+        # Use the same resolution cost proxy as batch sizing, so a super-linear
+        # power can exclude high resolutions that cannot fit the minimum views.
         self._target_cap_cost = (
             base_batch_for_cost
             * self.min_view_size
-            * float(self._num_tokens(base_res_h, base_res_w))
+            * self._resolution_cost(base_res_h, base_res_w)
         )
         self._base_target_cap_cost = float(self._target_cap_cost)
         self._resolution_view_max = self._build_resolution_view_max_cache()
@@ -138,7 +143,7 @@ class DynamicResolutionSampler(BatchSampler):
     def _num_tokens(self, h: int, w: int) -> int:
         return math.ceil(h / self.patch_size) * math.ceil(w / self.patch_size)
 
-    def _resolution_cost(self, h: int, w: int) -> float:
+    def _raw_resolution_cost(self, h: int, w: int) -> float:
         if self.cost_mode == "pixels":
             return float(h * w)
 
@@ -153,10 +158,18 @@ class DynamicResolutionSampler(BatchSampler):
             return n + (n * n) / max(1.0, float(self._base_tokens))
         raise RuntimeError(f"Unhandled cost_mode: {self.cost_mode}")
 
+    def _resolution_cost(self, h: int, w: int) -> float:
+        raw_cost = self._raw_resolution_cost(h, w)
+        if self.resolution_cost_power == 1.0:
+            return raw_cost
+
+        base_cost = max(1.0, float(self._base_raw_resolution_cost))
+        return base_cost * ((raw_cost / base_cost) ** self.resolution_cost_power)
+
     def _build_resolution_view_max_cache(self) -> List[int]:
         resolution_view_max: List[int] = []
         for res_h, res_w in self.resolutions:
-            res_cost = float(self._num_tokens(res_h, res_w))
+            res_cost = self._resolution_cost(res_h, res_w)
             # Upper-bound view count so each sampled pair is at least batch_size >= 1
             # under the configured cost proxy.
             max_view_for_resolution = min(
