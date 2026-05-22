@@ -12,7 +12,7 @@ simple:
   - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: []
-  - data.data_module.train_config.batch_size: 40
+  - data.data_module.train_config.batch_size: 43
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 15
   - optim.warmup_batch_cost_discount: 0.55

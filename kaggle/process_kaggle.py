@@ -21,6 +21,7 @@ _ROUNDTRIP_YAML.preserve_quotes = True
 _ROUNDTRIP_YAML.width = 4096
 _LAUNCH_OVERRIDE_BEGIN = "# BEGIN_KAGGLE_RUNTIME_OVERRIDES"
 _LAUNCH_OVERRIDE_END = "# END_KAGGLE_RUNTIME_OVERRIDES"
+_DEFAULT_N3_GITHUB_ZIP_URL = "https://github.com/lc126eml/n3/archive/refs/heads/master.zip"
 
 
 def _load_yaml(path: Path):
@@ -475,6 +476,55 @@ def _launch_py_path(cfg: dict | None = None) -> Path:
     return (BASE_DIR.parent / "training" / _launch_script_name(cfg)).resolve()
 
 
+def _training_config_path(config_name: str) -> Path:
+    return (BASE_DIR.parent / "training" / "configs" / Path(*str(config_name).split("/"))).with_suffix(".yaml").resolve()
+
+
+def _training_config_value(config_name: str, key: str):
+    path = _training_config_path(config_name)
+    data = _load_yaml_roundtrip(path)
+    if not isinstance(data, dict):
+        return None
+    return data.get(key)
+
+
+def _resolve_n3_github_zip_url(cfg: dict) -> str:
+    value = cfg.get("n3_github_zip_url")
+    if value in (None, ""):
+        config_name = _build_runtime_config_name(cfg) or "default_kaggle"
+        value = _training_config_value(config_name, "n3_github_zip_url")
+    if value in (None, ""):
+        value = _training_config_value("default_kaggle", "n3_github_zip_url")
+    if value in (None, ""):
+        value = _DEFAULT_N3_GITHUB_ZIP_URL
+    return str(value).strip() or _DEFAULT_N3_GITHUB_ZIP_URL
+
+
+def _apply_n3_github_zip_url_to_launch_py(
+    cfg: dict,
+    *,
+    write: bool = True,
+) -> tuple[Path, list[tuple[str, object, object]]] | None:
+    path = _launch_py_path(cfg)
+    text = path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'''(?m)^(_N3_GITHUB_ZIP_URL\s*=\s*)((?:"[^"]*"|'[^']*'))\s*$'''
+    )
+    match = pattern.search(text)
+    if not match:
+        raise ValueError(f"_N3_GITHUB_ZIP_URL assignment not found in {path}")
+
+    old_url = ast.literal_eval(match.group(2))
+    new_url = _resolve_n3_github_zip_url(cfg)
+    if old_url == new_url:
+        return None
+
+    replacement = f"{match.group(1)}{new_url!r}"
+    if write:
+        path.write_text(pattern.sub(replacement, text, count=1), encoding="utf-8")
+    return path, [("n3_github_zip_url", old_url, new_url)]
+
+
 def _load_launch_runtime_overrides(
     launch_py_path: Path | None = None,
 ) -> tuple[Path, str | None, dict[str, object], str]:
@@ -896,6 +946,7 @@ def main():
         raise ValueError("config.yaml requires 'id' (Kaggle owner id), or use --add-running-node with config_kernel.yaml.available_ids")
 
     write_files = bool(args.run)
+    n3_github_zip_url_result = _apply_n3_github_zip_url_to_launch_py(cfg, write=write_files)
     runtime_override_result = _apply_runtime_overrides_to_launch_py(cfg, write=write_files)
     meta = _update_metadata(cfg, write=write_files)
 
@@ -918,6 +969,11 @@ def main():
                     )
                 )
             print(f"{'Updated' if write_files else 'Would update'} {BASE_DIR / 'kernel-metadata.json'}")
+            if n3_github_zip_url_result:
+                launch_path, updates = n3_github_zip_url_result
+                print(f"{'Updated' if write_files else 'Would update'} {launch_path}")
+                for key, old_value, new_value in updates:
+                    print(f"  {key}: {_format_change_value(old_value)} -> {_format_change_value(new_value)}")
             if runtime_override_result:
                 for launch_path, updates in runtime_override_result:
                     print(f"{'Updated' if write_files else 'Would update'} {launch_path}")

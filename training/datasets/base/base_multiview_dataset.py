@@ -76,6 +76,9 @@ class BaseMultiViewDataset(EasyDataset):
         ), "nneg should be 0 if n_corres is all"
 
         self.transform = transforms.ToTensor()
+        self.image_aug = None
+        self.cojitter = False
+        self.cojitter_ratio = 0.0
         self.aug_crop = 0
         self.set_augs(augs, transform)
         self.seed = seed
@@ -87,6 +90,8 @@ class BaseMultiViewDataset(EasyDataset):
         """Dynamically set augmentations after instantiation."""
         if augs:
             self.augs = augs
+            self.cojitter = bool(augs.get("cojitter", False))
+            self.cojitter_ratio = float(augs.get("cojitter_ratio", 0.0))
             self.prot=augs.get("prot", 0.5)
             self.pcrop=augs.get("pcrop", 0.95)
             if "aug_crop" in augs:
@@ -102,12 +107,20 @@ class BaseMultiViewDataset(EasyDataset):
             )
             if transform is not None:
                 # This assumes torchvision.transforms.Compose is available
-                self.transform = transforms.Compose([self.image_aug, transform])
+                self.transform = transform
             else:
-                self.transform = transforms.Compose([self.image_aug, transforms.ToTensor()])
+                self.transform = transforms.ToTensor()
         elif transform is not None:
+            self.augs = None
+            self.image_aug = None
+            self.cojitter = False
+            self.cojitter_ratio = 0.0
             self.transform = transform
         else:
+            self.augs = None
+            self.image_aug = None
+            self.cojitter = False
+            self.cojitter_ratio = 0.0
             self.transform = transforms.ToTensor()
             
     def set_resolutions(self, resolutions):
@@ -575,6 +588,12 @@ class BaseMultiViewDataset(EasyDataset):
             views["pts3d"].append(pts3d)
             views["pts3d_cam"].append(pts3d_cam)
             views["valid_mask"].append(valid_mask & np.isfinite(pts3d).all(axis=-1))
+
+        if self.split == "train" and self.image_aug is not None:
+            if self.cojitter and random.random() > self.cojitter_ratio:
+                views["img"] = list(self.image_aug(torch.stack(views["img"], dim=0)))
+            else:
+                views["img"] = [self.image_aug(img) for img in views["img"]]
 
         for key, val_list in views.items():
             for v, val in enumerate(val_list):

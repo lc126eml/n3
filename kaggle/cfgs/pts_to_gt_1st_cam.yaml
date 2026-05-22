@@ -4,7 +4,7 @@ config_name: default_kaggle
 # desc: pred_center_gt2pr
 # desc: center_world
 # desc: first_cam
-desc: pts_align_to_gt_1st_cam_1ratio
+desc: pts_align_to_gt_1st_cam
 # desc: gt_align_to_pts
 # desc_keys: ["lr"]
 run_id: 0
@@ -16,7 +16,7 @@ simple:
   - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: [total_run_time_hr]
-  - data.data_module.train_config.batch_size: 40
+  - data.data_module.train_config.batch_size: 43
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 20
   - optim.warmup_batch_cost_discount: 0.55

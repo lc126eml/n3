@@ -2,26 +2,25 @@ id:
 config_name: default_kaggle_vggt
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
-desc: first_cam_vggt
+desc: first_cam_vggt_cojitter
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 10
 seed: 42
 simple:
-  - total_run_time_hr: 11.
+  - total_run_time_hr: 10.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
+  - logging.log_freq: 1
   - checkpoint.resume_config_skip_keys: []
-  - data.data_module.train_config.batch_size: 40
+  - data.data_module.train_config.batch_size: 43
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 20
   - optim.warmup_batch_cost_discount: 0.55
-  - optim.gradient_clip.configs.0.max_norm: 1.0
-  # - optim.gradient_clip.configs.1.max_norm: 1.0
-  # - optim.gradient_clip.configs.2.max_norm: 1.0
-  # - optim.gradient_clip.configs.3.max_norm: 1.0
-  - optim.gradient_clip.configs.4.max_norm: 5.0
+  ##- optim.gradient_clip.configs.0.max_norm: 1.0
+  # #- optim.gradient_clip.configs.1.max_norm: 1.0
+  # #- optim.gradient_clip.configs.2.max_norm: 1.0
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
   - optim.lr_multipliers.0.ratio: 0.01
