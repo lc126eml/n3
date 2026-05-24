@@ -122,6 +122,13 @@ class BaseMultiViewDataset(EasyDataset):
             self.cojitter = False
             self.cojitter_ratio = 0.0
             self.transform = transforms.ToTensor()
+        
+        if self.augs is not None:
+            self.aspect_ratio_range = self.augs.get("aspects", [1.0, 1.5])
+            self.max_scale = self.augs.get("max_scale", 1.2)
+        else:
+            self.aspect_ratio_range = [1.0, 1.5]
+            self.max_scale = 1.2
             
     def set_resolutions(self, resolutions):
         """Dynamically set resolutions after instantiation."""
@@ -714,12 +721,8 @@ class BaseMultiViewDataset(EasyDataset):
             image = PIL.Image.fromarray(image)
 
         if rng.random() < pcrop:
-            if self.augs is not None:
-                aspect_ratio_range = self.augs.get("aspects", [1.0, 1.5])
-            else:
-                aspect_ratio_range = [1.0, 1.5]
             image, depthmap, intrinsics = random_crop(
-                image, depthmap, intrinsics, target_size=resolution, aspect_ratio_range=aspect_ratio_range, rng=rng
+                image, depthmap, intrinsics, target_size=resolution, aspect_ratio_range=self.aspect_ratio_range, max_scale=self.max_scale, rng=rng
             )            
         elif self.aug_crop > 1:
                 target_resolution += (

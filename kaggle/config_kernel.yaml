@@ -1,13 +1,32 @@
 available_ids:
+- cdong121
+- cfy002
+- cheaterchow
+- chencaihonga
+- chengchi1007
+- chenhao1213
+- chuasiliu
+- cshlhs
 - cycyxcy
-- fanhuayang
+- dddd110
+- djiangjiang
+- dusi605
+- fzzy123
 - geminiyy
-- gorgeous0912
+- houwen
+- hysz0821
+- jacksisi
+- jcy666
 - jiangshuai0210
 - jinzhanbo
+- jiwei313
 - jjjerry12138
+- jokerking1
+- jufuchao
+- kanwenbin
+- keyongkk
 - lemonlaila
-- luanjing
+- liucong12601
 - ly1122
 - maoshuwen0415
 - miratowa1
@@ -15,155 +34,314 @@ available_ids:
 - permanentlove
 - phoenixcsw01
 - pycjn666
-- robinrainy
-- roseqw
-- rrrrmm
+- qqmail4092
+- quepimao
+- rmoope
+- rqmiraitowa
 - rushly
+- smartchaochao
 - srmmmm
 - sss45633
+- ssss7777
 - straghtwizard
+- tangjiayuan1004
 - tangjudge
 - tangyujie123
-- tianxianglii
-- ttzyty
+- top1pcl
 - uamadeus
 - wenyangtang
 - wzywzy1227
+- xpeng01
+- xulin5522
+- xwj66666
+- xx03071425
 - yangjiamin
-- yccwff
+- yinmengmeng
+- ywhicher
+- yyyyjay
 - zhangtingfengztf
 - zhaotianchi
+- zhikaiwang
 - zhoujiahui0199
 - zhuangminghui
 - zhuxinchen07
-- ycy1n66
-- xx03071425
-- cfy002
-- cheaterchow
-- qinghui9527
-- xuwenhui123
-- hysz0821
-- xulin5522
-- asdsad0000
-- xulijuan
-- eastwangwei
-- asssmer
-- autune
-- zhuzichen123
-- b201xiaoli
-- chencaihonga
-- cdong121
-- chenhao1213
-- du55148
 - zongjiaxin
-- chengchi1007
-- yinmengmeng
-- ywhicher
-- quepimao
-- liucong12601
-- smartchaochao
-- djiangjiang
-- rmoope
-- tangjiayuan1004
-- xiaoluoalice
-- yuanhahah
-- sollasi
-- gloden613
-- xwj66666
-- qqmail4092
-- qcx2333
-- xpeng01
-- sinayliu
-- chuasiliu
-- cq1234
-- cshlhs
-- chenrunze11
-- jokerking1
-- kezzymik
-- jufuchao
-- zzr123123
-- houwen
-- yyyyjay
-- fzzy123
-- jiwei313
-- kanwenbin
-- yangyangchengcheng
-- dddd110
-- jcy666
-- hsdfuieqg
-- zjl001
-- liucong126
-- ssss7777
-- keyongkk
-- starysinger
-- dusi605
-- jacksisi
-- zhikaiwang
-- denghaimeng
-- elong1202
-- huoqiuxia
 exhausted_ids:
+- rrrrmm
+- du55148
+- huoqiuxia
+- tianxianglii
+- ttzyty
+- fanhuayang
+- liucong126
+- roseqw
+- linyunlk243
+- sollasi
+- yuanhahah
+- kezzymik
+- xiaoluoalice
+- gorgeous0912
+- xulijuan
+- hsdfuieqg
+- qinghui9527
+- zzr123123
+- asdsad0000
+- autune
+- yccwff
+- asssmer
+- qcx2333
+- xuwenhui123
+- eastwangwei
+- yangyangchengcheng
+- gloden613
 sleep_time_hr: 0
 poll_interval_minutes: 10
 running_nodes:
-- id: linyunlk243
+- id: luanjing
   notebooks:
-  - kernel_id: linyunlk243/pred-center-gt2pr-notrans-r9-42
-    run_id: 9
+  - kernel_id: luanjing/center-world-pts-r7-42
+    run_id: 7
     total_runs: 10
-    start_time: '2026-05-12 07:55:15'
-    resumed_from: linyunlk243/pred-center-gt2pr-notrans-r8-42
+    start_time: '2026-05-25 08:28:24'
+    resumed_from: luanjing/center-world-pts-r6-42
     history_ids:
-    - sinayliu/pred-center-gt2pr-notrans-r0-42
-    - jokerking1/pred-center-gt2pr-notrans-r1-42
-    - jokerking1/pred-center-gt2pr-notrans-r2-42
-    - fzzy123/pred-center-gt2pr-notrans-r3-42
-    - jcy666/pred-center-gt2pr-notrans-r4-42
-    - jcy666/pred-center-gt2pr-notrans-r5-42
-    - dusi605/pred-center-gt2pr-notrans-r6-42
-    - dusi605/pred-center-gt2pr-notrans-r7-42
-  left_time: 6.271268450277777
-- id: rqmiraitowa
+    - chenrunze11/center-world-pts-r0-42
+    - chenrunze11/center-world-pts-r1-42
+    - rrrrmm/center-world-pts-r2-42
+    - rrrrmm/center-world-pts-r3-42
+    - hsdfuieqg/center-world-pts-r4-42
+    - hsdfuieqg/center-world-pts-r5-42
+  - kernel_id: luanjing/center-world-gt-pts-r6-42
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-05-25 08:46:17'
+    resumed_from: gloden613/center-world-gt-pts-r5-42
+    history_ids:
+    - chenhao1213/center-world-gt-pts-r0-42
+    - chenhao1213/center-world-gt-pts-r1-42
+    - sollasi/center-world-gt-pts-r2-42
+    - sollasi/center-world-gt-pts-r3-42
+    - gloden613/center-world-gt-pts-r4-42
+  left_time: 6.236461102777778
+- id: zhuzichen123
   notebooks:
-  - kernel_id: rqmiraitowa/pred-center-pr2gt-r5-42
-    run_id: 5
+  - kernel_id: zhuzichen123/gt-align-to-pts-normpr-r7-42
+    run_id: 7
     total_runs: 10
-    start_time: '2026-05-12 07:55:36'
-    resumed_from: rqmiraitowa/pred-center-pr2gt-r4-42
+    start_time: '2026-05-25 07:25:51'
+    resumed_from: asssmer/gt-align-to-pts-normpr-r6-42
     history_ids:
-    - xpeng01/pred-center-pr2gt-r0-42
-    - zzr123123/pred-center-pr2gt-r1-42
-    - jacksisi/pred-center-pr2gt-r2-42
-    - jacksisi/pred-center-pr2gt-r3-42
-  left_time: 6.2755401752777775
-- id: top1pcl
+    - cq1234/gt-align-to-pts-normpr-r0-42
+    - cq1234/gt-align-to-pts-normpr-r1-42
+    - tianxianglii/gt-align-to-pts-normpr-r2-42
+    - tianxianglii/gt-align-to-pts-normpr-r3-42
+    - tianxianglii/gt-align-to-pts-normpr-r4-42
+    - asssmer/gt-align-to-pts-normpr-r5-42
+  left_time: 18.30548018611111
+- id: elong1202
   notebooks:
-  - kernel_id: top1pcl/gt-align-to-pts-1st-cam-r8-42
-    run_id: 8
+  left_time: 30.0
+- id: sinayliu
+  notebooks:
+  - kernel_id: sinayliu/pred-center-pr2gt-1ratio-r7-42
+    run_id: 7
     total_runs: 10
-    start_time: '2026-05-12 07:54:45'
-    resumed_from: elong1202/gt-align-to-pts-1st-cam-r7-42
+    start_time: '2026-05-25 07:26:42'
+    resumed_from: qcx2333/pred-center-pr2gt-1ratio-r6-42
     history_ids:
-    - chuasiliu/gt-align-to-pts-1st-cam-r0-42
-    - chuasiliu/gt-align-to-pts-1st-cam-r1-42
-    - zjl001/gt-align-to-pts-1st-cam-r2-42
-    - zjl001/gt-align-to-pts-1st-cam-r3-42
-    - keyongkk/gt-align-to-pts-1st-cam-r4-42
-    - keyongkk/gt-align-to-pts-1st-cam-r5-42
-    - elong1202/gt-align-to-pts-1st-cam-r6-42
-  - kernel_id: top1pcl/pts-align-to-gt-normpr-r9-42
-    run_id: 9
+    - cycyxcy/pred-center-pr2gt-1ratio-r0-42
+    - cycyxcy/pred-center-pr2gt-1ratio-r1-42
+    - liucong126/pred-center-pr2gt-1ratio-r2-42
+    - liucong126/pred-center-pr2gt-1ratio-r3-42
+    - liucong126/pred-center-pr2gt-1ratio-r4-42
+    - qcx2333/pred-center-pr2gt-1ratio-r5-42
+  - kernel_id: sinayliu/pts-align-to-gt-normpr43-r7-42
+    run_id: 7
     total_runs: 10
-    start_time: '2026-05-12 07:54:55'
-    resumed_from: elong1202/pts-align-to-gt-normpr-r8-42
+    start_time: '2026-05-25 07:27:05'
+    resumed_from: yccwff/pts-align-to-gt-normpr43-r6-42
     history_ids:
-    - chenrunze11/pts-align-to-gt-normpr-r0-42
-    - chenrunze11/pts-align-to-gt-normpr-r1-42
-    - yyyyjay/pts-align-to-gt-normpr-r2-42
-    - yyyyjay/pts-align-to-gt-normpr-r3-42
-    - dddd110/pts-align-to-gt-normpr-r4-42
-    - keyongkk/pts-align-to-gt-normpr-r5-42
-    - keyongkk/pts-align-to-gt-normpr-r6-42
-    - elong1202/pts-align-to-gt-normpr-r7-42
+    - denghaimeng/pts-align-to-gt-normpr43-r0-42
+    - denghaimeng/pts-align-to-gt-normpr43-r1-42
+    - linyunlk243/pts-align-to-gt-normpr43-r2-42
+    - linyunlk243/pts-align-to-gt-normpr43-r3-42
+    - linyunlk243/pts-align-to-gt-normpr43-r4-42
+    - yccwff/pts-align-to-gt-normpr43-r5-42
+  left_time: 30.0
+- id: chenrunze11
+  notebooks:
+  - kernel_id: chenrunze11/first-cam-vggt-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 07:27:21'
+    resumed_from: gloden613/first-cam-vggt-r6-42
+    history_ids:
+    - liucong12601/first-cam-vggt-r0-42
+    - geminiyy/first-cam-vggt-r1-42
+    - geminiyy/first-cam-vggt-r2-42
+    - kezzymik/first-cam-vggt-r3-42
+    - kezzymik/first-cam-vggt-r4-42
+    - gloden613/first-cam-vggt-r5-42
+  - kernel_id: chenrunze11/pts-align-to-gt-normpr43-r6-42
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-05-25 07:27:32'
+    resumed_from: xuwenhui123/pts-align-to-gt-normpr43-r5-42
+    history_ids:
+    - du55148/pts-align-to-gt-normpr43-r0-42
+    - du55148/pts-align-to-gt-normpr43-r1-42
+    - xiaoluoalice/pts-align-to-gt-normpr43-r2-42
+    - xiaoluoalice/pts-align-to-gt-normpr43-r3-42
+    - xuwenhui123/pts-align-to-gt-normpr43-r4-42
+  left_time: 30.0
+- id: cq1234
+  notebooks:
+  - kernel_id: cq1234/pts-align-to-gt-crop-ep5-r1-42
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-05-25 07:27:58'
+    resumed_from: asdsad0000/pts-align-to-gt-crop-ep5-r0-42
+    history_ids: []
+  - kernel_id: cq1234/pts-align-to-gt-crop-ep10-r1-42
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-05-25 07:28:10'
+    resumed_from: asdsad0000/pts-align-to-gt-crop-ep10-r0-42
+    history_ids: []
+  left_time: 30.0
+- id: starysinger
+  notebooks:
+  - kernel_id: starysinger/pts-align-to-gt-crop-ep15-r1-42
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-05-25 07:28:21'
+    resumed_from: autune/pts-align-to-gt-crop-ep15-r0-42
+    history_ids: []
+  - kernel_id: starysinger/pts-align-to-gt-crop-ep20-r1-42
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-05-25 07:28:32'
+    resumed_from: autune/pts-align-to-gt-crop-ep20-r0-42
+    history_ids: []
+  left_time: 30.0
+- id: b201xiaoli
+  left_time: 30.0
+  notebooks:
+  - kernel_id: b201xiaoli/pts-align-to-gt-crop2-ep20-r0-42
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-05-25 07:42:21'
+    resumed_from: null
+    history_ids: []
+  - kernel_id: b201xiaoli/pts-align-to-gt-crop2-ep15-r0-42
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-05-25 07:42:42'
+    resumed_from: null
+    history_ids: []
+- id: denghaimeng
+  notebooks:
+  - kernel_id: denghaimeng/gt-align-to-pts-1st-cam-lr05-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 07:43:03'
+    resumed_from: yccwff/gt-align-to-pts-1st-cam-lr05-r6-42
+    history_ids:
+    - chengchi1007/gt-align-to-pts-1st-cam-lr05-r0-42
+    - chengchi1007/gt-align-to-pts-1st-cam-lr05-r1-42
+    - linyunlk243/gt-align-to-pts-1st-cam-lr05-r2-42
+    - linyunlk243/gt-align-to-pts-1st-cam-lr05-r3-42
+    - linyunlk243/gt-align-to-pts-1st-cam-lr05-r4-42
+    - yccwff/gt-align-to-pts-1st-cam-lr05-r5-42
+  - kernel_id: denghaimeng/gt-align-to-pts-1st-cam-point1-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 07:43:18'
+    resumed_from: yangyangchengcheng/gt-align-to-pts-1st-cam-point1-r6-42
+    history_ids:
+    - chenhao1213/gt-align-to-pts-1st-cam-point1-r0-42
+    - chenhao1213/gt-align-to-pts-1st-cam-point1-r1-42
+    - rrrrmm/gt-align-to-pts-1st-cam-point1-r2-42
+    - rrrrmm/gt-align-to-pts-1st-cam-point1-r3-42
+    - xulijuan/gt-align-to-pts-1st-cam-point1-r4-42
+    - yangyangchengcheng/gt-align-to-pts-1st-cam-point1-r5-42
+  left_time: 30.0
+- id: robinrainy
+  notebooks:
+  - kernel_id: robinrainy/center-world-notrans-r6-42
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-05-25 07:54:11'
+    resumed_from: asssmer/center-world-notrans-r5-42
+    history_ids:
+    - cq1234/center-world-notrans-r0-42
+    - tianxianglii/center-world-notrans-r1-42
+    - tianxianglii/center-world-notrans-r2-42
+    - tianxianglii/center-world-notrans-r3-42
+    - asssmer/center-world-notrans-r4-42
+  - kernel_id: robinrainy/first-cam-vggt43-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 08:05:32'
+    resumed_from: eastwangwei/first-cam-vggt43-r6-42
+    history_ids:
+    - dddd110/first-cam-vggt43-r0-42
+    - dddd110/first-cam-vggt43-r1-42
+    - ttzyty/first-cam-vggt43-r2-42
+    - ttzyty/first-cam-vggt43-r3-42
+    - ttzyty/first-cam-vggt43-r4-42
+    - eastwangwei/first-cam-vggt43-r5-42
+  left_time: 30.0
+- id: ycy1n66
+  notebooks:
+  - kernel_id: ycy1n66/pts-align-to-gt-1st-cam-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 08:05:40'
+    resumed_from: qcx2333/pts-align-to-gt-1st-cam-r6-42
+    history_ids:
+    - denghaimeng/pts-align-to-gt-1st-cam-r0-42
+    - denghaimeng/pts-align-to-gt-1st-cam-r1-42
+    - roseqw/pts-align-to-gt-1st-cam-r2-42
+    - roseqw/pts-align-to-gt-1st-cam-r3-42
+    - roseqw/pts-align-to-gt-1st-cam-r4-42
+    - qcx2333/pts-align-to-gt-1st-cam-r5-42
+  - kernel_id: ycy1n66/pts-align-to-gt-1st-cam-r6-42
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-05-25 08:05:52'
+    resumed_from: xuwenhui123/pts-align-to-gt-1st-cam-r5-42
+    history_ids:
+    - chenrunze11/pts-align-to-gt-1st-cam-r0-42
+    - huoqiuxia/pts-align-to-gt-1st-cam-r1-42
+    - huoqiuxia/pts-align-to-gt-1st-cam-r2-42
+    - huoqiuxia/pts-align-to-gt-1st-cam-r3-42
+    - qinghui9527/pts-align-to-gt-1st-cam-r4-42
+  left_time: 30.0
+- id: zjl001
+  notebooks:
+  - kernel_id: zjl001/gt-align-to-pts-normpr-point1-r7-42
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-05-25 08:16:56'
+    resumed_from: eastwangwei/gt-align-to-pts-normpr-point1-r6-42
+    history_ids:
+    - cshlhs/gt-align-to-pts-normpr-point1-r0-42
+    - cshlhs/gt-align-to-pts-normpr-point1-r1-42
+    - ttzyty/gt-align-to-pts-normpr-point1-r2-42
+    - ttzyty/gt-align-to-pts-normpr-point1-r3-42
+    - ttzyty/gt-align-to-pts-normpr-point1-r4-42
+    - eastwangwei/gt-align-to-pts-normpr-point1-r5-42
+  - kernel_id: zjl001/first-cam-vggt-cojitter-r6-42
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-05-25 08:17:05'
+    resumed_from: yangyangchengcheng/first-cam-vggt-cojitter-r5-42
+    history_ids:
+    - qcx2333/first-cam-vggt-cojitter-r0-42
+    - qcx2333/first-cam-vggt-cojitter-r1-42
+    - xulijuan/first-cam-vggt-cojitter-r2-42
+    - xulijuan/first-cam-vggt-cojitter-r3-42
+    - yangyangchengcheng/first-cam-vggt-cojitter-r4-42
   left_time: 30.0
 finished_notebooks:

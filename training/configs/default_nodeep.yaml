@@ -3,7 +3,7 @@ defaults:
 
 exp_name: test
 seed_value: 42
-accum_steps: 3
+accum_steps: 2
 
 limit_train_batches: null
 limit_val_batches: null
@@ -206,8 +206,9 @@ postprocess:
     
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
-  save_freq: 1 #*max_epochs
+  save_freq: 5 #*max_epochs
   resume_checkpoint_path: null
+  resume_config_skip_keys: [break_at]
   resume_optimizer: true
   lazy_resume_optimizer: true
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
@@ -305,11 +306,12 @@ loss:
 
 
 optim:
-  val_freq: 5
+  val_freq: 1
   accumulation_mode: chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: False
-  warmup_epochs: &warmup_epochs 30
+  warmup_epochs: &warmup_epochs 15
+  warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
   warmup_configs: 
@@ -365,6 +367,14 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
+    - name: camera_head
+      ratio: 0.01
+      param_names:
+        - "camera_head.*"
+    - name: dense_head
+      ratio: 1.0e-2
+      param_names:
+        - "dense_head.*"
 
 
   amp:
@@ -384,67 +394,56 @@ optim:
         norm_type: 2
   options:
     lr:
-      - scheduler:
-          _target_: fvcore.common.param_scheduler.CompositeParamScheduler
-          schedulers:
-            - _target_: fvcore.common.param_scheduler.LinearParamScheduler
-              start_value: 1e-6
-              end_value: &lr_base 5e-4
-            - _target_: fvcore.common.param_scheduler.CosineParamScheduler
-              start_value: *lr_base
-              end_value: 1e-6
-          lengths: *lr_scheduler_lengths
-          interval_scaling: ['rescaled', 'rescaled']
+    - scheduler:
+        _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+        schedulers:
+        - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+          start_value: 1e-6
+          end_value: &lr_base 5e-4
+        - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+          start_value: *lr_base
+          end_value: 1e-6
+        lengths: *lr_scheduler_lengths
+        interval_scaling: ['rescaled', 'rescaled']
     weight_decay:
-      - scheduler:
-          _target_: fvcore.common.param_scheduler.ConstantParamScheduler
-          value: 0.05
+    - scheduler:
+        _target_: fvcore.common.param_scheduler.ConstantParamScheduler
+        value: 0.05
 
 
 model:
-  _target_: vggt.models.vggt.VGGT
+  _target_: vggt_omega.models.vggt_omega.VGGTOmega
   conf_logit_max: null
   enable_camera: True
   enable_depth: false
   enable_point: True
   enable_cam_point: False
-  enable_track: False
+  # VGGTOmega constructor defaults are intentionally left in the model code.
+  # Override only the values needed for an experiment, e.g.:
+  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16"
+  patch_size: 16
   embed_dim: 768
   depth: 12
-  num_heads: 16
-  mlp_ratio: 4.0
-  num_register_tokens: 4
-  qkv_bias: True
-  proj_bias: True
-  ffn_bias: True
-  # patch_embed: "dinov2_vitl14_reg"
-  # patch_embed: "/lc/code/pretrained/dinov3/vitl16" 
-  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16" 
-  patch_size: 16
+  cached_layer_indices: [2, 5, 8, 11]
+  register_attention_block_indices: [2, 4, 6, 8, 10]
   dpt_frames_chunk_size: 8
-  aa_order: ["frame", "global"]
-  aa_block_size: 1
-  qk_norm: True
-  # rope_freq: 100
+  # register_attention_block_indices: [2, 6, 9, 14, 20]
+  # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1
-  init_values: 0.01
-  first_cam: False
-  intermediate_layer_idx: [2, 5, 8, 11]
-  pose_encoding_type: *pose_encoding_type 
-  # intermediate_layer_idx: [4, 11, 17, 23]
+  first_cam: false
 
 
 distributed:
   # check https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html for options
   backend: nccl
   comms_dtype: None
-  find_unused_parameters: False
+  find_unused_parameters: false
   timeout_mins: 30
-  gradient_as_bucket_view: True  # Less memory used
+  gradient_as_bucket_view: true  # Less memory used
   bucket_cap_mb: 25
-  broadcast_buffers: True
+  broadcast_buffers: true
 
 cuda:
-    cudnn_deterministic: False
-    cudnn_benchmark: True
-    allow_tf32: True
+  cudnn_deterministic: false
+  cudnn_benchmark: true
+  allow_tf32: true

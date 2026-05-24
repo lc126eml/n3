@@ -224,7 +224,7 @@ checkpoint:
   # resume_checkpoint_path: /lc/code/pretrained/dinov2/dinov2_vitl14_reg4_pretrain.pth
   strict: False
   filter_keys:
-    enabled: False
+    enabled: True
     heads_to_keep: 
       - ['layer', 'aggregator.patch_embed.blocks']
       # - ['*', 'aggregator.patch_embed.']

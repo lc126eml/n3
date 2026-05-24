@@ -6,15 +6,22 @@ from training.datasets.utils import cropping  # already handles intrinsics updat
 def _rng(rng):
     return rng or np.random.default_rng()
 
-def random_crop(image, depth, K, target_size=(256, 224), aspect_ratio_range=[1.0, 1.5], rng=None):
+def random_crop(image, depth, K, target_size=(256, 224), aspect_ratio_range=[1.0, 1.5], max_scale=1.2, rng=None):
     rng = _rng(rng)
     W, H = image.size
     # randomly choose a aspect ratio in aspect_ratio_range, and randomly choose a Ws, Hs (abide aspect ratio), to make Wtarget < Ws <= W, Htarget < Hs <= H
     target_w, target_h = target_size
+    scale = min(W/target_w, H/target_h)
+    if max_scale is not None:
+        actual_scale = min(scale, max_scale)
+    if actual_scale < scale:
+        ratio = scale / actual_scale
+        target_w *= ratio
+        target_h *= ratio
     # if target_w > W or target_h > H:
     #     raise ValueError(f"target_size {target_size} exceeds image size {(W, H)}")
-    target_w = min(target_w, W)
-    target_h = min(target_h, H)
+    target_w = int(np.ceil(min(target_w, W)))
+    target_h = int(np.ceil(min(target_h, H)))
 
     min_ar = max(aspect_ratio_range[0], target_w / H)
     max_ar = min(aspect_ratio_range[1], W / target_h)

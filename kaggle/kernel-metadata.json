@@ -1,6 +1,6 @@
 {
-  "id": "rqmiraitowa/pred-center-pr2gt-r5-42",
-  "title": "pred center pr2gt r5 42",
+  "id": "luanjing/center-world-gt-pts-r6-42",
+  "title": "center world gt pts r6 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -44,7 +44,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "rqmiraitowa/pred-center-pr2gt-r4-42"
+    "gloden613/center-world-gt-pts-r5-42"
   ],
   "model_sources": []
 }

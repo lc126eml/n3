@@ -1,53 +1,49 @@
 id: 
-config_name: default_kaggle
+config_name: default_kaggle_vggt
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
-# desc: center_world
-# desc: first_cam
-desc: pts_align_to_gt_crop2_ep15
-# desc: gt_align_to_pts
+desc: first_cam_vggt_l24
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 10
 seed: 42
 simple:
-  - total_run_time_hr: 11.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: []
-  - data.data_module.train_config.batch_size: 43
+  - data.data_module.train_config.batch_size: 8
   - data.data_module.train_config.debug_enumerate_batches: false
-  - optim.warmup_epochs: 15
-  - optim.warmup_batch_cost_discount: 0.55
-  ##- optim.gradient_clip.configs.0.max_norm: 1.0
-  # #- optim.gradient_clip.configs.1.max_norm: 1.0
-  # #- optim.gradient_clip.configs.2.max_norm: 1.0
-  # 
-  
+  - optim.warmup_epochs: 20
+  - optim.warmup_batch_cost_discount: 0.4
+  - optim.gradient_clip.configs.0.max_norm: 5.0
+  # - optim.gradient_clip.configs.1.max_norm: 1.0
+  # - optim.gradient_clip.configs.2.max_norm: 1.0
+  # - optim.gradient_clip.configs.3.max_norm: 1.0
+  - optim.gradient_clip.configs.4.max_norm: 5.0
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
   - optim.lr_multipliers.0.ratio: 0.01
   - optim.lr_multipliers.1.ratio: 0.01
   - optim.lr_multipliers.2.ratio: 0.01
   - model.enable_depth: false
+  - model.patch_embed: "/kaggle/input/datasets/sinayliu/dino-ds/vitl16"
+  - model.embed_dim: 1024
+  - model.depth: 16
   - postprocess.train:
       align:
         to_first_cam:
-          enabled: false
-          points: false
-        pr_align_cam:
-          enabled: false
-          points: false
+          enabled: true
+          points: true
         center_world:
           enabled: &pts_center_world false
           align_pose: true
         pred_center:
           enabled: false
-          pr_to_gt: &pts_align_to_center true
+          pr_to_gt: &pts_align_to_center false
           align_pose: true
         pts_align_to_gt:
-          enabled: &pts_align_to_gt true
+          enabled: &pts_align_to_gt false
           conf_percentage: 80
           with_scale: true
           align_pose: true
@@ -58,27 +54,28 @@ simple:
           conf_percentage: 80
           align_pose: true
       normalize:
-        gt_pts: false
+        gt_pts: true
         pr_pts:
           enabled: false
-          metric: false
-        gt_depth: false
+          metric: False
+        gt_depth: False
         gt_pts_invariant:
-          enabled: true
+          enabled: false
           translate: true
         pr_pts_invariant:
-          enabled: true
-          translate: true
+          enabled: false
+          translate: false
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt
       gt_align_to_pts: *gt_align_to_pts
       pts_align_to_center: *pts_align_to_center
   # - data.data_module.train_config.num_workers: 4
-  # - data.data_module.train_config.resolution: "[(160,128),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416), (432, 416), (432, 432)]"
+  # - data.data_module.train_config.resolution: "[(160,128),(224, 224),(240, 224),(240, 240)]"
   - lr: 1.0e-4
   - mode: train
   - resume_bs: true
+  - total_run_time_hr: 11.6
 #   - logging.log_freq: 100
 #   - break_at: 20
 
@@ -87,11 +84,11 @@ enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false
-resume_source: null
+resume_source: kernel #dataset/kernel
 resume_infer: false
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata
-dataset_sources:
-kernel_sources: []
+dataset_sources: 
+kernel_sources: 
 competition_sources: []
 model_sources: []

@@ -67,3 +67,77 @@ nan
 ## kezzymik/pred-center-gt2pr-notrans-r0-42
 Meters: {'val_hypersim_objective': tensor(0., device='cuda:0'), 'val_hypersim_recon_abs_rel': tensor(0.7438, device='cuda:0'), 'val_hypersim_recon_mae': tensor(3.6114, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(39.9760, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.4323, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(71.4573, device='cuda:0'), 'Trainer/where': 0.03218290330359296, 'Trainer/epoch': 4, 'Trainer/steps_val': 38}
 nan
+
+
+## dusi605/center-world-notrans-r4-42
+epoch	val_hypersim_recon_abs_rel	val_hypersim_recon_mae	val_hypersim_rot_error_mean_deg	val_hypersim_trans_error_mean	val_hypersim_trans_angle_error_mean_deg
+129	0.310577482	1.442459345	27.05462456	3.091122389	42.67203903	0.994023097
+
+## cdong121/pts-align-to-gt-1st-cam-r1-42
+19 0.3305244445800781 1.551565170288086
+nan
+## dusi605/center-world-pts-r4-42
+    
+## b201xiaoli/pred-center-pr2gt-notrans-r0-42
+11 0.571794867515564   
+nan
+## robinrainy/pts-align-to-gt-normpr-r6-42
+89 0.265030056	1.270371675	39.54538345	2.965955734	57.69732285	0.686029057
+nan
+
+## xulin5522/first-cam-freeze2-r8-42
+127	0.345695764	1.597800612	47.39031601	3.441990852	80.23789215	0.978336749
+
+## xulin5522/center-world-gt-pts-r8-42
+125	0.280068815	1.346122026	34.89374542	3.254439592	61.88978577	0.962952134
+
+## ywhicher/first-cam-freeze01-r8-42
+127	0.34539941	1.604843855	32.43304825	3.306776285	62.72121811	0.978336749
+
+## nan
+### zzr123123/pred-center-normpr2gt-notrans-r0-42
+### asdsad0000/pred-center-gt2pr-notrans-r0-42
+### asdsad0000/pred-center-normpr2gt-notrans-r0-42
+### sinayliu/pred-center-gt2pr-notrans-r1-42
+### phoenixcsw01/gt-align-to-pts-1st-cam-r0-42
+25 0.3798995316028595
+### jokerking1/pred-center-pr2gt-notrans-r2-42
+30 0.4433893859386444
+### chenhao1213/pts-align-to-gt-normpr-r2-42
+31 0.3133593797683716
+### gt-align-to-pts-normpr-lr2-5-r0-42
+6 0.4858458340167999
+### srmmmm/pts-align-to-gt-normpr-r0-42
+6 0.4933013916015625
+### b201xiaoli/pred-center-pr2gt-notrans-r4-42
+58 'val_hypersim_recon_abs_rel': tensor(0.6707, device='cuda:0')
+### b201xiaoli/pred-center-pr2gt-notrans-r0-42
+11 0.5718
+### elong1202/center-world-notrans-r2-42
+17 0.3426
+### jinzhanbo/center-world-notrans-r3-42
+26 0.2964
+
+
+## valid
+###  srmmmm/center-world-gt-pts-r9-42
+'val_hypersim_recon_abs_rel': tensor(0.2995, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.4071, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(35.8265, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.3531, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(55.9658, device='cuda:0')
+
+###  srmmmm/first-cam-r9-42
+'val_hypersim_recon_abs_rel': tensor(0.3654, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.6581, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(36.0064, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.3709, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(67.5761, device='cuda:0')
+
+### sollasi/gt-align-to-pts-normpr-r9-42
+val_hypersim_recon_abs_rel': tensor(0.3693, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.7050, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(58.5057, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.6408, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(91.9021, device='cuda:0')
+
+### zhuangminghui/pts-align-to-gt-normpr-r6-42
+'val_hypersim_recon_abs_rel': tensor(0.2490, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.1562, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(43.4673, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.5205, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(95.6229, device='cuda:0'), 'Trainer/epoch': 51
+
+### sollasi/pts-align-to-gt-1st-cam-r9-42
+'val_hypersim_recon_abs_rel': tensor(0.2701, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.3328, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(40.3225, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(4.8407, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(103.1330, device='cuda:0')
+
+### cdong121/center-world-notrans-r9-42
+'val_hypersim_recon_abs_rel': tensor(0.2855, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.3561, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(33.5750, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.1302, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(60.5594, device='cuda:0')
+
+### cdong121/center-world-pts-r9-42
+'val_hypersim_recon_abs_rel': tensor(0.3040, device='cuda:0'), 'val_hypersim_recon_mae': tensor(1.4117, device='cuda:0'), 'val_hypersim_rot_error_mean_deg': tensor(38.6502, device='cuda:0'), 'val_hypersim_trans_error_mean': tensor(3.3391, device='cuda:0'), 'val_hypersim_trans_angle_error_mean_deg': tensor(61.9790, device='cuda:0')
+
