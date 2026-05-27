@@ -9,6 +9,7 @@ import torch.nn as nn
 
 from vggt_omega.models.layers import Mlp, PatchEmbed, RopePositionEmbedding, SelfAttentionBlock, init_masked_qkv_bias_buffers
 from vggt_omega.models.layers.vision_transformer import DinoVisionTransformer
+from train_utils.patch_pos import PatchRowColRegressionCriterionDynamic
 
 
 _RESNET_MEAN = [0.485, 0.456, 0.406]
@@ -31,6 +32,8 @@ class Aggregator(nn.Module):
         cached_layer_indices: tuple[int, ...] = (4, 11, 17, 23),
         rope_freq: int = 100,
         first_cam: bool = True,
+        asg: bool = False,
+        asg_max_hw: int = 512,
     ) -> None:
         super().__init__()
 
@@ -107,6 +110,15 @@ class Aggregator(nn.Module):
             self.register_buffer(name, torch.FloatTensor(value).view(1, 1, 3, 1, 1), persistent=False)
 
         self.init_weights()
+        if asg:
+            self.asg = PatchRowColRegressionCriterionDynamic(
+                feat_dim=embed_dim,
+                grid_h=asg_max_hw // self.patch_size,
+                grid_w=asg_max_hw // self.patch_size,
+                # loss_type="smooth_l1",
+            )
+        else:
+            self.asg = None
 
     def init_weights(self) -> None:
         nn.init.normal_(self.camera_token, std=1e-3)
@@ -225,6 +237,8 @@ class Aggregator(nn.Module):
             else:
                 outputs.append(None)
 
+        if self.asg is not None:
+            self.aux_loss = self.asg(tokens.flatten(0, -3)[:, self.patch_token_start:, :], patch_grid_size[0], patch_grid_size[1])
         return outputs, self.patch_token_start
 
     def _run_frame_block(

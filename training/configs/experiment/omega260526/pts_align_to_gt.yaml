@@ -4,6 +4,8 @@ defaults:
   - /default_nodeep
   - _self_
 
+gpu_lock_priority: 10
+
 # exp_name: align_ablation_pts_align_to_gt
 
 seed: 42
@@ -13,7 +15,7 @@ logging:
   log_freq: 50
 
 checkpoint:
-  resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/pts_align_to_gt_rcropP1.00_lr50_e130/2026-05-26_19-39-01/ckpts/checkpoint.pt
+  resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/pts_align_to_gt_rcropP1.00_lr50_e130/2026-05-27_10-49-46/ckpts/checkpoint.pt
   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
   data_module:

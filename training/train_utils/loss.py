@@ -33,7 +33,7 @@ class MultitaskLoss(torch.nn.Module):
     - Point loss
     - Tracking loss (not cleaned yet, dirty code is at the bottom of this file)
     """
-    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, **kwargs):
+    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, asg_weight=30, **kwargs):
         super().__init__()
         # Loss configuration dictionaries for each task
         self.camera = camera
@@ -44,6 +44,7 @@ class MultitaskLoss(torch.nn.Module):
         self.switch = switch
         self.vggt = vggt
         self.regulize_scale = regulize_scale
+        self.asg_weight = asg_weight
 
         self.pose_enc_loss = PoseEncodingLoss(loss_type="l1")
 

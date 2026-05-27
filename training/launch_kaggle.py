@@ -9,15 +9,63 @@ import zipfile
 from pathlib import Path
 
 _IS_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
-_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/omega.zip'
+_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/pos.zip'
 # https://github.com/lc126eml/n3/archive/refs/heads/master.zip
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
-KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/gloden613/center-world-gt-pts-r5-42/logs/ckpts/checkpoint.pt',
- 'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
- 'total_run_time_hr': 11.7}
+KAGGLE_RUNTIME_CONFIG_NAME = 'default_kaggle'
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'accum_steps': 4,
+ 'break_at': 130,
+ 'checkpoint.resume_checkpoint_path': None,
+ 'checkpoint.resume_config_skip_keys': [],
+ 'data.data_module.train_config.batch_size': 43,
+ 'data.data_module.train_config.debug_enumerate_batches': False,
+ 'loss.switch.gt_align_to_pts': False,
+ 'loss.switch.pts_align_to_center': True,
+ 'loss.switch.pts_align_to_gt': True,
+ 'loss.switch.pts_center_world': False,
+ 'max_epochs': 130,
+ 'mode': 'train',
+ 'model.asg': True,
+ 'model.enable_depth': False,
+ 'optim.lr_multipliers.0.ratio': 0.01,
+ 'optim.lr_multipliers.1.ratio': 0.1,
+ 'optim.lr_multipliers.2.ratio': 0.1,
+ 'optim.lr_multipliers.3.ratio': 0.1,
+ 'optim.options.lr.0.scheduler.schedulers.0.end_value': 0.0001,
+ 'optim.val_freq': 1,
+ 'optim.warmup_batch_cost_discount': 0.55,
+ 'optim.warmup_epochs': 15,
+ 'postprocess.train.align.center_world.align_pose': True,
+ 'postprocess.train.align.center_world.enabled': False,
+ 'postprocess.train.align.gt_align_to_pts.align_pose': True,
+ 'postprocess.train.align.gt_align_to_pts.conf_percentage': 80,
+ 'postprocess.train.align.gt_align_to_pts.enabled': False,
+ 'postprocess.train.align.pr_align_cam.enabled': False,
+ 'postprocess.train.align.pr_align_cam.points': False,
+ 'postprocess.train.align.pred_center.align_pose': True,
+ 'postprocess.train.align.pred_center.enabled': False,
+ 'postprocess.train.align.pred_center.pr_to_gt': True,
+ 'postprocess.train.align.pts_align_to_gt.align_pose': True,
+ 'postprocess.train.align.pts_align_to_gt.conf_percentage': 80,
+ 'postprocess.train.align.pts_align_to_gt.enabled': True,
+ 'postprocess.train.align.pts_align_to_gt.normalize_depth': False,
+ 'postprocess.train.align.pts_align_to_gt.normalize_pose': False,
+ 'postprocess.train.align.pts_align_to_gt.with_scale': True,
+ 'postprocess.train.align.to_first_cam.enabled': False,
+ 'postprocess.train.align.to_first_cam.points': False,
+ 'postprocess.train.normalize.gt_depth': False,
+ 'postprocess.train.normalize.gt_pts': False,
+ 'postprocess.train.normalize.gt_pts_invariant.enabled': True,
+ 'postprocess.train.normalize.gt_pts_invariant.translate': True,
+ 'postprocess.train.normalize.pr_pts.enabled': False,
+ 'postprocess.train.normalize.pr_pts.metric': False,
+ 'postprocess.train.normalize.pr_pts_invariant.enabled': True,
+ 'postprocess.train.normalize.pr_pts_invariant.translate': True,
+ 'resume_bs': True,
+ 'seed_value': 42,
+ 'total_run_time_hr': 11.0}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
 

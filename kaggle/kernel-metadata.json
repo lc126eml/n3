@@ -1,6 +1,6 @@
 {
-  "id": "luanjing/center-world-gt-pts-r6-42",
-  "title": "center world gt pts r6 42",
+  "id": "cdong121/pts-align-to-gt-pos-lr01-r0-42",
+  "title": "pts align to gt pos lr01 r0 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -43,8 +43,6 @@
     "qqmail4092/bmvspp-04"
   ],
   "competition_sources": [],
-  "kernel_sources": [
-    "gloden613/center-world-gt-pts-r5-42"
-  ],
+  "kernel_sources": [],
   "model_sources": []
 }

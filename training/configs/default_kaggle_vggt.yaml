@@ -1,6 +1,7 @@
 defaults:
 - data: kaggle_multiview_train
 
+gpu_lock_priority: 10
 exp_name: aug_ablation
 seed_value: 42
 accum_steps: 4
@@ -27,7 +28,6 @@ compile:
 
 env_variables:
   LOSS_CHECKS_ENABLED: "0"
-  GPU_LOCK_PRIORITY: "10"
 
 logging:
   run_folder_name: null #${now:%Y-%m-%d}_${now:%H-%M-%S}
@@ -57,6 +57,7 @@ logging:
       - loss_Pose_T
       - loss_Pose_R
       - loss_FL
+      - aux_loss
       # - loss_conf_depth
       - loss_conf_point
       # - loss_reg_depth
@@ -376,8 +377,12 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
+    - name: asg
+      ratio: 0.1
+      param_names:
+        - "aggregator.asg.*"
     - name: camera_head
-      ratio: 1.0e-2
+      ratio: 0.01
       param_names:
         - "camera_head.*"
     - name: dense_head
@@ -437,6 +442,8 @@ model:
   cached_layer_indices: [2, 5, 8, 11]
   register_attention_block_indices: [2, 4, 6, 8, 10]
   dpt_frames_chunk_size: 8
+  asg: false
+  asg_max_hw: 512
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1

@@ -123,19 +123,21 @@ class Trainer:
     )
 
     def __init__(self, cfg: DictConfig):
+        if not OmegaConf.is_config(cfg):
+            cfg = OmegaConf.create(cfg)
+
         # --- Acquire a file lock to ensure exclusive GPU usage ---
         lock_path = "/tmp/gpu.lock"
-        lock_priority = int(os.environ.get("GPU_LOCK_PRIORITY", "10"))
-        self.gpu_lock = PriorityLock(lock_dir=lock_path, priority=lock_priority)
-        print(f"Attempting to acquire lock on '{lock_path}' (priority={lock_priority})...")
-        self.gpu_lock.acquire()
-        print("Lock acquired. It is safe to proceed.")
-        atexit.register(self.gpu_lock.release)
+        lock_priority = int(cfg.get("gpu_lock_priority", 10))
+        if lock_priority > 0:
+            self.gpu_lock = PriorityLock(lock_dir=lock_path, priority=lock_priority)
+            print(f"Attempting to acquire lock on '{lock_path}' (priority={lock_priority})...")
+            self.gpu_lock.acquire()
+            print("Lock acquired. It is safe to proceed.")
+            atexit.register(self.gpu_lock.release)
 
         self._scalar_log_keys_cache = {}
         self._setup_timers()
-        if not OmegaConf.is_config(cfg):
-            cfg = OmegaConf.create(cfg)
 
         self._resume_ckpt_path = None
         self._resume_checkpoint = None
@@ -2020,7 +2022,6 @@ class Trainer:
                     log_step=self.steps[phase],
                 )
 
-
             loss = loss_dict["objective"]
             loss_key = f"{phase}_loss_objective"
             batch_size = chunked_batch["img"].shape[0]
@@ -2286,6 +2287,7 @@ class Trainer:
 
         # Compute the loss
         loss_dict = self.loss(y_hat, batch, data_keys=self.data_conf.data_keys, pred_data_keys=self.postprocess_conf.data_keys)
+        self._add_asg_auxiliary_loss(model, loss_dict)
         
         # concatenate y_hat, loss_dict and batch for visualizations
         y_hat_batch = {**y_hat, **loss_dict, **batch}
@@ -2297,6 +2299,17 @@ class Trainer:
             self.steps[phase] += 1
 
         return loss_dict
+
+
+    def _add_asg_auxiliary_loss(self, model: nn.Module, loss_dict: dict[str, torch.Tensor]) -> None:
+        model = getattr(model, "module", model)
+        aggregator = getattr(model, "aggregator", None)
+        if aggregator is None or getattr(aggregator, "asg", None) is None:
+            return
+
+        aux_loss = aggregator.aux_loss
+        loss_dict["aux_loss"] = aux_loss
+        loss_dict["objective"] = loss_dict["objective"] + self.loss.asg_weight * aux_loss
 
 
     def _val_step(

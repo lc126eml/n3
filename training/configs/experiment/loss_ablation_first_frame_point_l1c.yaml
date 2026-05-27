@@ -4,11 +4,12 @@ defaults:
   - /default
   - _self_
 
+gpu_lock_priority: 10
+
 exp_name: ablation/point_l1_clip5_cross_batch
 
 env_variables:
   LOSS_CHECKS_ENABLED: "0"
-  GPU_LOCK_PRIORITY: "10"
 
 # data:
 #   data_module:

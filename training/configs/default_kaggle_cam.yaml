@@ -1,4 +1,6 @@
 defaults:
+gpu_lock_priority: 10
+
 - data: kaggle_multiview_train
 
 exp_name: aug_ablation
@@ -27,7 +29,6 @@ compile:
 
 env_variables:
   LOSS_CHECKS_ENABLED: "0"
-  GPU_LOCK_PRIORITY: "10"
 
 logging:
   run_folder_name: null #${now:%Y-%m-%d}_${now:%H-%M-%S}

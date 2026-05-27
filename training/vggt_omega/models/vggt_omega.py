@@ -36,6 +36,8 @@ class VGGTOmega(nn.Module):
         first_cam: bool = True,
         conf_logit_max: float | None = None,
         dpt_frames_chunk_size: int | None = 8,
+        asg: bool = False,
+        asg_max_hw: int = 512,
     ) -> None:
         super().__init__()
 
@@ -51,6 +53,8 @@ class VGGTOmega(nn.Module):
             cached_layer_indices=cached_layer_indices,
             rope_freq=rope_freq,
             first_cam=first_cam,
+            asg=asg,
+            asg_max_hw=asg_max_hw,
         )
         _warn_if_rope_not_max(self.aggregator)
         self.camera_head = CameraHead(dim_in=2 * embed_dim) if enable_camera else None

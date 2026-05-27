@@ -1,6 +1,8 @@
 defaults:
   - data: standalone_multiview_train
 
+gpu_lock_priority: 10
+
 exp_name: test
 seed_value: 42
 accum_steps: 3
@@ -26,7 +28,6 @@ compile:
 
 env_variables:
   LOSS_CHECKS_ENABLED: "0"
-  GPU_LOCK_PRIORITY: "10"
 
 logging:
   run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
