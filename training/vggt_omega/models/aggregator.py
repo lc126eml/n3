@@ -28,6 +28,7 @@ class Aggregator(nn.Module):
         num_heads: int = 16,
         mlp_ratio: float = 4.0,
         num_register_tokens: int = 16,
+        num_global_register_tokens: int = 0,
         register_attention_block_indices: list[int] = [2, 6, 9, 14, 20],
         cached_layer_indices: tuple[int, ...] = (4, 11, 17, 23),
         rope_freq: int = 100,
@@ -99,6 +100,11 @@ class Aggregator(nn.Module):
         num_special_token_sets = 2 if first_cam else 1
         self.camera_token = nn.Parameter(torch.empty(1, num_special_token_sets, 1, embed_dim))
         self.register_token = nn.Parameter(torch.empty(1, num_special_token_sets, num_register_tokens, embed_dim))
+        self.num_global_register_tokens = num_global_register_tokens
+        if num_global_register_tokens > 0:
+            self.global_register_token = nn.Parameter(torch.empty(1, num_global_register_tokens, embed_dim))
+        else:
+            self.global_register_token = None
 
         self.inter_frame_attention_types = ["global"] * depth
         for idx in register_attention_block_indices:
@@ -123,6 +129,8 @@ class Aggregator(nn.Module):
     def init_weights(self) -> None:
         nn.init.normal_(self.camera_token, std=1e-3)
         nn.init.normal_(self.register_token, std=1e-3)
+        if self.global_register_token is not None:
+            nn.init.normal_(self.global_register_token, std=1e-3)
         init_masked_qkv_bias_buffers(self.frame_blocks)
         init_masked_qkv_bias_buffers(self.inter_frame_blocks)
 
@@ -201,6 +209,11 @@ class Aggregator(nn.Module):
 
         tokens = torch.cat([camera_token, register_token, patch_tokens], dim=1)
         _, num_tokens, embed_dim = tokens.shape
+        global_register_token = (
+            self.global_register_token.expand(batch_size, -1, -1)
+            if self.global_register_token is not None
+            else None
+        )
 
         patch_grid_size = (height // self.patch_size, width // self.patch_size)
         frame_rope = None
@@ -223,7 +236,7 @@ class Aggregator(nn.Module):
                 block_idx,
                 frame_rope,
             )
-            tokens = self._run_inter_frame_attention_block(
+            tokens, global_register_token = self._run_inter_frame_attention_block(
                 tokens,
                 batch_size,
                 num_frames,
@@ -231,6 +244,7 @@ class Aggregator(nn.Module):
                 embed_dim,
                 block_idx,
                 self.inter_frame_attention_types[block_idx],
+                global_register_token,
             )
             if block_idx in self.cached_layer_indices:
                 outputs.append(torch.cat([frame_tokens, tokens], dim=-1))
@@ -264,13 +278,21 @@ class Aggregator(nn.Module):
         embed_dim: int,
         block_idx: int,
         attention_type: str,
-    ) -> torch.Tensor:
+        global_register_token: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         tokens = tokens.view(batch_size, num_frames, num_tokens, embed_dim)
 
         if attention_type == "global":
             tokens = tokens.view(batch_size, num_frames * num_tokens, embed_dim)
-            tokens = self.inter_frame_blocks[block_idx](tokens, None)
-            return tokens.view(batch_size, num_frames, num_tokens, embed_dim)
+            if self.num_global_register_tokens > 0:
+                tokens = torch.cat([global_register_token, tokens], dim=1)
+                tokens = self.inter_frame_blocks[block_idx](tokens, None)
+                global_register_token = tokens[:, : self.num_global_register_tokens, :]
+                tokens = tokens[:, self.num_global_register_tokens :, :].contiguous()
+            else:
+                tokens = self.inter_frame_blocks[block_idx](tokens, None)
+
+            return tokens.view(batch_size, num_frames, num_tokens, embed_dim), global_register_token
 
         if attention_type != "register":
             raise ValueError(f"Unknown inter-frame attention type: {attention_type}")
@@ -281,28 +303,23 @@ class Aggregator(nn.Module):
             num_frames * patch_token_start,
             embed_dim,
         )
-        patch_tokens = tokens[:, :, patch_token_start:].reshape(
-            batch_size,
-            num_frames * (num_tokens - patch_token_start),
-            embed_dim,
-        )
+        patch_tokens = tokens[:, :, patch_token_start:]
 
-        camera_and_register_tokens = self.inter_frame_blocks[block_idx](camera_and_register_tokens, None)
-        tokens = torch.cat([camera_and_register_tokens, patch_tokens], dim=1)
+        if self.num_global_register_tokens > 0:
+            camera_and_register_tokens = torch.cat([global_register_token, camera_and_register_tokens], dim=1)
+            camera_and_register_tokens = self.inter_frame_blocks[block_idx](camera_and_register_tokens, None)
+            global_register_token = camera_and_register_tokens[:, : self.num_global_register_tokens, :]
+            camera_and_register_tokens = camera_and_register_tokens[:, self.num_global_register_tokens :, :].contiguous()
+        else:
+            camera_and_register_tokens = self.inter_frame_blocks[block_idx](camera_and_register_tokens, None)
 
-        camera_and_register_tokens = tokens[:, : num_frames * patch_token_start].view(
+        camera_and_register_tokens = camera_and_register_tokens.view(
             batch_size,
             num_frames,
             patch_token_start,
             embed_dim,
         )
-        patch_tokens = tokens[:, num_frames * patch_token_start :].view(
-            batch_size,
-            num_frames,
-            num_tokens - patch_token_start,
-            embed_dim,
-        )
-        return torch.cat([camera_and_register_tokens, patch_tokens], dim=2)
+        return torch.cat([camera_and_register_tokens, patch_tokens], dim=2), global_register_token
 
 
 def _build_local_patch_embed(patch_size: int, embed_dim: int) -> DinoVisionTransformer:
@@ -343,3 +360,4 @@ def slice_expand_and_flatten(token_tensor: torch.Tensor, batch_size: int, num_fr
     other_frame_tokens = token_tensor[:, 1:].expand(batch_size, num_frames - 1, *token_tensor.shape[2:])
     tokens = torch.cat([first_frame_token, other_frame_tokens], dim=1)
     return tokens.view(batch_size * num_frames, *tokens.shape[2:])
+

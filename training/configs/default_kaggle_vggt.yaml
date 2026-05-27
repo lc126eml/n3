@@ -439,6 +439,7 @@ model:
   patch_size: 16
   embed_dim: 768
   depth: 12
+  num_global_register_tokens: 0
   cached_layer_indices: [2, 5, 8, 11]
   register_attention_block_indices: [2, 4, 6, 8, 10]
   dpt_frames_chunk_size: 8
