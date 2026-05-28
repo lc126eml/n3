@@ -1,6 +1,6 @@
 {
-  "id": "cdong121/pts-align-to-gt-pos-lr01-r0-42",
-  "title": "pts align to gt pos lr01 r0 42",
+  "id": "cfy002/first-cam-vggt-greg2-r1-42",
+  "title": "first cam vggt greg2 r1 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -43,6 +43,8 @@
     "qqmail4092/bmvspp-04"
   ],
   "competition_sources": [],
-  "kernel_sources": [],
+  "kernel_sources": [
+    "cfy002/first-cam-vggt-greg2-r0-42"
+  ],
   "model_sources": []
 }

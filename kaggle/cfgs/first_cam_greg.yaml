@@ -3,7 +3,7 @@ config_name: default_kaggle_vggt
 n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/globalreg.zip
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
-desc: first_cam_vggt_greg
+desc: first_cam_vggt_greg2
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 10
@@ -14,7 +14,7 @@ simple:
   - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: []
-  - data.data_module.train_config.batch_size: 43
+  - data.data_module.train_config.batch_size: 36
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 15
   - optim.warmup_batch_cost_discount: 0.55

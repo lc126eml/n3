@@ -12,6 +12,8 @@ from pathlib import Path
 import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
+_N3_GITHUB_ZIP_URL_PREFIX = "https://github.com/lc126eml/n3/archive/refs/heads/"
+_DEFAULT_RESUME_GIT_BRANCH = "omega"
 sys.path.insert(0, str(BASE_DIR))
 
 import process_kaggle  # noqa: E402
@@ -34,6 +36,7 @@ Expected config_kernel.yaml (GPU) fields:
         start_time: ISO8601 string or unix timestamp
         resumed_from: kernel_id or null
         history_ids: [kernel_id, ...]
+        git_branch: git branch for n3_github_zip_url
 - finished_notebooks: [notebook, ...]
 - error_notebooks: [notebook, ...]  # legacy / currently not written back
 
@@ -240,6 +243,13 @@ def _remove_simple_override(cfg: dict, key: str) -> None:
         cfg["simple"] = [item for item in simple if not (isinstance(item, dict) and key in item)]
 
 
+def _n3_github_zip_url_from_git_branch(git_branch) -> str:
+    branch = str(git_branch or "").strip() or _DEFAULT_RESUME_GIT_BRANCH
+    if not branch:
+        branch = _DEFAULT_RESUME_GIT_BRANCH
+    return f"{_N3_GITHUB_ZIP_URL_PREFIX}{branch}.zip"
+
+
 def _build_resumed_cfg(
     base_cfg: dict,
     *,
@@ -247,6 +257,7 @@ def _build_resumed_cfg(
     resumed_from: str,
     run_id: int,
     is_tpu: bool,
+    git_branch=None,
 ):
     cfg = copy.deepcopy(base_cfg)
     cfg["id"] = target_id
@@ -262,6 +273,7 @@ def _build_resumed_cfg(
     cfg["resume_full_ckpt"] = True
     cfg["resume_source"] = "kernel"
     cfg["resume_infer"] = True
+    cfg["n3_github_zip_url"] = _n3_github_zip_url_from_git_branch(git_branch)
     cfg["enable_tpu"] = bool(is_tpu)
     cfg["enable_gpu"] = not bool(is_tpu)
     # Keep auto_resume's predicted kernel_id aligned with process_kaggle.py.
@@ -424,12 +436,15 @@ def main():
                             logging.warning("Missing resumed_from for notebook.")
                             continue
 
+                        git_branch = notebook.get("git_branch") or _DEFAULT_RESUME_GIT_BRANCH
+                        notebook["git_branch"] = git_branch
                         cfg = _build_resumed_cfg(
                             base_cfg,
                             target_id=target_node["id"],
                             resumed_from=resumed_from_id,
                             run_id=next_run_id,
                             is_tpu=is_tpu,
+                            git_branch=git_branch,
                         )
                         new_kernel_id = process_kaggle._build_kernel_id(cfg)
                         notebook["kernel_id"] = new_kernel_id

@@ -500,6 +500,17 @@ def _resolve_n3_github_zip_url(cfg: dict) -> str:
     return str(value).strip() or _DEFAULT_N3_GITHUB_ZIP_URL
 
 
+def _git_branch_from_n3_github_zip_url(url: object) -> str | None:
+    text = str(url or "").strip()
+    if not text:
+        return None
+    text = text.split("?", 1)[0].rstrip("/")
+    filename = text.rsplit("/", 1)[-1].strip()
+    if filename.endswith(".zip"):
+        filename = filename[:-4]
+    return filename or None
+
+
 def _apply_n3_github_zip_url_to_launch_py(
     cfg: dict,
     *,
@@ -842,6 +853,7 @@ def _add_running_node(
             "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "resumed_from": _resolve_resume_source(cfg),
             "history_ids": [],
+            "git_branch": _git_branch_from_n3_github_zip_url(_resolve_n3_github_zip_url(cfg)),
         }
         notebooks.append(notebook)
         node["notebooks"] = notebooks

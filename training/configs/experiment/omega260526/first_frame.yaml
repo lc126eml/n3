@@ -4,16 +4,18 @@ defaults:
   - /default_nodeep
   - _self_
 
+gpu_lock_priority: 10
+
 # exp_name: align_ablation_pts_align_to_gt
 
 seed: 42
 max_epochs: &max_epochs 130
-break_at: 30
+break_at: 80
 logging:
   log_freq: 100
 
 checkpoint:
-  resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/to_first_cam_rcropP1.00_lr50_e130/2026-05-27_10-29-04/ckpts/checkpoint.pt
+  resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/to_first_cam_rcropP1.00_lr50_e130/2026-05-28_08-08-42/ckpts/checkpoint.pt
   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
   data_module:
@@ -160,7 +162,7 @@ loss:
 optim:
   val_freq: 1
   param_group_modifiers: False
-  warmup_epochs: -1
+  # warmup_epochs: -1
 
 
 model:
