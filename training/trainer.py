@@ -86,7 +86,7 @@ from train_utils.distributed import get_machine_local_and_dist_rank
 from train_utils.freeze import freeze_modules, unfreeze
 from train_utils.optimizer import construct_optimizers
 from train_utils.normalization import normalize_camera_extrinsics_and_points_batch
-from train_utils.checkpoint import DDPCheckpointSaver
+from train_utils.checkpoint import DDPCheckpointSaver, robust_torch_save
 
 from eval_utils.eval_wrapper import eval_batch
 from eval_utils.align_utils.align_camera import align_camera_and_points_batch_ext
@@ -144,6 +144,8 @@ class Trainer:
         self._resume_checkpoint_amp = None
         self._trainer_config_snapshot = None
         self.metrics_history = {"train": [], "val": []}
+        self.best_checkpoint_metric = None
+        self.best_checkpoint_epoch = None
         self.data_module = None
 
         cfg = self._merge_resume_config(cfg)
@@ -825,6 +827,7 @@ class Trainer:
         if checkpoint.get("train_dataset_checkpoint_state") is not None:
             self._restore_train_dataset_checkpoint_state(checkpoint["train_dataset_checkpoint_state"])
         self._restore_metrics_history(checkpoint.get("metrics_history"))
+        self._restore_best_checkpoint_state_from_history()
 
 
     def _setup_device(self, device):
@@ -1013,6 +1016,114 @@ class Trainer:
             **checkpoint_content,
         )
 
+
+    def _best_checkpoint_mode(self) -> str:
+        mode = str(self.checkpoint_conf.get("best_mode", "min")).lower()
+        if mode not in {"min", "max"}:
+            logging.warning(f"Invalid checkpoint.best_mode={mode!r}; using min.")
+            return "min"
+        return mode
+
+    def _numeric_metric_items(self, metrics: Mapping[str, Any]) -> List[Tuple[str, float]]:
+        items = []
+        for key, value in metrics.items():
+            if key == "epoch" or str(key).startswith("Trainer/"):
+                continue
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric_value):
+                items.append((str(key), numeric_value))
+        return items
+
+    def _select_best_checkpoint_metric(
+        self, metrics: Optional[Mapping[str, Any]], warn_missing_monitor: bool = True
+    ) -> Tuple[Optional[str], Optional[float]]:
+        if not metrics:
+            return None, None
+
+        numeric_items = self._numeric_metric_items(metrics)
+        if not numeric_items:
+            return None, None
+
+        monitor = self.checkpoint_conf.get("best_monitor", "val_hypersim_recon_abs_rel")
+        if monitor is not None:
+            monitor = str(monitor)
+            for key, value in numeric_items:
+                if key == monitor:
+                    return key, value
+            if warn_missing_monitor:
+                logging.warning(f"checkpoint.best_monitor={monitor!r} was not found in validation metrics; skipping best checkpoint.")
+            return None, None
+
+        objective_items = [
+            (key, value)
+            for key, value in numeric_items
+            if key.endswith("_objective") or key.endswith("_loss_objective")
+        ]
+        if len(objective_items) == 1:
+            return objective_items[0]
+        if len(objective_items) > 1:
+            objective_mean = sum(value for _, value in objective_items) / len(objective_items)
+            return "auto_objective_mean", objective_mean
+
+        return sorted(numeric_items, key=lambda item: item[0])[0]
+
+    def _is_better_best_checkpoint_metric(self, metric_value: float) -> bool:
+        if self.best_checkpoint_metric is None:
+            return True
+        try:
+            best_value = float(self.best_checkpoint_metric)
+        except (TypeError, ValueError):
+            return True
+        if self._best_checkpoint_mode() == "max":
+            return metric_value > best_value
+        return metric_value < best_value
+
+    def _restore_best_checkpoint_state_from_history(self) -> None:
+        self.best_checkpoint_metric = None
+        self.best_checkpoint_epoch = None
+        for row in self.metrics_history.get("val", []):
+            if not isinstance(row, Mapping):
+                continue
+            monitor, metric_value = self._select_best_checkpoint_metric(row, warn_missing_monitor=False)
+            if monitor is None or metric_value is None:
+                continue
+            if not self._is_better_best_checkpoint_metric(metric_value):
+                continue
+            self.best_checkpoint_metric = metric_value
+            try:
+                self.best_checkpoint_epoch = int(row.get("epoch"))
+            except (TypeError, ValueError):
+                self.best_checkpoint_epoch = None
+
+    def save_best_checkpoint(self, metrics: Optional[Mapping[str, Any]], epoch: int) -> None:
+        monitor, metric_value = self._select_best_checkpoint_metric(metrics)
+        if monitor is None or metric_value is None:
+            return
+        if not self._is_better_best_checkpoint_metric(metric_value):
+            return
+
+        self.best_checkpoint_metric = metric_value
+        self.best_checkpoint_epoch = epoch
+
+        checkpoint_folder = self.checkpoint_conf.save_dir
+        safe_makedirs(checkpoint_folder)
+        checkpoint_path = os.path.join(checkpoint_folder, f"best_ep{int(epoch)}.pt")
+        checkpoint = self.model.state_dict()
+        logging.info(
+            f"Saving best model weights at epoch {epoch} to {checkpoint_path} "
+            f"({monitor}={metric_value:.6g})"
+        )
+        robust_torch_save(checkpoint, checkpoint_path)
+        for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
+            if str(old_best_path) == checkpoint_path:
+                continue
+            try:
+                old_best_path.unlink()
+            except OSError as exc:
+                logging.warning(f"Failed to remove old best checkpoint {old_best_path}: {exc}")
 
 
     def _get_train_dataset_checkpoint_state(self):
@@ -1521,14 +1632,15 @@ class Trainer:
                 logging.error("Stopping training due to non-finite loss.")
                 break
             
-            # Save checkpoint before validating
-            self.save_checkpoint(self.epoch)
             ran_val = False
             if (self.epoch + 1) % self.optim_conf.val_freq == 0:
                 val_epoch_start_time = time.time()
-                self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+                val_metrics = self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+                self.save_best_checkpoint(val_metrics, self.epoch)
                 last_val_epoch_duration_sec = time.time() - val_epoch_start_time
                 ran_val = True
+
+            self.save_checkpoint(self.epoch)
 
             # gc.collect()
             if torch.cuda.is_available():
@@ -1594,6 +1706,8 @@ class Trainer:
             "a",
         ) as f:
             f.write(json.dumps(outs_json) + "\n")
+
+        return outs_json
 
     def val_epoch(self, val_loader, is_fresh_epoch: bool):
         curr_phases = ['val']

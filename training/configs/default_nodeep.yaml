@@ -209,6 +209,8 @@ postprocess:
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: 5 #*max_epochs
+  best_monitor: val_hypersim_recon_abs_rel
+  best_mode: min
   resume_checkpoint_path: null
   resume_config_skip_keys: [break_at]
   resume_optimizer: true
@@ -371,15 +373,15 @@ optim:
       param_names:
         - "aggregator.patch_embed.*"
     - name: asg
-      ratio: 0.1
+      ratio: 0.01
       param_names:
         - "aggregator.asg.*"
     - name: camera_head
-      ratio: 0.1
+      ratio: 0.01
       param_names:
         - "camera_head.*"
     - name: dense_head
-      ratio: 0.1
+      ratio: 0.01
       param_names:
         - "dense_head.*"
 
