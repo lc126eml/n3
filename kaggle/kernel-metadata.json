@@ -1,6 +1,6 @@
 {
-  "id": "cfy002/first-cam-vggt-greg2-r1-42",
-  "title": "first cam vggt greg2 r1 42",
+  "id": "rushly/pts-align-to-gt-greg512-r4-42",
+  "title": "pts align to gt greg512 r4 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -44,7 +44,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "cfy002/first-cam-vggt-greg2-r0-42"
+    "jiwei313/pts-align-to-gt-greg512-r3-42"
   ],
   "model_sources": []
 }

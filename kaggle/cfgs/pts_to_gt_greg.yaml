@@ -24,8 +24,6 @@ simple:
   ##- optim.gradient_clip.configs.0.max_norm: 1.0
   # #- optim.gradient_clip.configs.1.max_norm: 1.0
   # #- optim.gradient_clip.configs.2.max_norm: 1.0
-  # 
-  
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
   - optim.lr_multipliers.0.ratio: 0.01
@@ -35,6 +33,7 @@ simple:
   - model.enable_depth: false
   - model.asg: false
   - model.num_global_register_tokens: 128
+  - model.register_attention_block_indices: [2, 4, 6, 8, 10]
   - postprocess.train:
       align:
         to_first_cam:

@@ -10,6 +10,45 @@ import torch
 import torch.nn.functional as F
 
 
+def safe_quat_to_mat(quaternions: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """
+    Quaternion Order: XYZW (scalar-last)
+
+    Convert rotations given as quaternions to rotation matrices.
+    This implementation is numerically stable by first normalizing the quaternion.
+
+    Args:
+        quaternions: Quaternions with real part last, as a tensor of shape (..., 4).
+        eps: A small epsilon value to prevent division by zero during normalization.
+
+    Returns:
+        Rotation matrices as a tensor of shape (..., 3, 3).
+    """
+    norm_quat = F.normalize(quaternions, p=2, dim=-1, eps=eps)
+
+    i, j, k, r = torch.unbind(norm_quat, -1)
+
+    ii, ij, ik, ir = i * i, i * j, i * k, i * r
+    jj, jk, jr = j * j, j * k, j * r
+    kk, kr = k * k, k * r
+
+    o = torch.stack(
+        (
+            1 - 2 * (jj + kk),
+            2 * (ij - kr),
+            2 * (ik + jr),
+            2 * (ij + kr),
+            1 - 2 * (ii + kk),
+            2 * (jk - ir),
+            2 * (ik - jr),
+            2 * (jk + ir),
+            1 - 2 * (ii + jj),
+        ),
+        -1,
+    )
+    return o.reshape(quaternions.shape[:-1] + (3, 3))
+
+
 def quat_to_mat(quaternions: torch.Tensor) -> torch.Tensor:
     """
     Quaternion Order: XYZW or say ijkr, scalar-last

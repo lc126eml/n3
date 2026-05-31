@@ -6,7 +6,7 @@
 
 import torch
 
-from .rotation import mat_to_quat, quat_to_mat
+from .rotation import mat_to_quat, quat_to_mat, safe_quat_to_mat
 
 
 def extri_intri_to_pose_encoding(extrinsics, intrinsics, image_size_hw):
@@ -33,7 +33,7 @@ def encoding_to_camera(pose_encoding, image_size_hw, build_intrinsics=True):
     fov_h = pose_encoding[..., 7]
     fov_w = pose_encoding[..., 8]
 
-    R = quat_to_mat(quat)
+    R = safe_quat_to_mat(quat)
     extrinsics = torch.cat([R, T[..., None]], dim=-1)
 
     intrinsics = None
