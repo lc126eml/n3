@@ -41,7 +41,7 @@ data_module:
       cojitter: True
       cojitter_ratio: 0.3
       aug_crop: 6
-      random_crop_prob: 1.0
+      random_crop_prob: 0.0
       max_scale: 1.2
       # Optional linear schedules (use one or set to null)
       random_crop_prob_schedule: null
@@ -62,7 +62,7 @@ data_module:
       #   start_epoch: 0
       #   end_epoch: 0
       prot: 0.0
-      pcrop: 0.6
+      pcrop: 0.0
       scales:
       - 0.8
       - 1.2

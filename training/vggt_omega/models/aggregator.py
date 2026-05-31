@@ -35,6 +35,7 @@ class Aggregator(nn.Module):
         first_cam: bool = True,
         asg: bool = False,
         asg_max_hw: int = 512,
+        loop: bool = True,
     ) -> None:
         super().__init__()
 
@@ -57,6 +58,7 @@ class Aggregator(nn.Module):
             if rope_freq > 0
             else None
         )
+        self.loop = loop
 
         self.frame_blocks = nn.ModuleList(
             [
@@ -72,7 +74,7 @@ class Aggregator(nn.Module):
                     use_qk_norm=True,
                     mask_k_bias=True,
                 )
-                for _ in range(depth)
+                for _ in range(1 if loop else depth)
             ]
         )
         self.inter_frame_blocks = nn.ModuleList(
@@ -89,7 +91,7 @@ class Aggregator(nn.Module):
                     use_qk_norm=True,
                     mask_k_bias=True,
                 )
-                for _ in range(depth)
+                for _ in range(2 if loop else depth)
             ]
         )
 
@@ -266,7 +268,7 @@ class Aggregator(nn.Module):
         rope_sincos: tuple[torch.Tensor, torch.Tensor] | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         tokens = tokens.view(batch_size * num_frames, num_tokens, embed_dim)
-        tokens = self.frame_blocks[block_idx](tokens, rope_sincos)
+        tokens = self.frame_blocks[0  if self.loop else block_idx](tokens, rope_sincos)
         return tokens, tokens.view(batch_size, num_frames, num_tokens, embed_dim)
 
     def _run_inter_frame_attention_block(
@@ -286,11 +288,11 @@ class Aggregator(nn.Module):
             tokens = tokens.view(batch_size, num_frames * num_tokens, embed_dim)
             if self.num_global_register_tokens > 0:
                 tokens = torch.cat([global_register_token, tokens], dim=1)
-                tokens = self.inter_frame_blocks[block_idx](tokens, None)
+                tokens = self.inter_frame_blocks[0  if self.loop else block_idx](tokens, None)
                 global_register_token = tokens[:, : self.num_global_register_tokens, :]
                 tokens = tokens[:, self.num_global_register_tokens :, :].contiguous()
             else:
-                tokens = self.inter_frame_blocks[block_idx](tokens, None)
+                tokens = self.inter_frame_blocks[0  if self.loop else block_idx](tokens, None)
 
             return tokens.view(batch_size, num_frames, num_tokens, embed_dim), global_register_token
 
@@ -307,11 +309,11 @@ class Aggregator(nn.Module):
 
         if self.num_global_register_tokens > 0:
             camera_and_register_tokens = torch.cat([global_register_token, camera_and_register_tokens], dim=1)
-            camera_and_register_tokens = self.inter_frame_blocks[block_idx](camera_and_register_tokens, None)
+            camera_and_register_tokens = self.inter_frame_blocks[1  if self.loop else block_idx](camera_and_register_tokens, None)
             global_register_token = camera_and_register_tokens[:, : self.num_global_register_tokens, :]
             camera_and_register_tokens = camera_and_register_tokens[:, self.num_global_register_tokens :, :].contiguous()
         else:
-            camera_and_register_tokens = self.inter_frame_blocks[block_idx](camera_and_register_tokens, None)
+            camera_and_register_tokens = self.inter_frame_blocks[1  if self.loop else block_idx](camera_and_register_tokens, None)
 
         camera_and_register_tokens = camera_and_register_tokens.view(
             batch_size,

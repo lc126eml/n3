@@ -445,6 +445,7 @@ model:
   dpt_frames_chunk_size: 8
   asg: false
   asg_max_hw: 512
+  loop: false
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1

@@ -1,6 +1,6 @@
 {
-  "id": "rushly/pts-align-to-gt-greg512-r4-42",
-  "title": "pts align to gt greg512 r4 42",
+  "id": "pycjn666/pts-align-to-gt-greg2-r3-42",
+  "title": "pts align to gt greg2 r3 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -44,7 +44,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "jiwei313/pts-align-to-gt-greg512-r3-42"
+    "pycjn666/pts-align-to-gt-greg2-r2-42"
   ],
   "model_sources": []
 }

@@ -15,7 +15,7 @@ logging:
   log_freq: 100
 
 # checkpoint:
-#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/first_cam_asg_head001/to_first_cam_rcropP1.00_lr50_e130/2026-05-30_08-53-14/ckpts/checkpoint.pt
+#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/first_cam_asg_s30/to_first_cam_rcropP1.00_lr50_e130/2026-05-31_09-23-19/ckpts/checkpoint.pt
 #   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
   data_module:
