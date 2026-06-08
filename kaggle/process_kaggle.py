@@ -206,6 +206,8 @@ def _abbr_value(value) -> str:
 def _derived_slug(cfg: dict) -> str:
     parts = []
     desc = cfg.get("desc")
+    if desc not in (None, ""):
+        parts.append(str(desc))
     desc_keys = _as_list(cfg.get("desc_keys"))
     if desc_keys:
         simple_updates = {k: v for k, v in _iter_simple_updates(cfg)}
@@ -440,7 +442,7 @@ def _build_runtime_config_name(cfg: dict) -> str | None:
     return text or None
 
 
-def _build_runtime_config_overrides(cfg: dict) -> dict[str, object]:
+def _build_runtime_config_overrides(cfg: dict, *, kernel_id: str | None = None) -> dict[str, object]:
     updates = []
     aliases = _runtime_override_alias_map()
     for key, value in _iter_simple_updates(cfg):
@@ -462,6 +464,7 @@ def _build_runtime_config_overrides(cfg: dict) -> dict[str, object]:
 
     resume_checkpoint_path = _effective_resume_checkpoint_path(cfg)
     out["checkpoint.resume_checkpoint_path"] = resume_checkpoint_path
+    out["kernel_id"] = kernel_id if kernel_id is not None else _build_kernel_id(cfg)
     if cfg.get("seed") is not None and (
         not cfg.get("resume_full_ckpt") or _resume_allows_yaml_override("seed_value", _resume_skip_keys(cfg))
     ):
@@ -578,10 +581,11 @@ def _apply_runtime_overrides_to_launch_py(
     cfg: dict,
     *,
     write: bool = True,
+    kernel_id: str | None = None,
 ) -> list[tuple[Path, list[tuple[str, object, object]]]] | None:
     path, old_config_name, old_overrides, text = _load_launch_runtime_overrides(_launch_py_path(cfg))
     new_config_name = _build_runtime_config_name(cfg)
-    new_overrides = _build_runtime_config_overrides(cfg)
+    new_overrides = _build_runtime_config_overrides(cfg, kernel_id=kernel_id)
 
     all_keys = []
     seen = set()
@@ -959,8 +963,8 @@ def main():
 
     write_files = bool(args.run)
     n3_github_zip_url_result = _apply_n3_github_zip_url_to_launch_py(cfg, write=write_files)
-    runtime_override_result = _apply_runtime_overrides_to_launch_py(cfg, write=write_files)
     meta = _update_metadata(cfg, write=write_files)
+    runtime_override_result = _apply_runtime_overrides_to_launch_py(cfg, write=write_files, kernel_id=meta["id"])
 
     # Mirror pos behavior: this flag is an internal mode used by auto_resume.py.
     suppress_prep_output = bool(args.push_output_only)

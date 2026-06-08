@@ -1,6 +1,6 @@
 {
-  "id": "pycjn666/pts-align-to-gt-greg2-r3-42",
-  "title": "pts align to gt greg2 r3 42",
+  "id": "cdong121/first-cam-vggt-asg-seed42-lw30-r1-42",
+  "title": "first cam vggt asg seed42 lw30 r1 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -44,7 +44,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "pycjn666/pts-align-to-gt-greg2-r2-42"
+    "cdong121/first-cam-vggt-asg-seed42-lw30-r0-42"
   ],
   "model_sources": []
 }

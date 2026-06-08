@@ -11,12 +11,13 @@ limit_val_batches:
 mode: 'train'
 test: false
 # mode: 'val'
+kernel_id: 
 
 max_epochs: 130
 break_at: 2
 resume_bs: true
 total_run_time_hr: 12.0
-n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/pos.zip
+n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
 lr_scheduler_lengths: &lr_scheduler_lengths [0.05, 0.95] #15
 # lr_scheduler_lengths: &lr_scheduler_lengths [0.0075, 0.9925] #100
 # lr_scheduler_lengths: &lr_scheduler_lengths [0.075, 0.925] #10
@@ -57,7 +58,7 @@ logging:
       - loss_Pose_T
       - loss_Pose_R
       - loss_FL
-      - aux_loss
+      # - aux_loss
       # - loss_conf_depth
       - loss_conf_point
       # - loss_reg_depth
@@ -379,7 +380,7 @@ optim:
       param_names:
         - "aggregator.patch_embed.*"
     - name: asg
-      ratio: 0.1
+      ratio: 0.01
       param_names:
         - "aggregator.asg.*"
     - name: camera_head
@@ -387,7 +388,7 @@ optim:
       param_names:
         - "camera_head.*"
     - name: dense_head
-      ratio: 1.0e-2
+      ratio: 0.1
       param_names:
         - "dense_head.*"
 
@@ -398,8 +399,14 @@ optim:
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
-      - module_name: ["aggregator"]
+      - module_name: ["aggregator.patch_embed"]
         max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator.asg"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
         norm_type: 2
       - module_name: ["dense_head"]
         max_norm: 5.0

@@ -9,15 +9,17 @@ import zipfile
 from pathlib import Path
 
 _IS_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
-_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/globalreg.zip'
+os.environ["IS_KAGGLE"] = "True"
+_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/omega.zip'
 # https://github.com/lc126eml/n3/archive/refs/heads/master.zip
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/pycjn666/pts-align-to-gt-greg2-r2-42/logs/ckpts/checkpoint.pt',
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cdong121/first-cam-vggt-asg-seed42-lw30-r0-42/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
- 'total_run_time_hr': 11.7}
+ 'kernel_id': 'cdong121/first-cam-vggt-asg-seed42-lw30-r1-42',
+ 'total_run_time_hr': 11.6}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
 
@@ -36,10 +38,12 @@ def _apply_kaggle_runtime_overrides(cfg) -> None:
     for key, value in overrides.items():
         if not isinstance(key, str) or not key:
             continue
-        OmegaConf.update(cfg, key, value, merge=False, force_add=(key == "current_datetime"))
+        OmegaConf.update(cfg, key, value, merge=False, force_add=True)
         applied.append(key)
     if applied:
         print(f"[launch] Applied runtime config overrides: {applied}")
+    
+    os.environ["kernel_id"] = cfg["kernel_id"]
 
 
 def _apply_kaggle_amp_policy(cfg) -> None:
@@ -433,7 +437,12 @@ def main() -> None:
     from training.trainer import Trainer
 
     trainer = Trainer(cfg)
-    trainer.run()
+    try:
+        trainer.run()
+    except Exception as exc:
+        from kaggle.utils.supabase_utils import log_to_supabase
+        log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")
+        raise exc
 
 
 if __name__ == "__main__":

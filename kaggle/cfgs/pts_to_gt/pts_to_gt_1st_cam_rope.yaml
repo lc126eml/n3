@@ -1,47 +1,48 @@
 id: 
 config_name: default_kaggle
 n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
-# desc: pred_center_pr2gt
-# desc: pred_center_gt2pr
-# desc: center_world
-# desc: first_cam
-desc: pts_align_to_gt_pos_lr01
-# desc: gt_align_to_pts
-# desc_keys: ["lr"]
+desc: pts_align_to_gt_1st_cam_rope
+desc_keys: ["seed"]
 run_id: 0
 total_runs: 10
-seed: 42
+seed: 52
 simple:
-  - total_run_time_hr: 11.
+  - total_run_time_hr: 8.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
-  - checkpoint.resume_config_skip_keys: []
+  # - logging.log_freq: 1
+  - checkpoint.resume_config_skip_keys: [total_run_time_hr]
   - data.data_module.train_config.batch_size: 43
+  - data.data_module.train_config.augs.max_scale: 1.2
+  - data.data_module.train_config.augs.random_crop_prob: 0.0
+  - data.data_module.train_config.augs.pcrop: 0.0
+  - data.data_module.train_config.resolution_cost_power: 1.13
   - data.data_module.train_config.debug_enumerate_batches: false
-  - optim.warmup_epochs: 15
+  - optim.warmup_epochs: 30
   - optim.warmup_batch_cost_discount: 0.55
-  ##- optim.gradient_clip.configs.0.max_norm: 1.0
-  # #- optim.gradient_clip.configs.1.max_norm: 1.0
-  # #- optim.gradient_clip.configs.2.max_norm: 1.0
-  # 
-  
+  - optim.gradient_clip.configs.0.max_norm: 1.0
+  - optim.gradient_clip.configs.1.max_norm: 5.0
+  - optim.gradient_clip.configs.2.max_norm: 5.0
+  - optim.gradient_clip.configs.3.max_norm: 5.0
+  - optim.gradient_clip.configs.4.max_norm: 5.0
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
   - optim.lr_multipliers.0.ratio: 0.01
-  - optim.lr_multipliers.1.ratio: 0.1
-  - optim.lr_multipliers.2.ratio: 0.1
+  - optim.lr_multipliers.1.ratio: 0.01
+  - optim.lr_multipliers.2.ratio: 0.01
   - optim.lr_multipliers.3.ratio: 0.1
   - model.enable_depth: false
-  - model.asg: true
+  - model.asg: false
+  - model.rope_freq: 100
   - postprocess.train:
       align:
         to_first_cam:
-          enabled: false
-          points: false
+          enabled: true
+          points: true
         pr_align_cam:
-          enabled: false
-          points: false
+          enabled: true
+          points: true
         center_world:
           enabled: &pts_center_world false
           align_pose: true
@@ -61,17 +62,17 @@ simple:
           conf_percentage: 80
           align_pose: true
       normalize:
-        gt_pts: false
+        gt_pts: true
         pr_pts:
-          enabled: false
-          metric: false
+          enabled: true
+          metric: False
         gt_depth: false
-        gt_pts_invariant:
-          enabled: true
-          translate: true
-        pr_pts_invariant:
-          enabled: true
-          translate: true
+        gt_pts_invariant: 
+          enabled: false
+          translate: false
+        pr_pts_invariant: 
+          enabled: False
+          translate: False
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt

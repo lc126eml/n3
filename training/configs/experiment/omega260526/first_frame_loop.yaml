@@ -6,7 +6,7 @@ defaults:
 
 gpu_lock_priority: 10
 
-exp_name: first_cam_s30
+exp_name: first_cam_loop_s30
 
 seed: 42
 max_epochs: &max_epochs 130
@@ -166,7 +166,7 @@ loss:
 optim:
   val_freq: 1
   param_group_modifiers: False
-  # warmup_epochs: -1
+  warmup_epochs: 30
   lr_multipliers:
     - name: patch_embed
       ratio: 1.0e-2
@@ -210,4 +210,5 @@ model:
   first_cam: True
   asg: false
   asg_max_hw: 512
+  loop: true
   enable_depth: *enable_depth

@@ -59,6 +59,8 @@ from datetime import timedelta
 from safetensors.torch import load_file
 from train_utils.priority_lock import PriorityLock
 
+_IS_KAGGLE = os.environ.get("IS_KAGGLE", 'False').lower() == 'true'
+
 def _setup_project_root_from_file(start_file: str) -> Path:
     env_project_root = os.environ.get("PROJECT_ROOT")
     if env_project_root:
@@ -106,7 +108,15 @@ def get_amp_type(amp_dtype: str):
     else:
         return torch.float16
 
+if _IS_KAGGLE:
+    sys.path.insert(0, str(PROJECT_ROOT/ "kaggle"))
+    from utils.supabase_utils import log_to_supabase
 
+def _log_to_supabase(status, message):
+    if _IS_KAGGLE:
+        logging.info(f"_log_to_supabase {status} {message}")
+        kernel_id = os.environ.get("kernel_id", "")
+        log_to_supabase(kernel_id, status, message)
 class Trainer:
     """
     Trainer supporting the DDP training strategies.
@@ -341,6 +351,8 @@ class Trainer:
             with g_pathmgr.open(config_path, "w") as f:
                 f.write(OmegaConf.to_yaml(conf_to_save))
             print(f"Saved trainer config to {config_path}")
+        self.nonfinite_count = 0
+        
 
     def _setup_timers(self):
         """
@@ -454,6 +466,7 @@ class Trainer:
                 % (cfg.checkpoint.resume_checkpoint_path,),
                 flush=True,
             )
+            raise ValueError(f"resume_checkpoint_path {cfg.checkpoint.resume_checkpoint_path} is not a file and no fallback 'checkpoint.pt' was found..")
             sys.exit(0)
             return cfg
 
@@ -1388,9 +1401,10 @@ class Trainer:
             raise ValueError(f"Invalid mode: {mode}")
         print(f"log_dir: {self.logging_conf.log_dir}")
 
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # gc.collect()
+        # if torch.cuda.is_available():
+        #     torch.cuda.empty_cache()
+        _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
 
     def _log_epoch_metrics_to_csv(self, phase, metrics):
         """Logs epoch metrics to a CSV file if enabled."""
@@ -1620,6 +1634,7 @@ class Trainer:
             except (TypeError, ValueError):
                 logging.warning(f"Ignoring invalid total_run_time_hr={self.total_run_time_hr!r}")
                 limit_sec = None
+        _log_to_supabase( 0, f"training {self.epoch}")
         while self.epoch < self.max_epochs:
             self.end_warmup()
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
@@ -1651,14 +1666,13 @@ class Trainer:
             if limit_sec is not None and limit_sec > 0:
                 elapsed_sec = time.time() - self.start_time
                 if elapsed_sec + last_train_epoch_duration_sec + last_val_epoch_duration_sec > limit_sec:
-                    logging.info(
-                        "Stopping before next epoch due to total_run_time_hr budget: "
-                        f"elapsed={elapsed_sec/3600.0:.2f}h, "
-                        f"limit={limit_sec/3600.0:.2f}h."
-                    )
+                    msg = f"Stopping before next epoch due to total_run_time_hr budget: elapsed={elapsed_sec/3600.0:.2f}h, limit={limit_sec/3600.0:.2f}h."
+                    logging.info(msg)
                     break
             if self.epoch == self.cfg.get("break_at", -1):
+                logging.info(f"break_at {self.epoch}")
                 break
+        # _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
         self.epoch -= 1
 
     @torch.no_grad()
@@ -1975,6 +1989,9 @@ class Trainer:
 
                 if skip_optimizer_step:
                     logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
+                    self.nonfinite_count+=1
+                    if self.nonfinite_count > 5:
+                        raise ValueError(f"Error because nonfinite gradients were detected.")
                     self.scaler.update()
                     self._clear_optimizer_step_memory()
                 else:
@@ -2068,6 +2085,9 @@ class Trainer:
 
                     if skip_optimizer_step:
                         logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
+                        self.nonfinite_count+=1
+                        if self.nonfinite_count > 5:
+                            raise ValueError(f"Error because nonfinite gradients were detected.")
                         self.scaler.update()
                     else:
                         for optim in self.optims:

@@ -2,19 +2,23 @@ id:
 config_name: default_kaggle_vggt
 # desc: pred_center_pr2gt
 # desc: pred_center_gt2pr
-desc: first_cam_vggt_wep30
+desc: first_cam_vggt52
 # desc_keys: ["lr"]
 run_id: 0
 total_runs: 10
-seed: 32
+seed: 52
 simple:
   - total_run_time_hr: 10.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
-  - logging.log_freq: 1
+  # - logging.log_freq: 1
   - checkpoint.resume_config_skip_keys: []
   - data.data_module.train_config.batch_size: 43
+  - data.data_module.train_config.augs.max_scale: 1.2
+  - data.data_module.train_config.augs.random_crop_prob: 0.0
+  - data.data_module.train_config.augs.pcrop: 0.0
+  - data.data_module.train_config.resolution_cost_power: 1.13
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 30
   - optim.warmup_batch_cost_discount: 0.55

@@ -188,3 +188,19 @@ embed_dim: 1024
 warmup_epochs: 20
 98	0	0.252698183
 122	0	0.255981892
+
+
+# warmup epoch
+## yccwff/first-cam-vggt-wep20-r9-32
+128	0	0.29477489
+
+## yccwff/first-cam-vggt-wep15-r9-32
+129	0	0.288164169
+
+## qqmail4092/first-cam-vggt-wep25-r9-32
+129	0	0.300576091
+
+## qqmail4092/first-cam-vggt-wep30-r9-32
+114	0	0.269567698
+128	0	0.271552593
+

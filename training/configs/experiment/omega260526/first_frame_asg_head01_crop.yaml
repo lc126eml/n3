@@ -6,16 +6,16 @@ defaults:
 
 gpu_lock_priority: 10
 
-exp_name: first_cam_s30
+exp_name: first_cam_asg_s30_h01_crop_w20
 
-seed: 42
+seed: 30
 max_epochs: &max_epochs 130
 break_at: 80
 logging:
   log_freq: 100
 
 # checkpoint:
-#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/to_first_cam_rcropP1.00_lr50_e130/2026-05-28_08-08-42/ckpts/checkpoint.pt
+#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/first_cam_asg_s30/to_first_cam_rcropP1.00_lr50_e130/2026-05-31_09-23-19/ckpts/checkpoint.pt
 #   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
   data_module:
@@ -24,8 +24,8 @@ data:
       resolution_cost_power: 1.13
       augs:
         max_scale: 1.2
-        random_crop_prob: 0.0
-        pcrop: 0.0
+        random_crop_prob: 0.6
+        pcrop: 1.0
 postprocess:
   train:
     to_extri: True
@@ -159,6 +159,7 @@ loss:
     scale_weight: 0.3
     translation_weight: 0
   vggt: True
+  asg_weight: 30
   enabled: true
   track: null   
 
@@ -177,7 +178,7 @@ optim:
       param_names:
         - "aggregator.asg.*"
     - name: camera_head
-      ratio: 0.1
+      ratio: 0.01
       param_names:
         - "camera_head.*"
     - name: dense_head
@@ -191,7 +192,7 @@ optim:
         max_norm: 1.0   
         norm_type: 2
       - module_name: ["aggregator.asg"]
-        max_norm: 1.0   
+        max_norm: 5.0   
         norm_type: 2
       - module_name: ["aggregator"]
         max_norm: 5.0   
@@ -208,6 +209,6 @@ model:
   # rope_freq: 100
   # rope_freq: -1
   first_cam: True
-  asg: false
+  asg: true
   asg_max_hw: 512
   enable_depth: *enable_depth
