@@ -1399,7 +1399,7 @@ class Trainer:
             self.run_val(val_loader=self.test_loader)
         else:
             raise ValueError(f"Invalid mode: {mode}")
-        print(f"log_dir: {self.logging_conf.log_dir}")
+        logging.info(f"log_dir: {self.logging_conf.log_dir}")
 
         # gc.collect()
         # if torch.cuda.is_available():
@@ -1495,29 +1495,46 @@ class Trainer:
         if not hasattr(self.optim_conf, "warmup_configs"):
             return
         for warmup_conf in self.optim_conf.warmup_configs:
-            if self.epoch == warmup_conf.epoch:                
-                parts = warmup_conf.attr.split('.')
-                obj = self  # Start from the 'self' object
+            if self.epoch != warmup_conf.epoch:
+                continue
 
+            attr_path = warmup_conf.attr
+            parts = attr_path.split(".")
+            obj = self
+
+            try:
+                for part in parts[:-1]:
+                    obj = getattr(obj, part)
+
+                attr_name = parts[-1]
+                old_runtime_value = getattr(obj, attr_name)
+                missing = object()
+                old_config_value = OmegaConf.select(self.cfg, attr_path, default=missing)
+                if old_config_value is missing:
+                    raise AttributeError(f"Config path '{attr_path}' does not exist")
+
+                value = copy.deepcopy(warmup_conf.value)
+                setattr(obj, attr_name, value)
                 try:
-                    # Navigate down to the parent object
-                    # e.g., for "loss.angle_pose.relative_weight", loop goes to 'loss', then 'angle_pose'
-                    for part in parts[:-1]:
-                        obj = getattr(obj, part)
-                    
-                    # 'obj' is now the parent (e.g., self.loss.angle_pose)
-                    # 'parts[-1]' is the final attribute name (e.g., 'relative_weight')
-                    attr_name = parts[-1]
-                    value = warmup_conf.value
+                    OmegaConf.update(
+                        self.cfg,
+                        attr_path,
+                        copy.deepcopy(value),
+                        merge=False,
+                    )
+                except Exception:
+                    setattr(obj, attr_name, old_runtime_value)
+                    raise
 
-                    # Set the attribute on the parent object
-                    setattr(obj, attr_name, value)
-                    
-                    # Optional: log the change
-                    print(f"Epoch {self.epoch}: Applied warmup config. Set {warmup_conf.attr} = {value}")
-
-                except AttributeError as e:
-                    print(f"Warning: Could not apply warmup config for {warmup_conf.attr}. Attribute not found. Error: {e}")
+                logging.info(
+                    f"Epoch {self.epoch}: Applied warmup config. "
+                    f"Set {attr_path} = {value}"
+                )
+            except Exception as exc:
+                logging.error(
+                    f"Warning: Could not apply warmup config for {attr_path}. "
+                    f"Runtime attribute and config were left unchanged. Error: {exc}"
+                )
 
     def _restore_native_frozen_params(self):
         native_frozen = getattr(self, "_native_frozen_param_names", None)
