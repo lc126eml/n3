@@ -6,7 +6,7 @@ defaults:
 
 gpu_lock_priority: 10
 
-exp_name: pts_align_to_gt
+exp_name: gt_align_to_pts_loop_noscale
 
 seed: 42
 max_epochs: &max_epochs 130
@@ -36,7 +36,8 @@ postprocess:
       center_world:
         enabled: False
       pts_align_to_gt:
-        enabled: &pts_align_to_gt True
+        enabled: &pts_align_to_gt false
+        to_pred_pose: false
         conf_percentage: 80
         with_scale: True
         align_pose: True
@@ -45,7 +46,9 @@ postprocess:
       pts_align_to_gt_rot:
         enabled: False
       gt_align_to_pts:
-        enabled: False
+        enabled: &gt_align_to_pts true
+        conf_percentage: 80
+        align_pose: true
     normalize:
       gt_pts: false
       pr_pts:
@@ -62,3 +65,53 @@ postprocess:
 loss:
   switch:
     pts_align_to_gt: *pts_align_to_gt
+    # gt_align_to_pts: *gt_align_to_pts
+optim:
+  val_freq: 1
+  param_group_modifiers: False
+  warmup_epochs: 30
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
+    - name: asg
+      ratio: 0.01
+      param_names:
+        - "aggregator.asg.*"
+    - name: camera_head
+      ratio: 0.1
+      param_names:
+        - "camera_head.*"
+    - name: dense_head
+      ratio: 0.1
+      param_names:
+        - "dense_head.*"
+  gradient_clip:
+    _target_: train_utils.gradient_clip.GradientClipper
+    configs:
+      - module_name: ["aggregator.patch_embed"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator.asg"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["dense_head"]
+        max_norm: 5.0
+        norm_type: 2
+      - module_name: ["camera"]
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
+
+
+model:
+  # rope_freq: 100
+  # rope_freq: -1
+  first_cam: false
+  asg: false
+  asg_max_hw: 512
+  loop: true
+  enable_depth: false

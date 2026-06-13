@@ -269,6 +269,53 @@ def align_pred_to_gt_torch_batch_roma(
 
     return batch_aligned_points, batch_transform_params
 
+
+def reverse_transform(
+    batch_transform_params: Dict[str, Optional[torch.Tensor]],
+) -> Dict[str, Optional[torch.Tensor]]:
+    """Reverse batched similarity transforms returned by the RoMa aligner.
+
+    The forward transform uses row vectors::
+
+        target = scale * (source @ rotation.T) + translation
+
+    Therefore the inverse parameters satisfy ``scale_inv = 1 / scale``,
+    ``rotation_inv = rotation.T``, and
+    ``translation_inv = -(translation @ rotation) / scale``. For rigid-only
+    transforms, represented by ``scale=None``, the inverse also has no scale.
+
+    Args:
+        batch_transform_params: Dictionary containing ``rotation`` with shape
+            ``(B, 3, 3)``, ``translation`` with shape ``(B, 3)``, and
+            ``scale`` with shape ``(B,)`` or ``None``.
+
+    Returns:
+        A new dictionary containing the inverse batched transform parameters.
+    """
+    rotation = batch_transform_params["rotation"]
+    translation = batch_transform_params["translation"]
+    scale = batch_transform_params.get("scale")
+
+    rotation_inv = rotation.transpose(-1, -2)
+    translation_inv = -torch.bmm(
+        translation.unsqueeze(1), rotation
+    ).squeeze(1)
+
+    if scale is None:
+        scale_inv = None
+    else:
+        if torch.any(scale == 0):
+            raise ValueError("Cannot reverse a transform with zero scale.")
+        scale_inv = scale.reciprocal()
+        translation_inv = translation_inv / scale.unsqueeze(-1)
+
+    return {
+        "scale": scale_inv,
+        "rotation": rotation_inv,
+        "translation": translation_inv,
+    }
+
+
 def umeyama_alignment_torch(x: torch.Tensor, y: torch.Tensor, with_scale: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Computes the optimal similarity transformation between two sets of corresponding points using PyTorch.

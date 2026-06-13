@@ -1,6 +1,9 @@
 #%%
 import torch
-from training.eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch_roma
+from umeyama_alignment import (
+    align_pred_to_gt_torch_batch_roma,
+    reverse_transform,
+)
 
 def test_strict_robustness():
     print("\n--- Starting STRICT Robustness & Isolation Tests ---")
@@ -127,11 +130,192 @@ def test_strict_robustness():
 
     print("\n🎉 Robustness Tests Complete.")
 
+def test_reverse():
+    print("\n--- Testing Forward and Reverse Similarity Transforms ---")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dtype = torch.float32
+
+    # Asymmetric, non-coplanar points avoid rotational ambiguity and exercise all
+    # three coordinates. The solver applies y = s * (x @ R.T) + t.
+    pred_flat = torch.tensor([
+        [-1.2, 0.3, 2.1],
+        [0.7, -2.0, 1.4],
+        [2.3, 1.1, -0.8],
+        [-0.4, 2.7, 0.5],
+        [1.6, -0.9, -2.2],
+        [-2.1, -1.3, 1.0],
+        [0.2, 1.8, 3.1],
+        [3.0, -1.5, 0.4],
+    ], device=device, dtype=dtype)
+
+    angle_x = torch.deg2rad(torch.tensor(-23.0, device=device, dtype=dtype))
+    angle_z = torch.deg2rad(torch.tensor(37.0, device=device, dtype=dtype))
+    one = torch.ones((), device=device, dtype=dtype)
+    zero = torch.zeros((), device=device, dtype=dtype)
+    rotation_x = torch.stack([
+        torch.stack([one, zero, zero]),
+        torch.stack([zero, torch.cos(angle_x), -torch.sin(angle_x)]),
+        torch.stack([zero, torch.sin(angle_x), torch.cos(angle_x)]),
+    ])
+    rotation_z = torch.stack([
+        torch.stack([torch.cos(angle_z), -torch.sin(angle_z), zero]),
+        torch.stack([torch.sin(angle_z), torch.cos(angle_z), zero]),
+        torch.stack([zero, zero, one]),
+    ])
+
+    expected_scale = torch.tensor(2.4, device=device, dtype=dtype)
+    expected_rotation = rotation_z @ rotation_x
+    expected_translation = torch.tensor(
+        [1.7, -3.2, 0.9], device=device, dtype=dtype
+    )
+    gt_flat = (
+        expected_scale * (pred_flat @ expected_rotation.T)
+        + expected_translation
+    )
+
+    # Shape required by align_pred_to_gt_torch_batch_roma: (B, S, W, H, 3).
+    pts_pred = pred_flat.view(1, 1, -1, 1, 3)
+    pts_gt = gt_flat.view(1, 1, -1, 1, 3)
+
+    pred_aligned, pred_to_gt = align_pred_to_gt_torch_batch_roma(
+        pred_points=pts_pred,
+        gt_points=pts_gt,
+        with_scale=True,
+        return_points=True,
+    )
+    gt_aligned, gt_to_pred = align_pred_to_gt_torch_batch_roma(
+        pred_points=pts_gt,
+        gt_points=pts_pred,
+        with_scale=True,
+        return_points=True,
+    )
+    reversed_from_forward = reverse_transform(pred_to_gt)
+    double_reversed = reverse_transform(reversed_from_forward)
+
+    s_forward = pred_to_gt["scale"][0]
+    R_forward = pred_to_gt["rotation"][0]
+    t_forward = pred_to_gt["translation"][0]
+    s_reverse = gt_to_pred["scale"][0]
+    R_reverse = gt_to_pred["rotation"][0]
+    t_reverse = gt_to_pred["translation"][0]
+    s_helper = reversed_from_forward["scale"][0]
+    R_helper = reversed_from_forward["rotation"][0]
+    t_helper = reversed_from_forward["translation"][0]
+    helper_aligned_flat = s_helper * (gt_flat @ R_helper.T) + t_helper
+
+    # If gt = s * R * pred + t in column-vector notation, then:
+    # pred = (1/s) * R.T * gt - (1/s) * R.T * t.
+    expected_reverse_scale = 1.0 / s_forward
+    expected_reverse_rotation = R_forward.T
+    expected_reverse_translation = -(t_forward @ R_forward) / s_forward
+
+    print("\nPred -> GT: gt = s_f * (pred @ R_f.T) + t_f")
+    print(f"  s_f = {s_forward.item():.8f}")
+    print(f"  R_f =\n{R_forward.cpu()}")
+    print(f"  t_f = {t_forward.cpu()}")
+    print("\nGT -> Pred: pred = s_r * (gt @ R_r.T) + t_r")
+    print(f"  s_r = {s_reverse.item():.8f}")
+    print(f"  R_r =\n{R_reverse.cpu()}")
+    print(f"  t_r = {t_reverse.cpu()}")
+    print("\nreverse_transform(pred_to_gt):")
+    print(f"  s_helper = {s_helper.item():.8f}")
+    print(f"  R_helper =\n{R_helper.cpu()}")
+    print(f"  t_helper = {t_helper.cpu()}")
+    print("\nExpected inverse relationships:")
+    print(f"  s_r = 1 / s_f = {expected_reverse_scale.item():.8f}")
+    print("  R_r = R_f.T")
+    print("  t_r = -(t_f @ R_f) / s_f")
+    print(f"      = {expected_reverse_translation.cpu()}")
+    print(f"  s_f * s_r = {(s_forward * s_reverse).item():.8f}")
+    print(f"  max forward point error = {(pred_aligned - pts_gt).abs().max().item():.3e}")
+    print(f"  max reverse fit error = {(gt_aligned - pts_pred).abs().max().item():.3e}")
+    print(f"  max helper point error = {(helper_aligned_flat - pred_flat).abs().max().item():.3e}")
+
+    atol = 2e-5
+    rtol = 2e-5
+    torch.testing.assert_close(s_forward, expected_scale, atol=atol, rtol=rtol)
+    torch.testing.assert_close(
+        R_forward, expected_rotation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        t_forward, expected_translation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        s_reverse, expected_reverse_scale, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        R_reverse, expected_reverse_rotation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        t_reverse, expected_reverse_translation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        s_helper, expected_reverse_scale, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        R_helper, expected_reverse_rotation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        t_helper, expected_reverse_translation, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        reversed_from_forward["scale"], gt_to_pred["scale"], atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        reversed_from_forward["rotation"], gt_to_pred["rotation"],
+        atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        reversed_from_forward["translation"], gt_to_pred["translation"],
+        atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        double_reversed["scale"], pred_to_gt["scale"], atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        double_reversed["rotation"], pred_to_gt["rotation"],
+        atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        double_reversed["translation"], pred_to_gt["translation"],
+        atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        helper_aligned_flat, pred_flat, atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(pred_aligned, pts_gt, atol=atol, rtol=rtol)
+    torch.testing.assert_close(gt_aligned, pts_pred, atol=atol, rtol=rtol)
+
+    rigid_gt_flat = pred_flat @ expected_rotation.T + expected_translation
+    rigid_gt = rigid_gt_flat.view_as(pts_pred)
+    _, rigid_forward = align_pred_to_gt_torch_batch_roma(
+        pred_points=pts_pred,
+        gt_points=rigid_gt,
+        with_scale=False,
+        return_points=False,
+    )
+    rigid_reverse = reverse_transform(rigid_forward)
+    rigid_restored = (
+        rigid_gt_flat @ rigid_reverse["rotation"][0].T
+        + rigid_reverse["translation"][0]
+    )
+    assert rigid_reverse["scale"] is None
+    torch.testing.assert_close(
+        rigid_reverse["rotation"][0], rigid_forward["rotation"][0].T,
+        atol=atol, rtol=rtol
+    )
+    torch.testing.assert_close(
+        rigid_restored, pred_flat, atol=atol, rtol=rtol
+    )
+    print("  rigid-only scale remains None and its inverse also restores points")
+    print("\nPASSED: forward and reverse parameters are consistent inverses.")
+
 if __name__ == "__main__":
-    test_strict_robustness()
+    test_reverse()
+    # test_strict_robustness()
 # %%
-import torch
-from training.eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch_roma
+# import torch
+# from training.eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch_roma
 
 def test_reflection_and_degeneracy():
     print("\n--- Starting STRICT Corner Case Tests (Reflection & Degeneracy) ---")
@@ -224,7 +408,7 @@ def test_reflection_and_degeneracy():
 
     print("\n🎉 Corner Case Tests Complete.")
 
-if __name__ == "__main__":
-    test_reflection_and_degeneracy()
+# if __name__ == "__main__":
+#     test_reflection_and_degeneracy()
 
 # %%

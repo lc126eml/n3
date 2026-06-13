@@ -1,0 +1,214 @@
+# @package _global_
+# First-frame as world coordinates (align poses + points to first cam).
+defaults:
+  - /default_nodeep
+  - _self_
+
+gpu_lock_priority: 10
+
+exp_name: first_cam_loop_crop
+
+seed: 42
+max_epochs: &max_epochs 130
+break_at: 80
+logging:
+  log_freq: 100
+
+# checkpoint:
+#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/to_first_cam_rcropP1.00_lr50_e130/2026-05-28_08-08-42/ckpts/checkpoint.pt
+#   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
+data:
+  data_module:
+    train_config:
+      batch_size: 36
+      resolution_cost_power: 1.13
+      augs:
+        max_scale: 1.2
+        random_crop_prob: 0.6
+        pcrop: 1.0
+postprocess:
+  train:
+    to_extri: True
+    align:
+      to_first_cam: 
+        enabled: True 
+        points: True
+      pr_align_cam:
+        enabled: False
+        points: False
+      pred_center:
+        enabled: &pts_align_to_center False
+      center_world:
+        enabled: &pts_center_world False
+        align_pose: True
+      pts_align_to_gt:
+        enabled: &pts_align_to_gt False
+      pts_align_to_gt_rot:
+        enabled: &pts_align_to_gt_rot False
+      gt_align_to_pts:
+        enabled: &gt_align_to_pts False
+      depth_align_to_gt:
+        enabled: False
+    normalize:
+      gt_pts: True
+      gt_depth: False
+      gt_pts_invariant: 
+        enabled: False
+      pr_pts:
+        enabled: False
+        metric: False
+      pr_pts_invariant: 
+        enabled: False
+        translate: False
+    transform:
+      cam_from_depth: &cam_from_depth False
+      global_from_cam: &global_from_cam False
+      global_from_cam_detach_pose: &global_from_cam_detach_pose False
+      global_from_depth: &global_from_depth False
+  val:
+    to_extri: True
+    align:
+      to_first_cam: 
+        enabled: True
+        points: True
+      pr_align_cam:
+        enabled: True
+        points: False
+      pts_align_to_gt:
+        enabled: True
+        conf_percentage: null
+        with_scale: True
+        align_pose: False
+        normalize_depth: False
+        normalize_pose: False
+      depth_align_to_gt:
+        enabled: &enable_depth false
+        conf_percentage: null
+        pose: True
+    normalize:
+      gt_pts: False
+      pr_pts:
+        enabled: False
+        metric: False
+    metrics:
+      camera:
+        enabled: True
+        abs_err: True
+        rel_err: True
+        abs_err_angle: True
+        rel_err_angle: True
+        # all_pairs_err: True
+      depth:
+        enabled: *enable_depth
+      recon:
+        pts_err: True
+        from_cam_err: False
+        from_depth_err: False
+    transform:
+      cam_from_depth: *cam_from_depth
+      global_from_cam: *global_from_cam
+      global_from_cam_detach_pose: *global_from_cam_detach_pose
+      global_from_depth: *global_from_depth
+
+    
+
+
+loss:
+  _target_: train_utils.loss.MultitaskLoss
+  camera: 
+    weight: 5.0
+    weight_focal: 0
+    weight_trans: 0
+    weight_rot: 0
+    pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
+    loss_type: "l1" # The paper uses smooth l1 loss, but we found l1 loss is more stable than smooth l1 and l2 loss.  
+  angle_pose: 
+    weight: 1.0
+    weight_trans: 1.0
+    weight_rot: 1.0
+    relative_weight: 0.5
+    absolute_weight: 0.5
+    compute_relative: False
+    compute_absolute: False
+    relative_neighbors: 1
+    loss_type: "l1" # The paper uses smooth l1 loss, but we found l1 loss is more stable than smooth l1 and l2 loss.  
+  depth:
+    weight: 1.0
+    gradient_loss_fn: "grad" 
+    valid_range: 0.98
+  # point: null
+  # If you want to enable point, use the following config
+  point: 
+    weight: 1.0
+    global_aligned_weight: 0.1
+    global_from_cam_weight: 0.05
+    global_from_depth_weight: 0.05
+    cam_from_depth_weight: 0.05
+    gradient_loss_fn: "normal" 
+    valid_range: 0.98
+    aligned_valid_range: 0.8
+    conf_percentage: 90
+  switch: null
+    # pts_align_to_gt: *pts_align_to_gt
+    # pts_align_to_gt_rot: *pts_align_to_gt_rot
+    # gt_align_to_pts: *gt_align_to_pts
+    # pts_align_to_center: *pts_align_to_center
+    # pts_center_world: *pts_center_world
+  regulize_scale:
+    enabled: True
+    scale_weight: 0.3
+    translation_weight: 0
+  vggt: True
+  enabled: true
+  track: null   
+
+
+optim:
+  val_freq: 1
+  param_group_modifiers: False
+  warmup_epochs: 30
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
+    - name: asg
+      ratio: 0.01
+      param_names:
+        - "aggregator.asg.*"
+    - name: camera_head
+      ratio: 0.1
+      param_names:
+        - "camera_head.*"
+    - name: dense_head
+      ratio: 0.1
+      param_names:
+        - "dense_head.*"
+  gradient_clip:
+    _target_: train_utils.gradient_clip.GradientClipper
+    configs:
+      - module_name: ["aggregator.patch_embed"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator.asg"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["dense_head"]
+        max_norm: 5.0
+        norm_type: 2
+      - module_name: ["camera"]
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
+
+
+model:
+  # rope_freq: 100
+  # rope_freq: -1
+  first_cam: True
+  asg: false
+  asg_max_hw: 512
+  loop: true
+  enable_depth: *enable_depth
