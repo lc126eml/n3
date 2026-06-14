@@ -7,7 +7,12 @@
 import torch
 from typing import Tuple
 from .rotation import quat_to_mat, mat_to_quat, safe_quat_to_mat
+_FOV_EPS = 1e-3
 
+
+def _fov_clamp_range() -> Tuple[float, float]:
+    """Numerical bounds enforced on FoV channels before focal-length recovery."""
+    return _FOV_EPS, float(torch.pi) - _FOV_EPS
 def intri_to_fov_encoding(
     intrinsics: torch.Tensor,
     image_size_hw: Tuple[int, int]
@@ -43,8 +48,8 @@ def intri_to_fov_encoding(
     fy = intrinsics[..., 1, 1]
 
     # Calculate FoV in radians using the pinhole camera model formula
-    fov_h = 2 * torch.atan((H / 2) / fy)
-    fov_w = 2 * torch.atan((W / 2) / fx)
+    fov_h = 2 * torch.atan((H * 0.5) / fy)
+    fov_w = 2 * torch.atan((W * 0.5) / fx)
 
     # Combine into a BxSx2 tensor
     # fov_h has shape (B, S), fov_h[..., None] makes it (B, S, 1)
@@ -162,8 +167,8 @@ def extri_intri_to_pose_encoding(
         quat = mat_to_quat(R)
         # Note the order of h and w here
         H, W = image_size_hw
-        fov_h = 2 * torch.atan((H / 2) / intrinsics[..., 1, 1])
-        fov_w = 2 * torch.atan((W / 2) / intrinsics[..., 0, 0])
+        fov_h = 2 * torch.atan((H * 0.5) / intrinsics[..., 1, 1])
+        fov_w = 2 * torch.atan((W * 0.5) / intrinsics[..., 0, 0])
         pose_encoding = torch.cat([T, quat, fov_h[..., None], fov_w[..., None]], dim=-1).float()
     elif pose_encoding_type == "absT_quaR_logK":
         R = extrinsics[:, :, :3, :3]
@@ -235,21 +240,22 @@ def pose_encoding_to_extri_intri(
     if pose_encoding_type == "absT_quaR_FoV":
         T = pose_encoding[..., :3]
         quat = pose_encoding[..., 3:7]
-        fov_h = pose_encoding[..., 7]
-        fov_w = pose_encoding[..., 8]
+        fov_lo, fov_hi = _fov_clamp_range()
+        fov_h = pose_encoding[..., 7].clamp(fov_lo, fov_hi)
+        fov_w = pose_encoding[..., 8].clamp(fov_lo, fov_hi)
 
         R = safe_quat_to_mat(quat)
         extrinsics = make_extrinsics(R, T)
 
         if build_intrinsics:
             H, W = image_size_hw
-            fy = (H / 2.0) / torch.tan(fov_h / 2.0)
-            fx = (W / 2.0) / torch.tan(fov_w / 2.0)
+            fy = (H * 0.5) / torch.tan(fov_h * 0.5)
+            fx = (W * 0.5) / torch.tan(fov_w * 0.5)
             intrinsics = torch.zeros(pose_encoding.shape[:2] + (3, 3), device=pose_encoding.device)
             intrinsics[..., 0, 0] = fx
             intrinsics[..., 1, 1] = fy
-            intrinsics[..., 0, 2] = W / 2
-            intrinsics[..., 1, 2] = H / 2
+            intrinsics[..., 0, 2] = W * 0.5
+            intrinsics[..., 1, 2] = H * 0.5
             intrinsics[..., 2, 2] = 1.0  # Set the homogeneous coordinate to 1
     elif pose_encoding_type == "absT_quaR_logK":
         T = pose_encoding[..., :3]

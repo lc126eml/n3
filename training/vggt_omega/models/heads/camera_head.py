@@ -77,5 +77,5 @@ class CameraHead(nn.Module):
 def _apply_camera_activation(raw_camera: torch.Tensor) -> torch.Tensor:
     translation = raw_camera[..., :3]
     quaternion = raw_camera[..., 3:7]
-    fov = F.relu(raw_camera[..., 7:]) + 0.01
+    fov = F.relu(raw_camera[..., 7:])
     return torch.cat([translation, quaternion, fov], dim=-1)

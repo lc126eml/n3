@@ -6,7 +6,7 @@ defaults:
 
 gpu_lock_priority: 10
 
-exp_name: gt_align_to_pts_loop
+exp_name: gt_align_to_pts_loop_scale
 
 seed: 42
 max_epochs: &max_epochs 130
@@ -46,9 +46,9 @@ postprocess:
       pts_align_to_gt_rot:
         enabled: False
       gt_align_to_pts:
-        with_scale: false
+        with_scale: true
         enabled: &gt_align_to_pts true
-        conf_percentage: 80
+        conf_percentage: 70
         align_pose: true
     normalize:
       gt_pts: false
@@ -67,6 +67,10 @@ loss:
   switch:
     pts_align_to_gt: *pts_align_to_gt
     # gt_align_to_pts: *gt_align_to_pts
+  regulize_scale:
+    enabled: true
+    scale_weight: 0.3
+    translation_weight: 0
 optim:
   val_freq: 1
   param_group_modifiers: False

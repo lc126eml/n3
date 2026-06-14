@@ -79,6 +79,37 @@ def freeze(mod: nn.Module, recursive: bool = True) -> None:
     for p in param_iter:
         p.requires_grad = False
 
+def unfreeze_ignore(mod: nn.Module, recursive: bool = True, ignore_names: list[str] = ["patch_embeddings"]) -> None:
+    """
+    Put *mod* back in train mode and enable gradients.
+    Does NOT restore previous state — just unfreezes.
+    
+    Args:
+        mod: The neural network module to unfreeze.
+        recursive: If True, affects the entire subtree. If False, only affects the top-level module.
+        ignore_names: A list of substrings. If a parameter's name contains any of these, 
+                      its gradient will remain frozen.
+    """
+
+    # 1. Set train mode
+    if recursive:
+        mod.train(True)  # affects entire subtree
+    else:
+        mod.training = True  # only this module
+
+    # 2. Enable gradients selectively
+    param_iter = (
+        mod.named_parameters()
+        if recursive
+        else mod.named_parameters(recurse=False)
+    )
+    
+    for name, p in param_iter:
+        # Check if any string in ignore_names matches a portion of the parameter name
+        if any(ignore_word in name for ignore_word in ignore_names):
+            continue  # Keep this parameter frozen, skip to the next
+            
+        p.requires_grad = True
 
 def unfreeze(mod: nn.Module, recursive: bool = True) -> None:
     """

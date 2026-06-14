@@ -6,7 +6,7 @@ defaults:
 
 gpu_lock_priority: 10
 
-exp_name: gt_align_to_pts_loop
+exp_name: pts_align_to_gt_loop_nofov
 
 seed: 42
 max_epochs: &max_epochs 130
@@ -36,20 +36,17 @@ postprocess:
       center_world:
         enabled: False
       pts_align_to_gt:
-        enabled: &pts_align_to_gt false
+        enabled: &pts_align_to_gt True
         to_pred_pose: false
         conf_percentage: 80
-        with_scale: True
+        with_scale: false
         align_pose: True
         normalize_depth: False
         normalize_pose: False
       pts_align_to_gt_rot:
         enabled: False
       gt_align_to_pts:
-        with_scale: false
-        enabled: &gt_align_to_pts true
-        conf_percentage: 80
-        align_pose: true
+        enabled: False
     normalize:
       gt_pts: false
       pr_pts:
@@ -60,17 +57,72 @@ postprocess:
         enabled: true
         translate: true
       pr_pts_invariant:
-        enabled: true
-        translate: true
+        enabled: false
+        translate: false
 
 loss:
+  angle_pose: 
+    weight: 1.0
+    weight_trans: 0.0
+    weight_rot: 1.0
+    relative_weight: 0.5
+    absolute_weight: 0.5
+    compute_relative: False
+    compute_absolute: False
+    relative_neighbors: 1
+    loss_type: "l1" 
+    beta: 1.0
+  regulize_scale:
+    enabled: false
+    scale_weight: 0.3
+    translation_weight: 0
   switch:
     pts_align_to_gt: *pts_align_to_gt
-    # gt_align_to_pts: *gt_align_to_pts
 optim:
+  # amp:
+  #   enabled: false
+  #   amp_dtype: bfloat16
   val_freq: 1
   param_group_modifiers: False
   warmup_epochs: 30
+  warmup_configs:
+  - attr: loss.angle_pose.compute_absolute
+    value: true
+    epoch: 1
+  - attr: loss.angle_pose.compute_relative
+    value: true
+    epoch: 1
+  # - attr: loss.camera.weight_focal
+  #   value: 0.5
+  #   epoch: 1
+  # - attr: loss.camera.weight_trans
+  #   value: 1.0
+  #   epoch: 1
+  - attr: loss.camera.weight_rot
+    value: 1.0
+    epoch: 1
+  - attr: loss.depth.gradient_loss_fn
+    value: grad
+    epoch: 2
+  - attr: loss.point.gradient_loss_fn
+    value: normal
+    epoch: 2
+  # frozen_module_names:
+      # - "*aggregator*"  # example, freeze the aggregator
+      # - "*patch_embed*"
+  # options:
+  #   lr:
+  #   - scheduler:
+  #       _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+  #       schedulers:
+  #       - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+  #         start_value: 5e-4
+  #         end_value: &lr_base 5e-4
+  #       - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+  #         start_value: *lr_base
+  #         end_value: 1e-6
+  #       lengths: [0.05, 0.95] 
+  #       interval_scaling: ['rescaled', 'rescaled']
   lr_multipliers:
     - name: patch_embed
       ratio: 1.0e-2

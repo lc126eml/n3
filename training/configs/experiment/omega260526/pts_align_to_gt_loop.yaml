@@ -15,7 +15,7 @@ logging:
   log_freq: 100
 
 # checkpoint:
-#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/pts_align_to_gt_rcropP1.00_lr50_e130/2026-05-27_10-49-46/ckpts/checkpoint.pt
+#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/pts_align_to_gt_loop_scale/pts_align_to_gt_rcropP0.00_lr50_e130/2026-06-18_08-11-33/ckpts/checkpoint.pt
 #   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
   data_module:
@@ -61,6 +61,10 @@ postprocess:
         translate: true
 
 loss:
+  regulize_scale:
+    enabled: false
+    scale_weight: 0.3
+    translation_weight: 0.0
   switch:
     pts_align_to_gt: *pts_align_to_gt
 optim:

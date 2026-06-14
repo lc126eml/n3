@@ -49,15 +49,8 @@ class MultitaskLoss(torch.nn.Module):
         self.pose_enc_loss = PoseEncodingLoss(loss_type="l1")
 
         if angle_pose is not None: # and (angle_pose.get("compute_absolute") or angle_pose.get("compute_relative")):
-            self.pose_loss = CameraPoseLoss(
-                alpha=angle_pose.get("alpha", 1.0),
-                compute_relative=angle_pose.get("compute_relative", False),
-                compute_absolute=angle_pose.get("compute_absolute", False),
-                relative_neighbors=angle_pose.get("relative_neighbors", -1),
-                loss_type=angle_pose.get("loss_type", "l2"),
-                beta=angle_pose.get("beta", 1.0),
-            )
             self.angle_pose = angle_pose
+            self.init_pose_loss()
         else:
             self.angle_pose = None
             self.pose_loss = None      
@@ -66,6 +59,18 @@ class MultitaskLoss(torch.nn.Module):
         self.point_no_conf_percent = {k: v for k, v in self.point.items() if k != "conf_percentage"}
         self.aligned_point = copy.deepcopy(self.point)
         self.aligned_point.valid_range = self.aligned_point.aligned_valid_range
+
+    def init_pose_loss(self):
+        angle_pose = self.angle_pose
+        self.pose_loss =  CameraPoseLoss(
+            alpha=angle_pose.get("alpha", 1.0),
+            compute_relative=angle_pose.get("compute_relative", False),
+            compute_absolute=angle_pose.get("compute_absolute", False),
+            relative_neighbors=angle_pose.get("relative_neighbors", -1),
+            loss_type=angle_pose.get("loss_type", "l2"),
+            beta=angle_pose.get("beta", 1.0),
+        )
+
 
     def forward(self, predictions, batch, data_keys, pred_data_keys) -> torch.Tensor:
         """

@@ -85,7 +85,7 @@ PROJECT_ROOT = _setup_project_root_from_file(__file__)
 from train_utils.general import *
 from train_utils.logging import setup_logging
 from train_utils.distributed import get_machine_local_and_dist_rank
-from train_utils.freeze import freeze_modules, unfreeze
+from train_utils.freeze import freeze_modules, unfreeze, unfreeze_ignore
 from train_utils.optimizer import construct_optimizers
 from train_utils.normalization import normalize_camera_extrinsics_and_points_batch
 from train_utils.checkpoint import DDPCheckpointSaver, robust_torch_save
@@ -475,7 +475,8 @@ class Trainer:
             raise ValueError(f"Checkpoint could not be loaded: {self._resume_ckpt_path}")
         resume_cfg = self._resume_checkpoint.get("trainer_config")
         if resume_cfg is None:
-            raise ValueError("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
+            print("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
+            return cfg
         self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
         merged = OmegaConf.create(resume_cfg)
         # merged = OmegaConf.merge(cfg, base_cfg, force_add=True)
@@ -1491,6 +1492,7 @@ class Trainer:
     def end_warmup(self):
         if self.epoch == self.optim_conf.warmup_epochs:
             unfreeze(self.model, True)
+            # unfreeze_ignore(self.model, True, ignore_names=["patch_embeddings"])
             self._restore_native_frozen_params()
             warmup_batch_cost_discount = float(
                 getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
@@ -1534,6 +1536,10 @@ class Trainer:
                     f"Epoch {self.epoch}: Applied warmup config. "
                     f"Set {attr_path} = {value}"
                 )
+                if "angle_pose" in attr_path:
+                    self.loss.init_pose_loss()
+                    logging.info(self.loss.angle_pose)
+                    logging.info(f"{self.loss.pose_loss.compute_relative=},{self.loss.pose_loss.compute_absolute=}")
             except Exception as exc:
                 logging.error(
                     f"Warning: Could not apply warmup config for {attr_path}. "
@@ -1659,7 +1665,7 @@ class Trainer:
         while self.epoch < self.max_epochs:
             self.end_warmup()
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
-            self._apply_train_aug_schedule(self.epoch)
+            # self._apply_train_aug_schedule(self.epoch)
 
             train_epoch_start_time = time.time()
             ok = self.train_epoch(self.train_loader)
@@ -1995,7 +2001,11 @@ class Trainer:
                             self.where,
                             self.steps[phase],
                         )
-
+                # for name, param in self.model.named_parameters():
+                #     if param.grad is not None:
+                #         raw_norm = param.grad.norm(2).item()
+                #         if raw_norm > 1000.0:  # Threshold to catch anomalies early
+                #             logging.warning(f"[RAW GRAD] Layer: {name} | Norm: {raw_norm:.4f}")
                 # Clipping gradients and detecting diverging gradients
                 skip_optimizer_step = False
                 if self.gradient_clipper is not None:
@@ -2376,13 +2386,14 @@ class Trainer:
         pts_align_conf = pp_conf.align.get("gt_align_to_pts", {})
         if pts_align_conf.get("enabled"):
             if pred_data_keys.world_points in pred:
+                with_scale = pts_align_conf.get("with_scale", False)
                 # with torch.no_grad():                
-                _, transform_params = align_pred_to_gt_torch_batch_roma(batch[data_keys.world_points], pred[pred_data_keys.world_points],  batch[data_keys.valid_mask], pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage, with_scale=False, return_points=False)
-                    
+                _, transform_params = align_pred_to_gt_torch_batch_roma(batch[data_keys.world_points], pred[pred_data_keys.world_points],  batch[data_keys.valid_mask], pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage, with_scale=with_scale, return_points=False)
+                with_scale = False   
                 if pts_align_conf.align_pose:
-                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_c2w_poses_points_torch(c2w_poses=batch[data_keys.extrinsics], transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=False)
+                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_c2w_poses_points_torch(c2w_poses=batch[data_keys.extrinsics], transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale)
                 else:
-                    _, batch[data_keys.world_points] = align_c2w_poses_points_torch(transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=False)
+                    _, batch[data_keys.world_points] = align_c2w_poses_points_torch(transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale)
 
         pts_align_conf = pp_conf.align.get("pts_align_to_gt", {})
         if pts_align_conf.get("enabled"):
@@ -2400,7 +2411,7 @@ class Trainer:
                 _, transform_params = align_pred_to_gt_torch_batch_roma(pred[pred_data_keys.world_points], batch[data_keys.world_points], batch[data_keys.valid_mask], pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage, with_scale=with_scale, return_points=False)
                 # 
                 if 'translation' not in pred:
-                    if pts_align_conf.with_scale:
+                    if pts_align_conf.with_scale and not pp_conf.normalize.get("pr_pts_invariant", {}).get("enabled"):
                         pred['scale'] = transform_params['scale']
                     pred['translation'] = transform_params['translation']
                 # if pts_align_conf.with_scale:

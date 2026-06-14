@@ -342,10 +342,10 @@ optim:
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
-  - attr: "loss.pose_loss.compute_absolute"
+  - attr: "loss.angle_pose.compute_absolute"
     value: true
     epoch: *warmup_epoch3
-  - attr: "loss.pose_loss.compute_relative"
+  - attr: "loss.angle_pose.compute_relative"
     value: true
     epoch: *warmup_epoch2
     # - attr: "loss.camera.weight"

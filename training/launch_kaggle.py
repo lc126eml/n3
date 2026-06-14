@@ -16,9 +16,9 @@ _N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/omega.zi
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cdong121/first-cam-vggt-asg-seed42-lw30-r0-42/logs/ckpts/checkpoint.pt',
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/rushly/first-cam-vggt-rope-seed42-r8-42/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
- 'kernel_id': 'cdong121/first-cam-vggt-asg-seed42-lw30-r1-42',
+ 'kernel_id': 'rushly/first-cam-vggt-rope-seed42-r9-42',
  'total_run_time_hr': 11.6}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
