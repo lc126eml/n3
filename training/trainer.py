@@ -981,20 +981,7 @@ class Trainer:
             f"Done moving components to device {self.device}."
         )
 
-    def save_checkpoint(self, epoch, checkpoint_names=None):        
-        checkpoint_folder = self.checkpoint_conf.save_dir
-        safe_makedirs(checkpoint_folder)
-        # if checkpoint_names is None:
-        checkpoint_names = ["checkpoint"]
-        if not (self.checkpoint_conf.save_freq > 0 and int(epoch + 1) % self.checkpoint_conf.save_freq == 0):
-            return
-            # if (
-            #     self.checkpoint_conf.save_freq > 0
-            #     and int(epoch) % self.checkpoint_conf.save_freq == 0
-            #     and (int(epoch) > 0 or self.checkpoint_conf.save_freq == 1)
-            # ):
-            #     checkpoint_names.append(f"checkpoint_{int(epoch)}")
-
+    def _build_checkpoint_content(self, epoch):
         checkpoint_content = {
             "epoch": epoch,
             "prev_epoch": epoch,
@@ -1018,6 +1005,24 @@ class Trainer:
             checkpoint_content["optimizer"] = checkpoint_content["optimizer"][0]
         if self.optim_conf.amp.enabled:
             checkpoint_content["scaler"] = self.scaler.state_dict()
+
+        return checkpoint_content
+
+    def save_checkpoint(self, epoch, checkpoint_names=None):
+        checkpoint_folder = self.checkpoint_conf.save_dir
+        safe_makedirs(checkpoint_folder)
+        # if checkpoint_names is None:
+        checkpoint_names = ["checkpoint"]
+        if not (self.checkpoint_conf.save_freq > 0 and int(epoch + 1) % self.checkpoint_conf.save_freq == 0):
+            return
+            # if (
+            #     self.checkpoint_conf.save_freq > 0
+            #     and int(epoch) % self.checkpoint_conf.save_freq == 0
+            #     and (int(epoch) > 0 or self.checkpoint_conf.save_freq == 1)
+            # ):
+            #     checkpoint_names.append(f"checkpoint_{int(epoch)}")
+
+        checkpoint_content = self._build_checkpoint_content(epoch)
 
         # Save the checkpoint for DDP only
         saver = DDPCheckpointSaver(
@@ -1075,6 +1080,7 @@ class Trainer:
                 logging.warning(f"checkpoint.best_monitor={monitor!r} was not found in validation metrics; skipping best checkpoint.")
             return None, None
 
+        return None, None
         objective_items = [
             (key, value)
             for key, value in numeric_items
@@ -1128,13 +1134,29 @@ class Trainer:
 
         checkpoint_folder = self.checkpoint_conf.save_dir
         safe_makedirs(checkpoint_folder)
-        checkpoint_path = os.path.join(checkpoint_folder, f"best_ep{int(epoch)}.pt")
-        checkpoint = self.model.state_dict()
+        checkpoint_name = f"best_ep{int(epoch)}"
+        checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
+        best_full = bool(self.checkpoint_conf.get("best_full", False))
         logging.info(
-            f"Saving best model weights at epoch {epoch} to {checkpoint_path} "
+            f"Saving best {'checkpoint' if best_full else 'model weights'} at epoch {epoch} to {checkpoint_path} "
             f"({monitor}={metric_value:.6g})"
         )
-        robust_torch_save(checkpoint, checkpoint_path)
+        if best_full:
+            saver = DDPCheckpointSaver(
+                checkpoint_folder,
+                checkpoint_names=[checkpoint_name],
+                rank=0,
+                epoch=epoch,
+            )
+            saver.save_checkpoint(
+                model=self.model,
+                ema_models=None,
+                skip_saving_parameters=[],
+                **self._build_checkpoint_content(epoch),
+            )
+        else:
+            checkpoint = self.model.state_dict()
+            robust_torch_save(checkpoint, checkpoint_path)
         for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
             if str(old_best_path) == checkpoint_path:
                 continue
