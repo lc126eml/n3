@@ -208,9 +208,10 @@ postprocess:
     
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
-  save_freq: 1 #*max_epochs
+  save_freq: 5 #*max_epochs
   best_monitor: val_hypersim_recon_abs_rel
   best_mode: min
+  best_full: true
   resume_checkpoint_path: null
   resume_config_skip_keys: [break_at]
   resume_optimizer: true
@@ -430,6 +431,7 @@ model:
   _target_: vggt_omega.models.vggt_omega.VGGTOmega
   conf_logit_max: null
   enable_camera: True
+  simple_camera: false
   enable_depth: false
   enable_point: True
   enable_cam_point: False

@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 
 from vggt_omega.models.aggregator import Aggregator
-from vggt_omega.models.heads import CameraHead, DenseHead, TextAlignmentHead
+from vggt_omega.models.heads import CameraHead, DenseHead, TextAlignmentHead, SimpleCameraHead
 
 
 class VGGTOmega(nn.Module):
@@ -29,6 +29,7 @@ class VGGTOmega(nn.Module):
         register_attention_block_indices: list[int] = [2, 6, 9, 14, 20],
         cached_layer_indices: tuple[int, ...] = (4, 11, 17, 23),
         enable_camera: bool = True,
+        simple_camera: bool = False,
         enable_point: bool = False,
         enable_cam_point: bool = False,
         enable_depth: bool = True,
@@ -61,7 +62,14 @@ class VGGTOmega(nn.Module):
             loop=loop,
         )
         _warn_if_rope_not_max(self.aggregator)
-        self.camera_head = CameraHead(dim_in=2 * embed_dim) if enable_camera else None
+        self.camera_head = None
+        self.simple_camera = simple_camera
+        if enable_camera:
+            if simple_camera:
+                self.camera_head = SimpleCameraHead(in_dim=2 * embed_dim, hidden_dim=2 * embed_dim, pose_dim=9)
+            else:
+                self.camera_head = CameraHead(dim_in=2 * embed_dim)
+
         self.dense_head = (
             DenseHead(
                 dim_in=2 * embed_dim,
@@ -93,13 +101,13 @@ class VGGTOmega(nn.Module):
         predictions = {
             "camera_and_register_tokens": final_tokens[:, :, :patch_token_start].contiguous(),
         }
-        with torch.autocast(device_type="cuda", enabled=False):
-            if self.camera_head is not None:
-                predictions["pose_enc"] = self.camera_head(
-                    aggregated_tokens_list,
-                    patch_token_start=patch_token_start,
-                )
+        if self.camera_head is not None:
+            predictions["pose_enc"] = self.camera_head(
+                aggregated_tokens_list,
+                patch_token_start=patch_token_start,
+            )
 
+        with torch.autocast(device_type="cuda", enabled=False):
             if self.dense_head is not None:
                 predictions.update(
                     self.dense_head(

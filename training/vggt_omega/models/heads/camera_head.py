@@ -58,9 +58,6 @@ class CameraHead(nn.Module):
         if patch_token_start > num_tokens:
             raise ValueError(f"patch_token_start ({patch_token_start}) exceeds token length ({num_tokens})")
 
-        # if tokens.dtype != torch.float32:
-        #     tokens = tokens.float()
-
         camera_and_register_tokens = tokens[:, :, :patch_token_start]
         camera_and_register_tokens = self.token_norm(camera_and_register_tokens)
 
@@ -71,7 +68,10 @@ class CameraHead(nn.Module):
 
         camera_and_register_tokens = camera_and_register_tokens.reshape(batch_size, num_frames, patch_token_start, -1)
         camera_tokens = self.trunk_norm(camera_and_register_tokens[:, :, 0])
-        return _apply_camera_activation(self.camera_branch(camera_tokens))
+
+        with torch.autocast(device_type="cuda", enabled=False):
+            raw_camera = self.camera_branch(camera_tokens.float())
+            return _apply_camera_activation(raw_camera)
 
 
 def _apply_camera_activation(raw_camera: torch.Tensor) -> torch.Tensor:
