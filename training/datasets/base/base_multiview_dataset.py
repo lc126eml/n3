@@ -227,6 +227,8 @@ class BaseMultiViewDataset(EasyDataset):
             raise ValueError(f"Cannot select {num_elements} elements with {min_interval} min interval in a range of size {available_range}")
 
         if interval_range is None:
+            if max_interval > available_range - num_elements + 1:
+                max_interval = available_range - num_elements + 1
             interval_range = list(range(min_interval, max_interval + 1))
 
         # Generate initial intervals

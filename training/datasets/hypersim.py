@@ -31,6 +31,7 @@ class HyperSim_Multi(BaseMultiViewDataset):
         image_list_path=None,
         depth_filter_spec=None,
         depth_filter_fn=None,
+        exclude_list_path=None,
         **kwargs,
     ):
         self.video = True
@@ -41,6 +42,7 @@ class HyperSim_Multi(BaseMultiViewDataset):
         self.image_list_path = image_list_path
         self.depth_filter_spec = depth_filter_spec
         self.depth_filter_fn = depth_filter_fn
+        self.exclude_list_path = exclude_list_path
         super().__init__(*args, split=split, **kwargs)
 
         # Keep single-root compatibility while supporting multiple roots.
@@ -50,6 +52,101 @@ class HyperSim_Multi(BaseMultiViewDataset):
             root_list = [ROOT]
         self.roots = root_list
         self.loaded_data = self._load_data()
+
+    @staticmethod
+    def _normalize_relpath(path):
+        return str(path).strip().replace("\\", "/").lstrip("./")
+
+    @staticmethod
+    def _cam_path_to_rgb_path(path):
+        if path.endswith("_cam.npz"):
+            return path[:-len("_cam.npz")] + "_rgb.png"
+        return path
+
+    def _load_excluded_rgb_relpaths(self):
+        if not self.exclude_list_path:
+            return set()
+
+        exclude_path = str(self.exclude_list_path)
+        if not osp.isfile(exclude_path):
+            raise FileNotFoundError(f"HyperSim exclude list not found: {exclude_path}")
+
+        excluded = set()
+        with open(exclude_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                parts = self._normalize_relpath(line).split("/")
+                if len(parts) < 2:
+                    continue
+                split_name = parts[0]
+                if self.split is not None and split_name != self.split:
+                    continue
+                relpath = "/".join(parts[1:])
+                excluded.add(self._cam_path_to_rgb_path(relpath))
+        return excluded
+
+    def _image_matches_exclude(self, image_path, excluded_rgb_relpaths):
+        image_path = self._normalize_relpath(image_path)
+        for excluded in excluded_rgb_relpaths:
+            if image_path == excluded or image_path.endswith("/" + excluded):
+                return True
+        return False
+
+    def _apply_exclude_list(self, scenes, images, scene_img_list):
+        excluded_rgb_relpaths = self._load_excluded_rgb_relpaths()
+        if not excluded_rgb_relpaths:
+            return scenes, images, scene_img_list
+
+        keep_mask = [
+            not self._image_matches_exclude(path, excluded_rgb_relpaths)
+            for path in images
+        ]
+        excluded_count = len(keep_mask) - sum(keep_mask)
+        if excluded_count == 0:
+            print(
+                f"HyperSim exclude list matched 0 frames for split={self.split}: "
+                f"{self.exclude_list_path}"
+            )
+            return scenes, images, scene_img_list
+
+        cut_off = (
+            self.num_views * self.min_interval
+            if not self.allow_repeat
+            else max(self.num_views * self.min_interval // 3, 3)
+        )
+        new_scenes = []
+        kept_scene_img_list = []
+        skipped_scenes = 0
+        for scene, img_ids in zip(scenes, scene_img_list):
+            kept_img_ids = [
+                idx for idx in img_ids
+                if 0 <= idx < len(images) and keep_mask[idx]
+            ]
+            if len(kept_img_ids) < cut_off:
+                skipped_scenes += 1
+                continue
+            new_scenes.append(scene)
+            kept_scene_img_list.append(kept_img_ids)
+
+        old_to_new = {}
+        new_images = []
+        new_scene_img_list = []
+        for img_ids in kept_scene_img_list:
+            remapped = []
+            for idx in img_ids:
+                if idx not in old_to_new:
+                    old_to_new[idx] = len(new_images)
+                    new_images.append(images[idx])
+                remapped.append(old_to_new[idx])
+            new_scene_img_list.append(remapped)
+
+        print(
+            f"HyperSim excluded {excluded_count} frames from {self.exclude_list_path} "
+            f"for split={self.split}; skipped_scenes={skipped_scenes}"
+        )
+        return new_scenes, new_images, new_scene_img_list
 
     def _get_cache_files(self):
         if not self.image_list_path:
@@ -361,6 +458,9 @@ class HyperSim_Multi(BaseMultiViewDataset):
             images.extend(scene_rgbs)
             offset += num_imgs
 
+        scenes, images, scene_img_list = self._apply_exclude_list(
+            scenes, images, scene_img_list
+        )
         depth_stats = self.build_depth_stats(images)
         self._write_cache(scenes, images, scene_img_list, depth_stats)
 
@@ -399,7 +499,7 @@ class HyperSim_Multi(BaseMultiViewDataset):
                 max_interval=self.max_interval,
             )
         except ValueError as e:
-            print(f"Error in _get_views of {scene_id}, {num_views} of {len(all_image_ids)}: {e}")
+            print(f"Error in _get_views of {self.scenes[scene_id]}, {num_views} of {len(all_image_ids)}: {e}")
             return None
 
         image_idxs = np.array(all_image_ids)[pos]
