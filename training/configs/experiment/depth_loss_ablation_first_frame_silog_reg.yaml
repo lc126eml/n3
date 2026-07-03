@@ -74,7 +74,7 @@ postprocess:
       camera:
         enabled: True
         abs_err: True
-        rel_err: True
+        rel_err: false
         abs_err_angle: True
         rel_err_angle: True
         # all_pairs_err: True

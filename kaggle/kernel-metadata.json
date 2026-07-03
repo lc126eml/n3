@@ -1,6 +1,6 @@
 {
-  "id": "cdong121/first-cam-vggt-asg-seed42-lw30-r1-42",
-  "title": "first cam vggt asg seed42 lw30 r1 42",
+  "id": "zhuangminghui/pts-align-to-gt-omega-seed42-mct-r4-42",
+  "title": "pts align to gt omega seed42 mct r4 42",
   "code_file": "../training/launch_kaggle.py",
   "language": "python",
   "kernel_type": "script",
@@ -11,6 +11,7 @@
   "dataset_sources": [
     "liucong12601/timm-repos",
     "sinayliu/dino-ds",
+    "sinayliu/vomega-ds",
     "liucong12601/hsm-train-part01",
     "liucong12601/hsm-train-part02",
     "liucong12601/hsm-train-part03",
@@ -44,7 +45,7 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "cdong121/first-cam-vggt-asg-seed42-lw30-r0-42"
+    "liucong126/pts-align-to-gt-omega-seed42-mct-r3-42"
   ],
   "model_sources": []
 }

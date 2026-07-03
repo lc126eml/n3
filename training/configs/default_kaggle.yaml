@@ -190,7 +190,7 @@ postprocess:
       camera:
         enabled: true
         abs_err: true
-        rel_err: true
+        rel_err: false
         abs_err_angle: true
         rel_err_angle: true
         # all_pairs_err: True
@@ -212,6 +212,7 @@ checkpoint:
   save_freq: 1 #*max_epochs
   best_monitor: val_hypersim_recon_abs_rel
   best_mode: min
+  best_full: false
   resume_checkpoint_path: null
   resume_config_skip_keys: [break_at]
   resume_optimizer: true
@@ -381,10 +382,17 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
-    - name: asg
-      ratio: 0.01
+    - name: frame_blocks
+      ratio: 1.0e-1
       param_names:
-        - "aggregator.asg.*"
+        - "aggregator.frame_blocks.*"
+        - "aggregator.inter_frame_blocks.*"
+        - "aggregator.camera_token.*"
+        - "aggregator.register_token.*"
+    # - name: asg
+    #   ratio: 0.01
+    #   param_names:
+    #     - "aggregator.asg.*"
     - name: camera_head
       ratio: 0.01
       param_names:
@@ -404,9 +412,9 @@ optim:
       - module_name: ["aggregator.patch_embed"]
         max_norm: 1.0   
         norm_type: 2
-      - module_name: ["aggregator.asg"]
-        max_norm: 5.0   
-        norm_type: 2
+      # - module_name: ["aggregator.asg"]
+      #   max_norm: 5.0   
+      #   norm_type: 2
       - module_name: ["aggregator"]
         max_norm: 5.0   
         norm_type: 2
@@ -439,6 +447,7 @@ model:
   _target_: vggt_omega.models.vggt_omega.VGGTOmega
   conf_logit_max: null
   enable_camera: True
+  simple_camera: false
   enable_depth: false
   enable_point: True
   enable_cam_point: False

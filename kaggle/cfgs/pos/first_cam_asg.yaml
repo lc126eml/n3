@@ -36,7 +36,7 @@ simple:
   - optim.lr_multipliers.3.ratio: 0.1
   - model.enable_depth: false
   - model.asg: true
-  - loss.asg_weight: 5
+  - loss.asg_weight: 10
   - postprocess.train:
       align:
         to_first_cam:

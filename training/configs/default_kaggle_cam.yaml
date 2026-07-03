@@ -190,7 +190,7 @@ postprocess:
       camera:
         enabled: true
         abs_err: true
-        rel_err: true
+        rel_err: false
         abs_err_angle: true
         rel_err_angle: true
         # all_pairs_err: True
@@ -210,7 +210,11 @@ postprocess:
 checkpoint:
   save_dir: logs/ckpts
   save_freq: 1 #*max_epochs
-  resume_checkpoint_path:
+  best_monitor: val_hypersim_recon_abs_rel
+  best_mode: min
+  best_full: false
+  resume_checkpoint_path: null
+  resume_config_skip_keys: [break_at]
   resume_optimizer: true
   lazy_resume_optimizer: true
   # When resuming, checkpoint trainer_config is preferred by default.
@@ -221,7 +225,6 @@ checkpoint:
   # - checkpoint.resume_config_skip_keys
   # - logging.run_folder_name
   # List only additional dot-path overrides here.
-  resume_config_skip_keys: []
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
   # resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
   # strict: False
@@ -248,10 +251,10 @@ checkpoint:
 loss:
   _target_: train_utils.loss.MultitaskLoss
   camera:
-    weight: 1.0
-    weight_focal: 0
-    weight_trans: 0
-    weight_rot: 0
+    weight: 5.0
+    weight_focal: 0.5
+    weight_trans: 1.0
+    weight_rot: 1.0
     pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
     loss_type: "l1"
     beta: 1.0
@@ -268,7 +271,7 @@ loss:
     beta: 1.0
   depth:
     weight: 1.0
-    gradient_loss_fn: "" #"grad" 
+    gradient_loss_fn: "grad" #"grad" ""
     valid_range: 0.98
     reg_loss_type: "l2"
     reg_loss_beta: 1.0
@@ -290,7 +293,7 @@ loss:
     global_from_cam_weight: 0.05
     global_from_depth_weight: 0.05
     cam_from_depth_weight: 0.05
-    gradient_loss_fn: "" #"normal" 
+    gradient_loss_fn: "normal" #"normal" ""
     valid_range: 0.98
     gamma: 1.0
     alpha: 0.2
@@ -308,7 +311,7 @@ loss:
     pts_align_to_center: *pts_align_to_center
     pts_center_world: *pts_center_world
   regulize_scale:
-    enabled: true
+    enabled: false
     scale_weight: 0.3
     translation_weight: 0
   vggt: false
@@ -326,40 +329,40 @@ optim:
   warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
-  warmup_configs:
+  warmup_configs: []
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
-  - attr: "loss.regulize_scale.scale_weight"
-    value: 1.0
-    epoch: *warmup_epoch2
+  # - attr: "loss.regulize_scale.scale_weight"
+  #   value: 1.0
+  #   epoch: *warmup_epoch2
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
-  - attr: "loss.angle_pose.compute_absolute"
-    value: true
-    epoch: *warmup_epoch3
-  - attr: "loss.angle_pose.compute_relative"
-    value: true
-    epoch: *warmup_epoch2
+  # - attr: "loss.angle_pose.compute_absolute"
+  #   value: true
+  #   epoch: *warmup_epoch2
+  # - attr: "loss.angle_pose.compute_relative"
+  #   value: true
+  #   epoch: *warmup_epoch2
     # - attr: "loss.camera.weight"
     #   value: 5.0
     #   epoch: *warmup_epochs
-  - attr: "loss.camera.weight_focal"
-    value: 0.5
-    epoch: *warmup_epoch2
-  - attr: "loss.camera.weight_trans"
-    value: 1.0
-    epoch: *warmup_epoch2
-  - attr: "loss.camera.weight_rot"
-    value: 1.0
-    epoch: *warmup_epoch2
-  - attr: "loss.depth.gradient_loss_fn"
-    value: "grad"
-    epoch: *warmup_epoch3
-  - attr: "loss.point.gradient_loss_fn"
-    value: "normal"
-    epoch: *warmup_epoch3
+  # - attr: "loss.camera.weight_focal"
+  #   value: 0.5
+  #   epoch: *warmup_epoch2
+  # - attr: "loss.camera.weight_trans"
+  #   value: 1.0
+  #   epoch: *warmup_epoch2
+  # - attr: "loss.camera.weight_rot"
+  #   value: 1.0
+  #   epoch: *warmup_epoch2
+  # - attr: "loss.depth.gradient_loss_fn"
+  #   value: "grad"
+  #   epoch: *warmup_epoch3
+  # - attr: "loss.point.gradient_loss_fn"
+  #   value: "normal"
+  #   epoch: *warmup_epoch3
     # - attr: "loss.point.global_aligned_weight"
     #   value: 1.0
     #   epoch: *warmup_epoch3
@@ -437,6 +440,7 @@ model:
   _target_: vggt_omega.models.vggt_omega.VGGTOmega
   conf_logit_max: null
   enable_camera: True
+  simple_camera: false
   enable_depth: false
   enable_point: True
   enable_cam_point: False

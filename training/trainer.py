@@ -113,10 +113,11 @@ if _IS_KAGGLE:
     from utils.supabase_utils import log_to_supabase
 
 def _log_to_supabase(status, message):
-    if _IS_KAGGLE:
-        logging.info(f"_log_to_supabase {status} {message}")
-        kernel_id = os.environ.get("kernel_id", "")
-        log_to_supabase(kernel_id, status, message)
+    return
+    # if _IS_KAGGLE:
+    #     logging.info(f"_log_to_supabase {status} {message}")
+    #     kernel_id = os.environ.get("kernel_id", "")
+    #     log_to_supabase(kernel_id, status, message)
 class Trainer:
     """
     Trainer supporting the DDP training strategies.
@@ -328,6 +329,7 @@ class Trainer:
         # If you want to force to resume from a specific checkpoint, you can do so by setting the resume_checkpoint_path in the config
         # if self._resume_ckpt_path is None:
         #     self._resume_ckpt_path = self._find_resume_checkpoint_path(cfg)
+        # logging.info(f"{self._resume_ckpt_path=} {cfg.checkpoint.resume_checkpoint_path=}")
         if self._resume_ckpt_path is not None:
             if self._resume_checkpoint is None:
                 self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)

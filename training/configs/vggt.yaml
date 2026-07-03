@@ -148,7 +148,7 @@ postprocess:
       camera:
         enabled: True
         abs_err: True
-        rel_err: True
+        rel_err: false
         abs_err_angle: True
         rel_err_angle: True
         # all_pairs_err: True
@@ -168,6 +168,7 @@ postprocess:
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: *max_epochs
+  best_full: false
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
   resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
   resume_optimizer: true

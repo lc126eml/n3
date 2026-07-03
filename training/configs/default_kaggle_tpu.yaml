@@ -198,7 +198,7 @@ postprocess:
       camera:
         enabled: true
         abs_err: true
-        rel_err: true
+        rel_err: false
         abs_err_angle: true
         rel_err_angle: true
         # all_pairs_err: True
@@ -218,6 +218,7 @@ postprocess:
 checkpoint:
   save_dir: logs/ckpts
   save_freq: 1 #*max_epochs
+  best_full: false
   resume_checkpoint_path:
   resume_optimizer: true
   lazy_resume_optimizer: true

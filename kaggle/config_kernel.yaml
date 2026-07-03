@@ -1,66 +1,54 @@
 available_ids:
+- cq1234
+- cycyxcy
+- dddd110
+- djiangjiang
+- dusi605
 - eastwangwei
 - elong1202
-- fanhuayang
-- fzzy123
 - geminiyy
 - gloden613
 - houwen
 - hsdfuieqg
 - huoqiuxia
-- jcy666
+- hysz0821
 - jiangshuai0210
-- jinzhanbo
-- jiwei313
-- jokerking1
+- jjjerry12138
 - jufuchao
-- kanwenbin
 - keyongkk
 - kezzymik
 - lemonlaila
 - liucong12601
+- luanjing
 - ly1122
-- maoshuwen0415
 - ohyeah00
 - permanentlove
-- phoenixcsw01
 - pycjn666
-- qcx2333
 - qinghui9527
+- qqmail4092
 - quepimao
 - rmoope
 - robinrainy
 - roseqw
-- rqmiraitowa
 - rrrrmm
 - rushly
 - sinayliu
 - smartchaochao
-- sollasi
 - srmmmm
-- ssss7777
 - starysinger
 - straghtwizard
 - tangjiayuan1004
-- tangjudge
 - tangyujie123
-- tianxianglii
 - top1pcl
 - ttzyty
-- uamadeus
 - wenyangtang
-- wzywzy1227
-- xiaoluoalice
 - xpeng01
-- xulin5522
+- xulijuan
+- xx03071425
 - yangjiamin
-- yangyangchengcheng
-- ycy1n66
+- yccwff
 - yinmengmeng
-- yuanhahah
-- ywhicher
 - yyyyjay
-- zhangtingfengztf
 - zhaotianchi
 - zhikaiwang
 - zhoujiahui0199
@@ -69,450 +57,282 @@ available_ids:
 - zjl001
 - zongjiaxin
 - zzr123123
-exhausted_ids:
-- dusi605
-- gorgeous0912
-- xwj66666
-- hysz0821
-- zhuangminghui
-- denghaimeng
-- qqmail4092
-- jjjerry12138
-- sss45633
-- yccwff
 - linyunlk243
+- tangjudge
+- fanhuayang
+- liucong126
+- xulin5522
+- uamadeus
+- zhuangminghui
+- wzywzy1227
 - miratowa1
-- xulijuan
-- xx03071425
+- xuwenhui123
+- asdsad0000
 - asssmer
+- yuanhahah
+- rqmiraitowa
+- zhangtingfengztf
+- ssss7777
+- fzzy123
+- autune
+- jokerking1
+- sss45633
+- chencaihonga
+- phoenixcsw01
+- ywhicher
+- jacksisi
+- chengchi1007
+- b201xiaoli
+- cfy002
+- qcx2333
+- cdong121
+- jcy666
+- denghaimeng
+- sollasi
+- gorgeous0912
+- ycy1n66
+- kanwenbin
+- chenhao1213
+- cshlhs
+- du55148
+- jiwei313
+exhausted_ids: null
 sleep_time_hr: 0.0
-last_supabase_id: 418
+last_supabase_id: 497
 poll_interval_minutes: 10
 running_nodes:
-- id: jacksisi
-  notebooks:
-  - kernel_id: jacksisi/first-cam-vggt42-r8-42
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:06:37'
-    resumed_from: jacksisi/first-cam-vggt42-r7-42
-    history_ids:
-    - chencaihonga/first-cam-vggt42-r0-42
-    - chencaihonga/first-cam-vggt42-r1-42
-    - hysz0821/first-cam-vggt42-r2-42
-    - hysz0821/first-cam-vggt42-r3-42
-    - hysz0821/first-cam-vggt42-r4-42
-    - linyunlk243/first-cam-vggt42-r5-42
-    - linyunlk243/first-cam-vggt42-r6-42
-    git_branch: loop
-  - kernel_id: jacksisi/first-cam-cam01-42-r7-42
-    run_id: 7
-    total_runs: 10
-    start_time: '2026-06-09 21:06:42'
-    resumed_from: jacksisi/first-cam-cam01-42-r6-42
-    history_ids:
-    - chenhao1213/first-cam-cam01-42-r0-42
-    - chenhao1213/first-cam-cam01-42-r1-42
-    - zhuangminghui/first-cam-cam01-42-r2-42
-    - zhuangminghui/first-cam-cam01-42-r3-42
-    - zhuangminghui/first-cam-cam01-42-r4-42
-    - linyunlk243/first-cam-cam01-42-r5-42
-    git_branch: loop
-  left_time: 5.665390048333334
-- id: luanjing
-  notebooks:
-  - kernel_id: luanjing/first-cam-vggt32-r8-32
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:07:17'
-    resumed_from: luanjing/first-cam-vggt32-r7-32
-    history_ids:
-    - cfy002/first-cam-vggt32-r0-32
-    - cfy002/first-cam-vggt32-r1-32
-    - denghaimeng/first-cam-vggt32-r2-32
-    - denghaimeng/first-cam-vggt32-r3-32
-    - denghaimeng/first-cam-vggt32-r4-32
-    - miratowa1/first-cam-vggt32-r5-32
-    - miratowa1/first-cam-vggt32-r6-32
-    git_branch: loop
-  - kernel_id: luanjing/first-cam-vggt52-r8-52
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:06:55'
-    resumed_from: luanjing/first-cam-vggt52-r7-52
-    history_ids:
-    - chengchi1007/first-cam-vggt52-r0-52
-    - chengchi1007/first-cam-vggt52-r1-52
-    - dusi605/first-cam-vggt52-r2-52
-    - dusi605/first-cam-vggt52-r3-52
-    - dusi605/first-cam-vggt52-r4-52
-    - qqmail4092/first-cam-vggt52-r5-52
-    - miratowa1/first-cam-vggt52-r6-52
-    git_branch: loop
-  left_time: 6.189920717222224
-- id: asdsad0000
-  left_time: 30.0
-  notebooks:
-  - kernel_id: asdsad0000/first-cam-vggt-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:21:27'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: asdsad0000/first-cam-vggt-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:21:42'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: autune
-  left_time: 22.74334241861111
-  notebooks:
-  - kernel_id: autune/first-cam-vggt-seed32-r1-32
-    run_id: 1
-    total_runs: 10
-    start_time: '2026-06-09 21:37:28'
-    resumed_from: autune/first-cam-vggt-seed32-r0-32
-    history_ids: []
-    git_branch: omega
-  - kernel_id: autune/first-cam-vggt-rope-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:22:24'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: b201xiaoli
-  left_time: 22.580567191388887
-  notebooks:
-  - kernel_id: b201xiaoli/first-cam-vggt-rope-seed32-r1-32
-    run_id: 1
-    total_runs: 10
-    start_time: '2026-06-09 21:47:46'
-    resumed_from: b201xiaoli/first-cam-vggt-rope-seed32-r0-32
-    history_ids: []
-    git_branch: omega
-  - kernel_id: b201xiaoli/first-cam-vggt-rope-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:22:46'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: cdong121
-  left_time: 22.588056864722223
-  notebooks:
-  - kernel_id: cdong121/first-cam-vggt-asg-seed42-lw30-r1-42
-    run_id: 1
-    total_runs: 10
-    start_time: '2026-06-09 21:47:56'
-    resumed_from: cdong121/first-cam-vggt-asg-seed42-lw30-r0-42
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cdong121/first-cam-vggt-asg-seed52-lw30-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:23:34'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: cfy002
-  left_time: 15.403346981944443
-  notebooks:
-  - kernel_id: cfy002/first-cam-vggt-asg-seed32-lw30-r1-32
-    run_id: 1
-    total_runs: 10
-    start_time: '2026-06-09 21:37:33'
-    resumed_from: cfy002/first-cam-vggt-asg-seed32-lw30-r0-32
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cfy002/first-cam-vggt-asg-seed32-lw10-r1-32
-    run_id: 1
-    total_runs: 10
-    start_time: '2026-06-09 21:47:39'
-    resumed_from: cfy002/first-cam-vggt-asg-seed32-lw10-r0-32
-    history_ids: []
-    git_branch: omega
 - id: cheaterchow
-  left_time: 30.0
+  left_time: 30
   notebooks:
-  - kernel_id: cheaterchow/first-cam-vggt-asg-seed42-lw10-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:25:55'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cheaterchow/first-cam-vggt-asg-seed52-lw10-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:26:06'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: chencaihonga
-  left_time: 30.0
-  notebooks:
-  - kernel_id: chencaihonga/first-cam-vggt-asg-seed52-lw5-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:26:55'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: chencaihonga/first-cam-vggt-asg-seed42-lw5-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:27:04'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: chengchi1007
-  left_time: 22.754038552222223
-  notebooks:
-  - kernel_id: chengchi1007/first-cam-vggt-loop-seed32-r0-32
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:32:57'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: chengchi1007/first-cam-vggt-loop-seed42-r1-42
+  - kernel_id: cheaterchow/first-cam-depth960-s42-mt-dcw2c-mf1-msl10-r1
+    memo: seed:42; model.loop:True; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:-1; model.grad_start_layer:10
     run_id: 1
     total_runs: 10
-    start_time: '2026-06-09 21:47:51'
-    resumed_from: chengchi1007/first-cam-vggt-loop-seed42-r0-42
+    start_time: '2026-07-18 01:01:50'
+    resumed_from: cheaterchow/first-cam-depth960-s42-mt-dcw2c-mf1-msl10-r0
     history_ids: []
     git_branch: omega
-- id: chenhao1213
-  left_time: 30.0
-  notebooks:
-  - kernel_id: chenhao1213/first-cam-vggt-loop-seed52-r0-52
-    run_id: 0
+  - kernel_id: cheaterchow/pts-align-to-gt-depth604-s42-mt-mct-msl10-r1
+    memo: seed:42; model.loop:True; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:-1; model.grad_start_layer:10
+    run_id: 1
     total_runs: 10
-    start_time: '2026-06-09 14:33:15'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: chenhao1213/first-cam-vggt-loop-rope-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:34:50'
-    resumed_from: null
+    start_time: '2026-07-18 01:23:44'
+    resumed_from: cheaterchow/pts-align-to-gt-depth604-s42-mt-mct-msl10-r0
     history_ids: []
     git_branch: omega
 - id: chenrunze11
-  left_time: 30.0
+  left_time: 30
   notebooks:
-  - kernel_id: chenrunze11/first-cam-vggt-loop-rope-seed42-r0-42
-    run_id: 0
+  - kernel_id: chenrunze11/pts-align-to-gt-depth057-s42-mf-mct-msl10-r1
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:-1; model.grad_start_layer:10
+    run_id: 1
     total_runs: 10
-    start_time: '2026-06-09 14:34:58'
-    resumed_from: null
+    start_time: '2026-07-18 01:02:01'
+    resumed_from: chenrunze11/pts-align-to-gt-depth057-s42-mf-mct-msl10-r0
     history_ids: []
     git_branch: omega
-  - kernel_id: chenrunze11/first-cam-vggt-loop-rope-seed32-r0-32
-    run_id: 0
+  - kernel_id: chenrunze11/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:10
+    run_id: 5
     total_runs: 10
-    start_time: '2026-06-09 14:35:11'
-    resumed_from: null
+    start_time: '2026-07-18 03:22:46'
+    resumed_from: chenrunze11/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r4
+    history_ids:
+    - cfy002/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r0
+    - cfy002/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r1
+    - kanwenbin/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r2
+    - kanwenbin/pts-align-to-gt-1stcam809-s42-mf-mct-msl10-r3
+    git_branch: omega
+- id: xiaoluoalice
+  notebooks:
+  - kernel_id: xiaoluoalice/pts-align-to-gt-omega899-s42-mf-mct-msl0-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:0
+    run_id: 5
+    total_runs: 10
+    start_time: '2026-07-18 03:11:54'
+    resumed_from: xiaoluoalice/pts-align-to-gt-omega899-s42-mf-mct-msl0-r4
+    history_ids:
+    - cdong121/pts-align-to-gt-omega899-s42-mf-mct-msl0-r0
+    - cdong121/pts-align-to-gt-omega899-s42-mf-mct-msl0-r1
+    - ycy1n66/pts-align-to-gt-omega899-s42-mf-mct-msl0-r2
+    - ycy1n66/pts-align-to-gt-omega899-s42-mf-mct-msl0-r3
+    git_branch: omega
+  - kernel_id: xiaoluoalice/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r9
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:100
+    run_id: 9
+    total_runs: 10
+    start_time: '2026-07-18 03:34:12'
+    resumed_from: xiaoluoalice/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r8
+    history_ids:
+    - asdsad0000/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r0
+    - rqmiraitowa/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r1
+    - sss45633/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r2
+    - sss45633/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r3
+    - qcx2333/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r4
+    - qcx2333/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r5
+    - gorgeous0912/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r6
+    - gorgeous0912/first-cam-omega934-s42-mf-mct-dcw2c-oe1-mf100-r7
+    git_branch: omega
+  left_time: 30
+- id: maoshuwen0415
+  notebooks:
+  - kernel_id: maoshuwen0415/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:0
+    run_id: 5
+    total_runs: 10
+    start_time: '2026-07-18 04:28:35'
+    resumed_from: maoshuwen0415/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r4
+    history_ids:
+    - b201xiaoli/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r0
+    - b201xiaoli/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r1
+    - ycy1n66/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r2
+    - ycy1n66/first-cam-omega348-s42-mf-dcw2c-mf100-msl0-r3
+    git_branch: omega
+  - kernel_id: maoshuwen0415/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:0
+    run_id: 5
+    total_runs: 10
+    start_time: '2026-07-18 03:45:14'
+    resumed_from: maoshuwen0415/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r4
+    history_ids:
+    - cfy002/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r0
+    - cfy002/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r1
+    - chenhao1213/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r2
+    - chenhao1213/pts-align-to-gt-1stcam737-s42-mf-mct-msl0-r3
+    git_branch: omega
+  left_time: 30
+- id: jinzhanbo
+  notebooks:
+  - kernel_id: jinzhanbo/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:10
+    run_id: 5
+    total_runs: 10
+    start_time: '2026-07-18 04:50:34'
+    resumed_from: jinzhanbo/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r4
+    history_ids:
+    - b201xiaoli/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r0
+    - b201xiaoli/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r1
+    - kanwenbin/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r2
+    - kanwenbin/first-cam-omega152-s42-mf-dcw2c-mf100-msl10-r3
+    git_branch: omega
+  - kernel_id: jinzhanbo/pts-align-to-gt-omega109-s42-mf-mct-msl10-r5
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:100; model.grad_start_layer:10
+    run_id: 5
+    total_runs: 10
+    start_time: '2026-07-18 04:28:49'
+    resumed_from: jinzhanbo/pts-align-to-gt-omega109-s42-mf-mct-msl10-r4
+    history_ids:
+    - cdong121/pts-align-to-gt-omega109-s42-mf-mct-msl10-r0
+    - cdong121/pts-align-to-gt-omega109-s42-mf-mct-msl10-r1
+    - cshlhs/pts-align-to-gt-omega109-s42-mf-mct-msl10-r2
+    - cshlhs/pts-align-to-gt-omega109-s42-mf-mct-msl10-r3
+    git_branch: omega
+  left_time: 30
+- id: tianxianglii
+  notebooks:
+  - kernel_id: tianxianglii/pts-align-to-gt-omega285-s42-mct-r9
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:100
+    run_id: 9
+    total_runs: 10
+    start_time: '2026-07-18 05:01:35'
+    resumed_from: tianxianglii/pts-align-to-gt-omega285-s42-mct-r8
+    history_ids:
+    - asssmer/pts-align-to-gt-omega285-s42-mct-r0
+    - asssmer/pts-align-to-gt-omega285-s42-mct-r1
+    - sss45633/pts-align-to-gt-omega285-s42-mct-r2
+    - sss45633/pts-align-to-gt-omega285-s42-mct-r3
+    - qcx2333/pts-align-to-gt-omega285-s42-mct-r4
+    - qcx2333/pts-align-to-gt-omega285-s42-mct-r5
+    - chenhao1213/pts-align-to-gt-omega285-s42-mct-r6
+    - chenhao1213/pts-align-to-gt-omega285-s42-mct-r7
+    git_branch: omega
+  - kernel_id: tianxianglii/first-cam-omega698-s42-mf-mct-r9
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:-1
+    run_id: 9
+    total_runs: 10
+    start_time: '2026-07-18 05:45:09'
+    resumed_from: tianxianglii/first-cam-omega698-s42-mf-mct-r8
+    history_ids:
+    - asdsad0000/first-cam-omega698-s42-mf-mct-r0
+    - rqmiraitowa/first-cam-omega698-s42-mf-mct-r1
+    - chencaihonga/first-cam-omega698-s42-mf-mct-r2
+    - chencaihonga/first-cam-omega698-s42-mf-mct-r3
+    - denghaimeng/first-cam-omega698-s42-mf-mct-r4
+    - denghaimeng/first-cam-omega698-s42-mf-mct-r5
+    - cshlhs/first-cam-omega698-s42-mf-mct-r6
+    - cshlhs/first-cam-omega698-s42-mf-mct-r7
+    git_branch: omega
+  left_time: 30
+- id: xwj66666
+  notebooks:
+  - kernel_id: xwj66666/pts-align-to-gt-omega698-s42-mct-r9
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:-1
+    run_id: 9
+    total_runs: 10
+    start_time: '2026-07-18 06:17:49'
+    resumed_from: xwj66666/pts-align-to-gt-omega698-s42-mct-r8
+    history_ids:
+    - asssmer/pts-align-to-gt-omega698-s42-mct-r0
+    - asssmer/pts-align-to-gt-omega698-s42-mct-r1
+    - jokerking1/pts-align-to-gt-omega698-s42-mct-r2
+    - jokerking1/pts-align-to-gt-omega698-s42-mct-r3
+    - jcy666/pts-align-to-gt-omega698-s42-mct-r4
+    - jcy666/pts-align-to-gt-omega698-s42-mct-r5
+    - du55148/pts-align-to-gt-omega698-s42-mct-r6
+    - du55148/pts-align-to-gt-omega698-s42-mct-r7
+    git_branch: omega
+  - kernel_id: xwj66666/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r7
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:100
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-07-17 22:30:38'
+    resumed_from: du55148/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r6
+    history_ids:
+    - autune/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r0
+    - autune/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r1
+    - chengchi1007/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r2
+    - chengchi1007/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r3
+    - denghaimeng/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r4
+    - du55148/first-cam-omega175-s42-mf-mct-dcw2c-oe1-mf100-r5
+    git_branch: omega
+  left_time: 30
+- id: yangyangchengcheng
+  notebooks:
+  - kernel_id: yangyangchengcheng/pts-align-to-gt-omega327-s42-mf-mct-r7
+    memo: seed:42;model.loop:False;model.simple_camera:True;data.pose_convention:w2c;optim.warmup_epochs:-1;model.rope_freq:100
+    run_id: 7
+    total_runs: 10
+    start_time: '2026-07-17 23:35:18'
+    resumed_from: jiwei313/pts-align-to-gt-omega327-s42-mf-mct-r6
+    history_ids:
+    - autune/pts-align-to-gt-omega327-s42-mf-mct-r0
+    - autune/pts-align-to-gt-omega327-s42-mf-mct-r1
+    - chengchi1007/pts-align-to-gt-omega327-s42-mf-mct-r2
+    - chengchi1007/pts-align-to-gt-omega327-s42-mf-mct-r3
+    - sollasi/pts-align-to-gt-omega327-s42-mf-mct-r4
+    - jiwei313/pts-align-to-gt-omega327-s42-mf-mct-r5
+    - jiwei313/pts-align-to-gt-omega327-s42-mf-mct-r7
+    git_branch: omega
+  - kernel_id: yangyangchengcheng/first-cam-depth349-s42-mf-dcw2c-mf1-msl10-r1
+    memo: seed:42; model.loop:False; model.simple_camera:True; data.pose_convention:w2c;
+      optim.warmup_epochs:-1; model.rope_freq:-1; model.grad_start_layer:10
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-07-18 01:23:32'
+    resumed_from: jiwei313/first-cam-depth349-s42-mf-dcw2c-mf1-msl10-r0
     history_ids: []
     git_branch: omega
+  left_time: 30
 - id: chuasiliu
   left_time: 30.0
   notebooks:
-  - kernel_id: chuasiliu/pts-align-to-gt-seed32-r0-32
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:42:34'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: chuasiliu/pts-align-to-gt-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:42:42'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: cq1234
-  left_time: 30.0
-  notebooks:
-  - kernel_id: cq1234/pts-align-to-gt-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:42:50'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cq1234/pts-align-to-gt-rope-seed32-r0-32
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:43:08'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: cshlhs
-  left_time: 30.0
-  notebooks:
-  - kernel_id: cshlhs/pts-align-to-gt-rope-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:43:14'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cshlhs/pts-align-to-gt-rope-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:43:21'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: cycyxcy
-  left_time: 30.0
-  notebooks:
-  - kernel_id: cycyxcy/pts-align-to-gt-1st-cam-seed32-r0-32
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:43:49'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: cycyxcy/pts-align-to-gt-1st-cam-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:44:02'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: dddd110
-  left_time: 30.0
-  notebooks:
-  - kernel_id: dddd110/pts-align-to-gt-1st-cam-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:44:08'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: dddd110/pts-align-to-gt-1st-cam-rope-seed32-r0-32
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:44:22'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: djiangjiang
-  left_time: 30.0
-  notebooks:
-  - kernel_id: djiangjiang/pts-align-to-gt-1st-cam-rope-seed42-r0-42
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:44:33'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-  - kernel_id: djiangjiang/pts-align-to-gt-1st-cam-rope-seed52-r0-52
-    run_id: 0
-    total_runs: 10
-    start_time: '2026-06-09 14:44:41'
-    resumed_from: null
-    history_ids: []
-    git_branch: omega
-- id: du55148
-  notebooks:
-  - kernel_id: du55148/first-cam-vggt-crop42-r8-42
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:06:46'
-    resumed_from: asssmer/first-cam-vggt-crop42-r7-42
-    history_ids:
-    - chencaihonga/first-cam-vggt-crop42-r0-42
-    - chencaihonga/first-cam-vggt-crop42-r1-42
-    - hysz0821/first-cam-vggt-crop42-r2-42
-    - hysz0821/first-cam-vggt-crop42-r3-42
-    - hysz0821/first-cam-vggt-crop42-r4-42
-    - yccwff/first-cam-vggt-crop42-r5-42
-    - asssmer/first-cam-vggt-crop42-r6-42
-    git_branch: loop
-  - kernel_id: du55148/first-cam-vggt-crop32-r8-32
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:06:51'
-    resumed_from: xx03071425/first-cam-vggt-crop32-r7-32
-    history_ids:
-    - cfy002/first-cam-vggt-crop32-r0-32
-    - cfy002/first-cam-vggt-crop32-r1-32
-    - sss45633/first-cam-vggt-crop32-r2-32
-    - sss45633/first-cam-vggt-crop32-r3-32
-    - sss45633/first-cam-vggt-crop32-r4-32
-    - sss45633/first-cam-vggt-crop32-r5-32
-    - xx03071425/first-cam-vggt-crop32-r6-32
-    git_branch: loop
-  left_time: 30.0
-- id: liucong126
-  notebooks:
-  - kernel_id: liucong126/first-cam-vggt-crop52-r8-52
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:06:59'
-    resumed_from: xulijuan/first-cam-vggt-crop52-r7-52
-    history_ids:
-    - chengchi1007/first-cam-vggt-crop52-r0-52
-    - chengchi1007/first-cam-vggt-crop52-r1-52
-    - dusi605/first-cam-vggt-crop52-r2-52
-    - dusi605/first-cam-vggt-crop52-r3-52
-    - dusi605/first-cam-vggt-crop52-r4-52
-    - qqmail4092/first-cam-vggt-crop52-r5-52
-    - xulijuan/first-cam-vggt-crop52-r6-52
-    git_branch: loop
-  - kernel_id: liucong126/first-cam-h01-42-r8-42
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:07:04'
-    resumed_from: xx03071425/first-cam-h01-42-r7-42
-    history_ids:
-    - chenrunze11/first-cam-h01-42-r0-42
-    - chenrunze11/first-cam-h01-42-r1-42
-    - gorgeous0912/first-cam-h01-42-r2-42
-    - gorgeous0912/first-cam-h01-42-r3-42
-    - gorgeous0912/first-cam-h01-42-r4-42
-    - sss45633/first-cam-h01-42-r5-42
-    - xx03071425/first-cam-h01-42-r6-42
-    git_branch: loop
-  left_time: 30.0
-- id: xuwenhui123
-  notebooks:
-  - kernel_id: xuwenhui123/first-cam-cam01-52-r8-52
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:07:09'
-    resumed_from: xulijuan/first-cam-cam01-52-r7-52
-    history_ids:
-    - chenhao1213/first-cam-cam01-52-r0-52
-    - chenhao1213/first-cam-cam01-52-r1-52
-    - gorgeous0912/first-cam-cam01-52-r2-52
-    - gorgeous0912/first-cam-cam01-52-r3-52
-    - gorgeous0912/first-cam-cam01-52-r4-52
-    - jjjerry12138/first-cam-cam01-52-r5-52
-    - xulijuan/first-cam-cam01-52-r6-52
-    git_branch: loop
-  - kernel_id: xuwenhui123/first-cam-h01-52-r8-52
-    run_id: 8
-    total_runs: 10
-    start_time: '2026-06-09 21:07:13'
-    resumed_from: asssmer/first-cam-h01-52-r7-52
-    history_ids:
-    - chenrunze11/first-cam-h01-52-r0-52
-    - chenrunze11/first-cam-h01-52-r1-52
-    - xwj66666/first-cam-h01-52-r2-52
-    - xwj66666/first-cam-h01-52-r3-52
-    - xwj66666/first-cam-h01-52-r4-52
-    - yccwff/first-cam-h01-52-r5-52
-    - asssmer/first-cam-h01-52-r6-52
-    git_branch: loop
-  left_time: 30.0
 finished_notebooks: []

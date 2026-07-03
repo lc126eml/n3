@@ -3,6 +3,7 @@ import ast
 import json
 import os
 import pprint
+import random
 import re
 import subprocess
 import sys
@@ -183,7 +184,7 @@ def _slugify(text: str) -> str:
 
 def _abbr_token(text: str) -> str:
     parts = re.split(r"[_-]+", str(text))
-    if len(parts) > 1:
+    if len(parts) >= 1:
         return "".join(p[:1] for p in parts if p)
     return re.sub(r"[^A-Za-z0-9]+", "", str(text))
 
@@ -194,9 +195,9 @@ def _abbr_value(value) -> str:
     if isinstance(value, bool):
         return "T" if value else "F"
     if isinstance(value, int):
-        return str(value)
+        return str(value).strip("-")
     if isinstance(value, float):
-        return f"{value*100000:g}".replace(".", "").replace("+", "")
+        return f"{value}".replace(".", "").replace("+", "")
     text = str(value)
     if re.search(r"[_-]+", text):
         text = _abbr_token(text)
@@ -205,9 +206,9 @@ def _abbr_value(value) -> str:
 
 def _derived_slug(cfg: dict) -> str:
     parts = []
-    desc = cfg.get("desc")
-    if desc not in (None, ""):
-        parts.append(str(desc))
+    desc_heads = cfg.get("desc", "") + ''.join(random.choices('0123456789', k=3))
+    parts.append(str(desc_heads))
+    desc = None
     desc_keys = _as_list(cfg.get("desc_keys"))
     if desc_keys:
         simple_updates = {k: v for k, v in _iter_simple_updates(cfg)}
@@ -227,9 +228,25 @@ def _derived_slug(cfg: dict) -> str:
         parts.append(str(desc))
     if cfg.get("run_id") not in (None, ""):
         parts.append(f"r{cfg['run_id']}")
-    if cfg.get("seed") not in (None, ""):
-        parts.append(str(cfg["seed"]))
+    # if cfg.get("seed") not in (None, ""):
+    #     parts.append(str(cfg["seed"]))
     return _slugify("-".join(parts))
+
+
+def _build_memo(cfg: dict) -> str:
+    parts = []
+    memo = cfg.get("memo")
+    if memo not in (None, ""):
+        parts.append(str(memo))
+
+    simple_updates = {k: v for k, v in _iter_simple_updates(cfg)}
+    for key in _as_list(cfg.get("memo_keys")):
+        value = simple_updates.get(key, cfg.get(key))
+        if value is None:
+            continue
+        parts.append(f"{key}:{value}")
+
+    return "; ".join(parts)
 
 
 def _build_kernel_id(cfg: dict) -> str:
@@ -257,7 +274,7 @@ def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
     meta["id"] = _build_kernel_id(cfg)
-    meta["title"] = str(cfg.get("title") or _build_kernel_id(cfg).split("/", 1)[1].replace("-", " "))
+    meta["title"] = str(cfg.get("title") or meta["id"].split("/", 1)[1].replace("-", " "))
     meta["code_file"] = _launch_code_file(cfg)
     meta["language"] = "python"
     meta["kernel_type"] = "script"
@@ -274,6 +291,7 @@ def _update_metadata(cfg: dict, *, write: bool = True) -> dict:
         [
             "liucong12601/timm-repos",
             "sinayliu/dino-ds",
+            "sinayliu/vomega-ds",
             "liucong12601/hsm-train-part01",
             "liucong12601/hsm-train-part02",
             "liucong12601/hsm-train-part03",
@@ -349,12 +367,12 @@ def _infer_from_source_id(source_id: str) -> tuple[str | None, int, str]:
     if not source_id or not isinstance(source_id, str):
         raise ValueError("resume_infer requires a valid source id string.")
     source_id = source_id.strip()
-    match = re.fullmatch(r"(?:(?P<prefix>.+)-)?r(?P<run_id>\d+)(?P<suffix>-[^-]+)", source_id)
+    match = re.fullmatch(r"(?:(?P<prefix>.+)-)?r(?P<run_id>\d+)(?P<suffix>-[^-]+)?", source_id)
     if not match:
         raise ValueError(f"Unsupported source id format for n3r resume_infer: {source_id}")
     prefix = match.group("prefix")
     run_id = int(match.group("run_id"))
-    suffix = match.group("suffix")
+    suffix = match.group("suffix") or ""
     return prefix, run_id, suffix
 
 
@@ -852,6 +870,7 @@ def _add_running_node(
 
         notebook = {
             "kernel_id": kernel_id,
+            "memo": _build_memo(cfg),
             "run_id": int(cfg.get("run_id") or 0),
             "total_runs": int(total_runs),
             "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -998,6 +1017,7 @@ def main():
                         print(f"  {key}: {_format_change_value(old_value)} -> {_format_change_value(new_value)}")
             print(f"Kernel id: {meta['id']}")
             print(f"Title: {meta['title']}")
+            print(f"Memo: {_build_memo(cfg)}")
             print(f"dataset_sources: {meta.get('dataset_sources', [])}")
             print(f"kernel_sources: {meta.get('kernel_sources', [])}")
 

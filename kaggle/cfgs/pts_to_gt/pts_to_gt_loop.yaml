@@ -1,55 +1,64 @@
 id: 
 config_name: default_kaggle
-# desc: pred_center_pr2gt
-# desc: pred_center_gt2pr
-# desc: center_world
-# desc: first_cam
-desc: gt_align_to_pts_normpr
-# desc_keys: ["lr"]
+n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
+desc: pts_align_to_gt_loop
+desc_keys: ["seed"]
 run_id: 0
 total_runs: 10
 seed: 42
 simple:
-  - total_run_time_hr: 11.0
+  - total_run_time_hr: 8.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
+  # - logging.log_freq: 1
   - checkpoint.resume_config_skip_keys: [total_run_time_hr]
   - data.data_module.train_config.batch_size: 43
+  - data.data_module.train_config.augs.max_scale: 1.2
+  - data.data_module.train_config.augs.random_crop_prob: 0.0
+  - data.data_module.train_config.augs.pcrop: 0.0
+  - data.data_module.train_config.resolution_cost_power: 1.13
   - data.data_module.train_config.debug_enumerate_batches: false
-  - optim.warmup_epochs: 20
+  - optim.warmup_epochs: 30
   - optim.warmup_batch_cost_discount: 0.55
+  # - optim.gradient_clip.configs.0.max_norm: 1.0
+  # - optim.gradient_clip.configs.1.max_norm: 5.0
+  # - optim.gradient_clip.configs.2.max_norm: 5.0
+  # - optim.gradient_clip.configs.3.max_norm: 5.0
+  # - optim.gradient_clip.configs.4.max_norm: 5.0
   - optim.val_freq: 1
-  # ##- optim.gradient_clip.configs.0.max_norm: 1.0
-  # #- optim.gradient_clip.configs.1.max_norm: 1.0
-  # #- optim.gradient_clip.configs.2.max_norm: 1.0
   # - optim.frozen_module_names: null
-  - optim.lr_multipliers.0.ratio: 0.01
-  - optim.lr_multipliers.1.ratio: 0.005
-  - optim.lr_multipliers.2.ratio: 0.005
-  #- optim.lr_multipliers.3.ratio: 0.005
+  # - optim.lr_multipliers.0.ratio: 0.01
+  # - optim.lr_multipliers.1.ratio: 0.01
+  # - optim.lr_multipliers.2.ratio: 0.01
+  # - optim.lr_multipliers.3.ratio: 0.1
   - model.enable_depth: false
+  - model.asg: false
+  - model.loop: true
   - postprocess.train:
       align:
         to_first_cam:
           enabled: false
-          points: true
+          points: false
+        pr_align_cam:
+          enabled: false
+          points: false
         center_world:
           enabled: &pts_center_world false
           align_pose: true
         pred_center:
           enabled: false
-          pr_to_gt: &pts_align_to_center false
+          pr_to_gt: &pts_align_to_center true
           align_pose: true
         pts_align_to_gt:
-          enabled: &pts_align_to_gt false
+          enabled: &pts_align_to_gt true
           conf_percentage: 80
           with_scale: true
           align_pose: true
           normalize_depth: false
           normalize_pose: false
         gt_align_to_pts:
-          enabled: &gt_align_to_pts true
+          enabled: &gt_align_to_pts false
           conf_percentage: 80
           align_pose: true
       normalize:
@@ -82,7 +91,7 @@ enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false
-resume_source: kernel #dataset/kernel
+resume_source: null
 resume_infer: false
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata

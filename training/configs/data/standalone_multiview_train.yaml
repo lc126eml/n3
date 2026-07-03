@@ -3,6 +3,7 @@
 # Define the common data root and number of views
 # data_root: /lc/data/3D
 data_root: /home/liucong/data/3d
+pose_convention: c2w
 
 data_keys:
   extrinsics: camera_pose
@@ -29,11 +30,11 @@ data_module:
     num_views: 6
     fixed_length: False
     datasets:
-      - "HyperSim_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/hypersim_processed/train', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs})"
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs})
-      - ScanNetpp_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/scannetpp_processed', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs})
+      - "HyperSim_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/hypersim_processed/train', transform=None, image_list_path='${data.data_root}/file_list', exclude_list_path='/home/liucong/codes/n3r/training/datasets/utils/hypersim_exclude.txt', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=80, min_interval=1, augs=${..augs}, pose_convention='${data.pose_convention}')"
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - ScanNetpp_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/scannetpp_processed', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs}, pose_convention='${data.pose_convention}')
     # batch_size: 24
     batch_size: 68
     num_workers: 10
@@ -81,7 +82,7 @@ data_module:
     num_views: 6
     distributed_sampler_mode: drop_last
     datasets:
-      - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)"
+      - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', image_list_path='${data.data_root}/file_list', exclude_list_path='/home/liucong/codes/n3r/training/datasets/utils/hypersim_exclude.txt', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128
@@ -102,11 +103,11 @@ data_module:
     num_views: 6
     distributed_sampler_mode: drop_last
     datasets:
-      - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1)"
+      - "HyperSim_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/hypersim_processed/test', image_list_path='${data.data_root}/file_list', exclude_list_path='/home/liucong/codes/n3r/training/datasets/utils/hypersim_exclude.txt', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs})
-      - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}) #160,128, 154,126
-      - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(384, 256), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}) #512, 384, 504, 378
+      - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}, pose_convention='${data.pose_convention}') #160,128, 154,126
+      - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(384, 256), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}, pose_convention='${data.pose_convention}') #512, 384, 504, 378
     batch_size: 4
     num_workers: 2
     augs: ${..validation_config.augs} # Reuse validation augmentations for testing

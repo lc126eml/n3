@@ -1,0 +1,180 @@
+# @package _global_
+# Align predictions to GT (rigid alignment; no invariant normalization).
+defaults:
+  - /default_nodeep
+  - _self_
+
+gpu_lock_priority: 10
+
+exp_name: pts_align_to_gt_loop_rel
+
+seed: 42
+max_epochs: &max_epochs 130
+break_at: 80
+logging:
+  log_freq: 100
+
+# checkpoint:
+#   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/pts_align_to_gt_rcropP1.00_lr50_e130/2026-05-27_10-49-46/ckpts/checkpoint.pt
+#   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
+data:
+  data_module:
+    train_config:
+      batch_size: 40
+      resolution_cost_power: 1.13
+      augs:
+        max_scale: 1.2
+        random_crop_prob: 0.0
+        pcrop: 0.0
+postprocess:
+  train:
+    align:
+      to_first_cam:
+        enabled: False
+      pred_center:
+        enabled: False
+      center_world:
+        enabled: False
+      pts_align_to_gt:
+        enabled: &pts_align_to_gt True
+        to_pred_pose: false
+        conf_percentage: 80
+        with_scale: false
+        align_pose: True
+        normalize_depth: False
+        normalize_pose: False
+      pts_align_to_gt_rot:
+        enabled: False
+      gt_align_to_pts:
+        enabled: False
+    normalize:
+      gt_pts: false
+      pr_pts:
+        enabled: false
+        metric: false
+      gt_depth: false
+      gt_pts_invariant:
+        enabled: true
+        translate: true
+      pr_pts_invariant:
+        enabled: false
+        translate: false
+
+loss:
+  camera:
+    weight: 5.0
+    weight_focal: 0.0
+    weight_trans: 0.0
+    weight_rot: 0.0
+    pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
+    loss_type: "l1"   
+    beta: 1.0
+  angle_pose: 
+    weight: 1.0
+    weight_trans: 1.0
+    weight_rot: 1.0
+    relative_weight: 0.5
+    absolute_weight: 0.5
+    compute_relative: true
+    compute_absolute: false
+    relative_neighbors: 1
+    loss_type: "l1" 
+    beta: 1.0
+  regulize_scale:
+    enabled: false
+    scale_weight: 0.3
+    translation_weight: 0.0
+  switch:
+    pts_align_to_gt: *pts_align_to_gt
+optim:
+  # amp:
+  #   enabled: false
+  #   amp_dtype: bfloat16
+  val_freq: 1
+  param_group_modifiers: False
+  warmup_epochs: 30
+  warmup_configs:
+  # - attr: loss.angle_pose.compute_absolute
+  #   value: true
+  #   epoch: 1
+  # - attr: loss.angle_pose.compute_relative
+  #   value: true
+  #   epoch: 1
+  # - attr: loss.camera.weight_focal
+  #   value: 0.5
+  #   epoch: 1
+  # - attr: loss.camera.weight_trans
+  #   value: 1.0
+  #   epoch: 1
+  # - attr: loss.camera.weight_rot
+  #   value: 1.0
+  #   epoch: 1
+  - attr: loss.depth.gradient_loss_fn
+    value: grad
+    epoch: 2
+  - attr: loss.point.gradient_loss_fn
+    value: normal
+    epoch: 2
+  # frozen_module_names:
+      # - "*aggregator*"  # example, freeze the aggregator
+      # - "*patch_embed*"
+  # options:
+  #   lr:
+  #   - scheduler:
+  #       _target_: fvcore.common.param_scheduler.CompositeParamScheduler
+  #       schedulers:
+  #       - _target_: fvcore.common.param_scheduler.LinearParamScheduler
+  #         start_value: 5e-4
+  #         end_value: &lr_base 5e-4
+  #       - _target_: fvcore.common.param_scheduler.CosineParamScheduler
+  #         start_value: *lr_base
+  #         end_value: 1e-6
+  #       lengths: [0.05, 0.95] 
+  #       interval_scaling: ['rescaled', 'rescaled']
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
+    # - name: asg
+    #   ratio: 0.01
+    #   param_names:
+    #     - "aggregator.asg.*"
+    - name: camera_head
+      ratio: 0.1
+      param_names:
+        - "camera_head.*"
+    - name: dense_head
+      ratio: 0.1
+      param_names:
+        - "dense_head.*"
+  gradient_clip:
+    _target_: train_utils.gradient_clip.GradientClipper
+    configs:
+      - module_name: ["aggregator.patch_embed"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator.asg"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["dense_head"]
+        max_norm: 5.0
+        norm_type: 2
+      - module_name: ["camera"]
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
+
+
+model:
+  # rope_freq: 100
+  # rope_freq: -1
+  enable_camera: true
+  simple_camera: false
+  first_cam: false
+  asg: false
+  asg_max_hw: 512
+  loop: true
+  enable_depth: false

@@ -1,13 +1,12 @@
 id: 
-config_name: default_kaggle_cam
-# desc: pred_center_pr2gt
-desc: pred_center_gt2pr_notrans
-# desc_keys: ["lr"]
+config_name: default_kaggle
+n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
+desc: center_world_pts
 run_id: 0
 total_runs: 10
 seed: 42
 simple:
-  - total_run_time_hr: 10.
+  - total_run_time_hr: 8.
   - max_epochs: 130
   - break_at: 130
   - accum_steps: 4
@@ -25,13 +24,16 @@ simple:
   - postprocess.train:
       align:
         to_first_cam:
-          enabled: false
+          enabled: true
           points: true
+        pr_align_cam:
+          enabled: false
+          points: false
         center_world:
-          enabled: &pts_center_world false
+          enabled: &pts_center_world true
           align_pose: true
         pred_center:
-          enabled: true
+          enabled: false
           pr_to_gt: &pts_align_to_center false
           align_pose: true
         pts_align_to_gt:
@@ -46,17 +48,17 @@ simple:
           conf_percentage: 80
           align_pose: true
       normalize:
-        gt_pts: false
+        gt_pts: true
         pr_pts:
-          enabled: false
-          metric: false
-        gt_depth: false
+          enabled: true
+          metric: False
+        gt_depth: False
         gt_pts_invariant:
           enabled: false
-          translate: true
-        pr_pts_invariant:
-          enabled: true
-          translate: true
+          translate: false
+        pr_pts_invariant: 
+          enabled: False
+          translate: False
   - loss.switch:
       pts_center_world: *pts_center_world
       pts_align_to_gt: *pts_align_to_gt
@@ -75,7 +77,7 @@ enable_gpu: true
 enable_tpu: false
 enable_internet: true
 resume_full_ckpt: false
-resume_source: kernel #dataset/kernel
+resume_source: null
 resume_infer: false
 
 # Optional: exact dataset/kernel dependencies for Kaggle metadata

@@ -7,7 +7,7 @@ desc: first_cam_vggt_rope
 desc_keys: ["seed"]
 run_id: 0
 total_runs: 10
-seed: 52
+seed: 42
 simple:
   - total_run_time_hr: 8.
   - max_epochs: 130

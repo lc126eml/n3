@@ -23,17 +23,17 @@ simple:
   - data.data_module.train_config.debug_enumerate_batches: false
   - optim.warmup_epochs: 30
   - optim.warmup_batch_cost_discount: 0.55
-  - optim.gradient_clip.configs.0.max_norm: 1.0
-  - optim.gradient_clip.configs.1.max_norm: 5.0
-  - optim.gradient_clip.configs.2.max_norm: 5.0
-  - optim.gradient_clip.configs.3.max_norm: 5.0
-  - optim.gradient_clip.configs.4.max_norm: 5.0
+  # - optim.gradient_clip.configs.0.max_norm: 1.0
+  # - optim.gradient_clip.configs.1.max_norm: 5.0
+  # - optim.gradient_clip.configs.2.max_norm: 5.0
+  # - optim.gradient_clip.configs.3.max_norm: 5.0
+  # - optim.gradient_clip.configs.4.max_norm: 5.0
   - optim.val_freq: 1
   # - optim.frozen_module_names: null
-  - optim.lr_multipliers.0.ratio: 0.01
-  - optim.lr_multipliers.1.ratio: 0.01
-  - optim.lr_multipliers.2.ratio: 0.01
-  - optim.lr_multipliers.3.ratio: 0.1
+  # - optim.lr_multipliers.0.ratio: 0.01
+  # - optim.lr_multipliers.1.ratio: 0.01
+  # - optim.lr_multipliers.2.ratio: 0.01
+  # - optim.lr_multipliers.3.ratio: 0.1
   - model.enable_depth: false
   - model.asg: false
   - model.loop: true

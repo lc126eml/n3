@@ -47,18 +47,18 @@ def fetch_new_logs(
 ) -> list[dict[str, Any]] | None:
     headers = {"apikey": API_KEY, "Authorization": f"Bearer {API_KEY}"}
     url = f"{SUPABASE_URL}/rest/v1/training_logs"
-    latest_time = (datetime.datetime.now(pytz.utc) - datetime.timedelta(minutes=cleanup_minutes)).isoformat()
+    end_stamp = (datetime.datetime.now(pytz.utc) - datetime.timedelta(minutes=cleanup_minutes)).isoformat()
     params: dict[str, Union[str, list[str]]] = {
         "order": "id.asc",
-        "created_at": f"lt.{latest_time}"
+        "created_at": f"lt.{end_stamp}"
     }
     if minutes is not None:
         mins_ago = (datetime.datetime.now(pytz.utc) - datetime.timedelta(minutes=minutes)).isoformat()
-        params["created_at"] = [f"gte.{mins_ago}", f"lt.{latest_time}"] 
+        params["created_at"] = [f"gte.{mins_ago}", f"lt.{end_stamp}"] 
     elif last_id is not None:
         params["id"] = f"gt.{last_id}"
     elif last_stamp is not None:
-        params["created_at"] = [f"gt.{last_stamp}", f"lt.{latest_time}"] 
+        params["created_at"] = [f"gt.{last_stamp}", f"lt.{end_stamp}"] 
     else:
         return None
 

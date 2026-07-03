@@ -1,6 +1,7 @@
 
 "liucong12601/timm-repos",
 "sinayliu/dino-ds",
+"sinayliu/vomega-ds",
 "liucong12601/hsm-train-part01",
 "liucong12601/hsm-train-part02",
 "liucong12601/hsm-train-part03",
