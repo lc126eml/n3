@@ -203,6 +203,7 @@ class _TPUCameraPoseLoss(torch.nn.Module):
         relative_neighbors: int = -1,
         loss_type: str = "l2",
         beta: float = 1.0,
+        pose_convention: str = "c2w",
     ):
         super().__init__()
         self.alpha = alpha
@@ -211,14 +212,29 @@ class _TPUCameraPoseLoss(torch.nn.Module):
         self.relative_neighbors = relative_neighbors
         self.loss_type = loss_type
         self.beta = beta
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+        self.pose_convention = pose_convention
 
-    def forward(self, pred_poses, gt_poses, compute_relative=None, compute_absolute=None, relative_neighbors=None):
+    def forward(
+        self,
+        pred_poses,
+        gt_poses,
+        compute_relative=None,
+        compute_absolute=None,
+        relative_neighbors=None,
+        pose_convention=None,
+    ):
         if compute_relative is None:
             compute_relative = self.compute_relative
         if compute_absolute is None:
             compute_absolute = self.compute_absolute
         if relative_neighbors is None:
             relative_neighbors = self.relative_neighbors
+        if pose_convention is None:
+            pose_convention = self.pose_convention
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
 
         zero = (0.0 * pred_poses).mean()
         if pred_poses.numel() == 0 or (not compute_absolute and not compute_relative):
@@ -240,11 +256,11 @@ class _TPUCameraPoseLoss(torch.nn.Module):
         if compute_relative and pred_poses.shape[1] > 1:
             if relative_neighbors <= 0:
                 rel_trans_err, rel_rot_err = self.compute_relative_pose_loss(
-                    pred_trans, pred_rot, gt_trans, gt_rot
+                    pred_trans, pred_rot, gt_trans, gt_rot, pose_convention=pose_convention
                 )
             else:
                 rel_trans_err, rel_rot_err = self.compute_relative_pose_loss_k1(
-                    pred_trans, pred_rot, gt_trans, gt_rot
+                    pred_trans, pred_rot, gt_trans, gt_rot, pose_convention=pose_convention
                 )
 
         return abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err
@@ -258,10 +274,16 @@ class _TPUCameraPoseLoss(torch.nn.Module):
         return torch.acos(cos_theta)
 
     @staticmethod
-    def _relative_pose_from_matrices(t1, r1, t2, r2):
-        r1_inv = r1.transpose(-1, -2)
-        t_rel = torch.matmul(r1_inv, (t2 - t1).unsqueeze(-1)).squeeze(-1)
-        r_rel = torch.matmul(r1_inv, r2)
+    def _relative_pose_from_matrices(t1, r1, t2, r2, pose_convention="c2w"):
+        if pose_convention == "c2w":
+            r1_inv = r1.transpose(-1, -2)
+            t_rel = torch.matmul(r1_inv, (t2 - t1).unsqueeze(-1)).squeeze(-1)
+            r_rel = torch.matmul(r1_inv, r2)
+        elif pose_convention == "w2c":
+            r_rel = torch.matmul(r1, r2.transpose(-1, -2))
+            t_rel = t1 - torch.matmul(r_rel, t2.unsqueeze(-1)).squeeze(-1)
+        else:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
         return t_rel, r_rel
 
     def _trans_error(self, pred_trans, gt_trans):
@@ -278,7 +300,7 @@ class _TPUCameraPoseLoss(torch.nn.Module):
             ).mean(dim=-1)
         raise ValueError(f"Unknown loss type: {self.loss_type}")
 
-    def compute_relative_pose_loss(self, pred_trans, pred_rot, gt_trans, gt_rot):
+    def compute_relative_pose_loss(self, pred_trans, pred_rot, gt_trans, gt_rot, pose_convention="c2w"):
         batch_size, num_views, _ = pred_trans.shape
 
         gt_trans1 = gt_trans.unsqueeze(2).expand(-1, -1, num_views, -1)
@@ -291,9 +313,11 @@ class _TPUCameraPoseLoss(torch.nn.Module):
         pred_rot1 = pred_rot.unsqueeze(2).expand(-1, -1, num_views, -1, -1)
         pred_rot2 = pred_rot.unsqueeze(1).expand(-1, num_views, -1, -1, -1)
 
-        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(gt_trans1, gt_rot1, gt_trans2, gt_rot2)
+        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(
+            gt_trans1, gt_rot1, gt_trans2, gt_rot2, pose_convention=pose_convention
+        )
         pred_t_rel, pred_r_rel = self._relative_pose_from_matrices(
-            pred_trans1, pred_rot1, pred_trans2, pred_rot2
+            pred_trans1, pred_rot1, pred_trans2, pred_rot2, pose_convention=pose_convention
         )
 
         rel_trans_err = self._trans_error(pred_t_rel, gt_t_rel)
@@ -310,15 +334,17 @@ class _TPUCameraPoseLoss(torch.nn.Module):
 
         return rel_trans_err_mean, rel_rot_err_mean
 
-    def compute_relative_pose_loss_k1(self, pred_trans, pred_rot, gt_trans, gt_rot):
+    def compute_relative_pose_loss_k1(self, pred_trans, pred_rot, gt_trans, gt_rot, pose_convention="c2w"):
         pred_trans2 = torch.roll(pred_trans, shifts=-1, dims=1)
         gt_trans2 = torch.roll(gt_trans, shifts=-1, dims=1)
         pred_rot2 = torch.roll(pred_rot, shifts=-1, dims=1)
         gt_rot2 = torch.roll(gt_rot, shifts=-1, dims=1)
 
-        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(gt_trans, gt_rot, gt_trans2, gt_rot2)
+        gt_t_rel, gt_r_rel = self._relative_pose_from_matrices(
+            gt_trans, gt_rot, gt_trans2, gt_rot2, pose_convention=pose_convention
+        )
         pred_t_rel, pred_r_rel = self._relative_pose_from_matrices(
-            pred_trans, pred_rot, pred_trans2, pred_rot2
+            pred_trans, pred_rot, pred_trans2, pred_rot2, pose_convention=pose_convention
         )
 
         rel_trans_err = self._trans_error(pred_t_rel, gt_t_rel)
@@ -338,7 +364,7 @@ class MultitaskLoss(torch.nn.Module):
     - Point loss
     - Tracking loss (not cleaned yet, dirty code is at the bottom of this file)
     """
-    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, **kwargs):
+    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, pose_convention="c2w", **kwargs):
         super().__init__()
         # Loss configuration dictionaries for each task
         self.camera = camera
@@ -349,6 +375,9 @@ class MultitaskLoss(torch.nn.Module):
         self.switch = switch
         self.vggt = vggt
         self.regulize_scale = regulize_scale
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+        self.pose_convention = pose_convention
 
         self.pose_enc_loss = PoseEncodingLoss(loss_type="l1")
 
@@ -360,6 +389,7 @@ class MultitaskLoss(torch.nn.Module):
                 relative_neighbors=angle_pose.get("relative_neighbors", -1),
                 loss_type=angle_pose.get("loss_type", "l2"),
                 beta=angle_pose.get("beta", 1.0),
+                pose_convention=pose_convention,
             )
             self.angle_pose = angle_pose
         else:
@@ -375,7 +405,7 @@ class MultitaskLoss(torch.nn.Module):
             self.point_no_conf_percent = None
             self.aligned_point = None
 
-    def forward(self, predictions, batch, data_keys, pred_data_keys) -> torch.Tensor:
+    def forward(self, predictions, batch, data_keys, pred_data_keys, pose_convention=None) -> torch.Tensor:
         """
         Compute the total multi-task loss.
         
@@ -386,6 +416,11 @@ class MultitaskLoss(torch.nn.Module):
         Returns:
             Dict containing individual losses and total objective
         """
+        if pose_convention is None:
+            pose_convention = self.pose_convention
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+
         first_prediction = next(iter(predictions.values()), None)
         if torch.is_tensor(first_prediction):
             total_loss = (0.0 * first_prediction).mean()
@@ -443,7 +478,9 @@ class MultitaskLoss(torch.nn.Module):
                     weight_trans = self.angle_pose.get("weight_trans")
                     weight_rot = self.angle_pose.get("weight_rot")
 
-                    abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err = self.pose_loss(pred_poses, gt_poses)
+                    abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err = self.pose_loss(
+                        pred_poses, gt_poses, pose_convention=pose_convention
+                    )
                     
                     
                     trans_err = relative_weight * rel_trans_err + absolute_weight * abs_trans_err

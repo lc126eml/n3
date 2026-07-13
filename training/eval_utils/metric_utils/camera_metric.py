@@ -28,12 +28,12 @@ def _so3_relative_angle(R1: torch.Tensor, R2: torch.Tensor, eps: float = 1e-6) -
 
 def _compare_translation_by_angle(t_gt: torch.Tensor, t_pred: torch.Tensor, eps: float = 1e-15) -> torch.Tensor:
     """Computes the angle between two sets of translation vectors (scale-invariant)."""
-    t_pred_norm = torch.linalg.norm(t_pred, dim=1, keepdim=True)
+    t_pred_norm = torch.linalg.norm(t_pred, dim=-1, keepdim=True)
     t_pred_normalized = t_pred / (t_pred_norm + eps)
-    t_gt_norm = torch.linalg.norm(t_gt, dim=1, keepdim=True)
+    t_gt_norm = torch.linalg.norm(t_gt, dim=-1, keepdim=True)
     t_gt_normalized = t_gt / (t_gt_norm + eps)
     
-    dot_product = torch.sum(t_pred_normalized * t_gt_normalized, dim=1)
+    dot_product = torch.sum(t_pred_normalized * t_gt_normalized, dim=-1)
     dot_product_clamped = torch.clamp(dot_product, -1.0, 1.0)
     return torch.acos(dot_product_clamped)
 
@@ -47,7 +47,7 @@ def compute_absolute_pose_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor
     
     rot_errors_rad = _so3_relative_angle(R_gt, R_pred)
     rot_errors_deg = torch.rad2deg(rot_errors_rad)
-    trans_errors = torch.linalg.norm(t_pred - t_gt, dim=1)
+    trans_errors = torch.linalg.norm(t_pred - t_gt, dim=-1)
 
     return {
         'rot_error_mean_deg': rot_errors_deg.mean().item(),
@@ -56,15 +56,23 @@ def compute_absolute_pose_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor
         'trans_errors': trans_errors,
     }
 
-def compute_consecutive_relative_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor) -> Dict[str, float]:
+def compute_consecutive_relative_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor, pose_convention: str = "c2w") -> Dict[str, float]:
     """Calculates CONSECUTIVE-FRAME relative pose error (RRA, RTA using L2 norm)."""
     if poses_gt.shape[0] < 2:
         return {'rra_mean_deg': float('nan'), 'rta_mean': float('nan')}
 
-    poses_gt_inv = _closed_form_inverse(poses_gt)
-    poses_pred_inv = _closed_form_inverse(poses_pred)
-    trans_gt_rel = torch.matmul(poses_gt_inv[1:], poses_gt[:-1])
-    trans_pred_rel = torch.matmul(poses_pred_inv[1:], poses_pred[:-1])
+    if pose_convention == "c2w":
+        poses_gt_inv = _closed_form_inverse(poses_gt)
+        poses_pred_inv = _closed_form_inverse(poses_pred)
+        trans_gt_rel = torch.matmul(poses_gt_inv[:-1], poses_gt[1:])
+        trans_pred_rel = torch.matmul(poses_pred_inv[:-1], poses_pred[1:])
+    elif pose_convention == "w2c":
+        poses_gt_inv = _closed_form_inverse(poses_gt)
+        poses_pred_inv = _closed_form_inverse(poses_pred)
+        trans_gt_rel = torch.matmul(poses_gt[:-1], poses_gt_inv[1:])
+        trans_pred_rel = torch.matmul(poses_pred[:-1], poses_pred_inv[1:])
+    else:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
     
     R_gt_rel, t_gt_rel = trans_gt_rel[:, :3, :3], trans_gt_rel[:, :3, 3]
     R_pred_rel, t_pred_rel = trans_pred_rel[:, :3, :3], trans_pred_rel[:, :3, 3]
@@ -88,7 +96,7 @@ def compute_absolute_pose_error_angle(poses_gt: torch.Tensor, poses_pred: torch.
     rot_errors_deg = torch.rad2deg(rot_errors_rad)
     trans_angle_errors_rad = _compare_translation_by_angle(t_gt, t_pred)
     trans_angle_errors_deg = torch.rad2deg(trans_angle_errors_rad)
-    trans_errors = torch.linalg.norm(t_pred - t_gt, dim=1)
+    trans_errors = torch.linalg.norm(t_pred - t_gt, dim=-1)
 
     return {
         'rot_error_mean_deg': rot_errors_deg.mean().item(),
@@ -97,15 +105,23 @@ def compute_absolute_pose_error_angle(poses_gt: torch.Tensor, poses_pred: torch.
     }, rot_errors_deg, trans_angle_errors_deg, trans_errors
 
 
-def compute_consecutive_relative_error_angle(poses_gt: torch.Tensor, poses_pred: torch.Tensor) -> Dict[str, float]:
+def compute_consecutive_relative_error_angle(poses_gt: torch.Tensor, poses_pred: torch.Tensor, pose_convention: str = "c2w") -> Dict[str, float]:
     """Calculates CONSECUTIVE-FRAME relative pose error (RRA, RTA using angle)."""
     if poses_gt.shape[0] < 2:
         return {'rra_mean_deg': float('nan'), 'rta_angle_mean_deg': float('nan')}
 
-    poses_gt_inv = _closed_form_inverse(poses_gt)
-    poses_pred_inv = _closed_form_inverse(poses_pred)
-    trans_gt_rel = torch.matmul(poses_gt_inv[1:], poses_gt[:-1])
-    trans_pred_rel = torch.matmul(poses_pred_inv[1:], poses_pred[:-1])
+    if pose_convention == "c2w":
+        poses_gt_inv = _closed_form_inverse(poses_gt)
+        poses_pred_inv = _closed_form_inverse(poses_pred)
+        trans_gt_rel = torch.matmul(poses_gt_inv[:-1], poses_gt[1:])
+        trans_pred_rel = torch.matmul(poses_pred_inv[:-1], poses_pred[1:])
+    elif pose_convention == "w2c":
+        poses_gt_inv = _closed_form_inverse(poses_gt)
+        poses_pred_inv = _closed_form_inverse(poses_pred)
+        trans_gt_rel = torch.matmul(poses_gt[:-1], poses_gt_inv[1:])
+        trans_pred_rel = torch.matmul(poses_pred[:-1], poses_pred_inv[1:])
+    else:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
     
     R_gt_rel, t_gt_rel = trans_gt_rel[:, :3, :3], trans_gt_rel[:, :3, 3]
     R_pred_rel, t_pred_rel = trans_pred_rel[:, :3, :3], trans_pred_rel[:, :3, 3]
@@ -120,15 +136,21 @@ def compute_consecutive_relative_error_angle(poses_gt: torch.Tensor, poses_pred:
         'rta_angle_mean_deg': rta_angle_deg.mean().item(),
     }
     
-def compute_all_pairs_relative_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor) -> Dict[str, float]:
+def compute_all_pairs_relative_error(poses_gt: torch.Tensor, poses_pred: torch.Tensor, pose_convention: str = "c2w") -> Dict[str, float]:
     """Calculates ALL-PAIRS relative pose error (scale-invariant)."""
     batch_size = poses_gt.shape[0]
     if batch_size < 2:
         return {'all_pairs_rot_error_deg': float('nan'), 'all_pairs_trans_angle_error_deg': float('nan')}
     
     idx1, idx2 = torch.combinations(torch.arange(batch_size, device=poses_gt.device)).unbind(-1)
-    relative_pose_gt = _closed_form_inverse(poses_gt[idx1]) @ poses_gt[idx2]
-    relative_pose_pred = _closed_form_inverse(poses_pred[idx1]) @ poses_pred[idx2]
+    if pose_convention == "c2w":
+        relative_pose_gt = _closed_form_inverse(poses_gt[idx1]) @ poses_gt[idx2]
+        relative_pose_pred = _closed_form_inverse(poses_pred[idx1]) @ poses_pred[idx2]
+    elif pose_convention == "w2c":
+        relative_pose_gt = poses_gt[idx1] @ _closed_form_inverse(poses_gt[idx2])
+        relative_pose_pred = poses_pred[idx1] @ _closed_form_inverse(poses_pred[idx2])
+    else:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
     
     rot_gt, rot_pred = relative_pose_gt[:, :3, :3], relative_pose_pred[:, :3, :3]
     rel_rot_error_rad = _so3_relative_angle(rot_gt, rot_pred, eps=1e-5)

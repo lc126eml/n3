@@ -55,6 +55,7 @@ def align_camera_and_points_batch_ext(
     poses: torch.Tensor,
     world_points: Optional[torch.Tensor] = None,
     cam_to_world_origin: Optional[torch.Tensor] = None,
+    pose_convention: str = "c2w",
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """
     Normalize camera poses and 3D points relative to a new origin pose.
@@ -71,6 +72,9 @@ def align_camera_and_points_batch_ext(
         - Aligned camera poses in the same shape as the input `poses`.
         - Aligned world points in the new coordinate system.
     """
+    if pose_convention not in {"c2w", "w2c"}:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+
     # --- Input Standardization ---
     # Store the original format to return the same shape
     # is_3x4_input = (poses.shape[-2] == 3)
@@ -85,13 +89,20 @@ def align_camera_and_points_batch_ext(
         origin_pose_4x4 = _pad_se3_to_4x4_efficient(cam_to_world_origin)
         
     # --- Transformation Logic (in 4x4) ---
-    # The transformation is the inverse of the new origin's pose.
-    world_to_new_origin = closed_form_inverse_se3(origin_pose_4x4)
+    if pose_convention == "c2w":
+        # The transformation is the inverse of the new origin's c2w pose.
+        world_to_new_origin = closed_form_inverse_se3(origin_pose_4x4)
 
-    # Align poses: P'_i = (P_origin)^-1 @ P_i
-    aligned_poses_4x4 = torch.matmul(world_to_new_origin.unsqueeze(1), poses_4x4)
+        # Align poses: P'_i = (P_origin)^-1 @ P_i
+        aligned_poses_4x4 = torch.matmul(world_to_new_origin.unsqueeze(1), poses_4x4)
+        point_transform = world_to_new_origin
+    else:
+        # w2c poses map old world coordinates into camera coordinates. The new
+        # world is the origin camera coordinate system: X_new = origin_w2c @ X_old.
+        old_from_new = closed_form_inverse_se3(origin_pose_4x4)
+        aligned_poses_4x4 = torch.matmul(poses_4x4, old_from_new.unsqueeze(1))
+        point_transform = origin_pose_4x4
 
-    # Align points: p' = (P_origin)^-1 @ p
     aligned_world_points = None
     if world_points is not None:
         pts_shape = world_points.shape
@@ -102,7 +113,7 @@ def align_camera_and_points_batch_ext(
         world_points_homog = torch.cat([pts_reshaped, ones], dim=-1)
 
         transformed_pts_homog = torch.bmm(
-            world_to_new_origin, 
+            point_transform, 
             world_points_homog.transpose(1, 2)
         )
         

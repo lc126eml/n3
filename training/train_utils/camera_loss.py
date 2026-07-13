@@ -12,6 +12,7 @@ from dust3r.utils.camera import (
     quaternion_multiply,
 )
 from train_utils.general import check_and_fix_inf_nan
+from eval_utils.transform_utils import pad_pose_to_4x4, invert_poses
 
 
 eps = 1e-6
@@ -29,6 +30,7 @@ class CameraPoseLoss(nn.Module):
         relative_neighbors: int = -1,
         loss_type: str = "l2",
         beta: float = 1.0,
+        pose_convention: str = "c2w",
     ):
         super().__init__()
         self.alpha = alpha
@@ -37,9 +39,12 @@ class CameraPoseLoss(nn.Module):
         self.relative_neighbors = relative_neighbors
         self.loss_type = loss_type
         self.beta = beta
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+        self.pose_convention = pose_convention
 
 
-    def forward(self, pred_poses, gt_poses, compute_relative=None, compute_absolute=None, relative_neighbors=None):
+    def forward(self, pred_poses, gt_poses, compute_relative=None, compute_absolute=None, relative_neighbors=None, pose_convention=None):
         """
         Calculates the pose loss.
 
@@ -50,6 +55,10 @@ class CameraPoseLoss(nn.Module):
         Returns:
             A tuple containing (total_loss, abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err).
         """
+        if pose_convention is None:
+            pose_convention = self.pose_convention
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
         if compute_relative is None:
             compute_relative = self.compute_relative
         if compute_absolute is None:
@@ -81,7 +90,16 @@ class CameraPoseLoss(nn.Module):
         if relative_neighbors is None:
             relative_neighbors = self.relative_neighbors
         if compute_relative and pred_poses.shape[1] > 1:
-            if relative_neighbors <= 0:
+            if pose_convention == "w2c":
+                if relative_neighbors <= 0:
+                    rel_trans_err, rel_rot_err = self.compute_relative_pose_loss_matrices_all_pairs(
+                        pred_poses, gt_poses
+                    )
+                else:
+                    rel_trans_err, rel_rot_err = self.compute_relative_pose_loss_matrices(
+                        pred_poses, gt_poses, relative_neighbors=relative_neighbors
+                    )
+            elif relative_neighbors <= 0:
                 rel_trans_err, rel_rot_err = self.compute_relative_pose_loss(
                     pred_trans, pred_rot, gt_trans, gt_rot
                 )
@@ -122,6 +140,56 @@ class CameraPoseLoss(nn.Module):
                 beta=self.beta,
             ).mean(dim=-1)
         raise ValueError(f"Unknown loss type: {self.loss_type}")
+
+
+    def compute_relative_pose_loss_matrices(self, pred_poses, gt_poses, relative_neighbors=-1):
+        """Compute adjacent relative pose loss for w2c poses.
+
+        This mirrors the limited-neighbor path used by the existing pose loss: each
+        frame is compared against the next rolled frame. For w2c poses, the
+        relative transform matching VGGT eval is T_i_j = T_i_w2c @ inverse(T_j_w2c).
+        """
+        pred_poses = pad_pose_to_4x4(pred_poses)
+        gt_poses = pad_pose_to_4x4(gt_poses)
+
+        pred_poses_next = torch.roll(pred_poses, shifts=-1, dims=1)
+        gt_poses_next = torch.roll(gt_poses, shifts=-1, dims=1)
+
+        pred_rel = pred_poses @ invert_poses(pred_poses_next)
+        gt_rel = gt_poses @ invert_poses(gt_poses_next)
+
+        rel_trans_err = self._trans_error(pred_rel[..., :3, 3], gt_rel[..., :3, 3]).mean()
+        rel_rot_err = self._geodesic_distance_from_matrices(
+            pred_rel[..., :3, :3], gt_rel[..., :3, :3]
+        ).mean()
+        return rel_trans_err, rel_rot_err
+
+    def compute_relative_pose_loss_matrices_all_pairs(self, pred_poses, gt_poses):
+        """Compute all-pairs relative pose loss for w2c poses.
+
+        This is the matrix-space counterpart of compute_relative_pose_loss. It builds
+        every (i, j) pair and averages only the upper triangle to avoid double
+        counting and self-comparison. For w2c poses, T_i_j = T_i @ inverse(T_j).
+        """
+        pred_poses = pad_pose_to_4x4(pred_poses)
+        gt_poses = pad_pose_to_4x4(gt_poses)
+        B, S = pred_poses.shape[:2]
+
+        pred_1 = pred_poses.unsqueeze(2).expand(-1, -1, S, -1, -1)
+        pred_2 = pred_poses.unsqueeze(1).expand(-1, S, -1, -1, -1)
+        gt_1 = gt_poses.unsqueeze(2).expand(-1, -1, S, -1, -1)
+        gt_2 = gt_poses.unsqueeze(1).expand(-1, S, -1, -1, -1)
+
+        pred_rel = pred_1 @ invert_poses(pred_2)
+        gt_rel = gt_1 @ invert_poses(gt_2)
+
+        rel_trans_err = self._trans_error(pred_rel[..., :3, 3], gt_rel[..., :3, 3])
+        rel_rot_err = self._geodesic_distance_from_matrices(
+            pred_rel[..., :3, :3], gt_rel[..., :3, :3]
+        )
+
+        mask = torch.triu(torch.ones(S, S, device=pred_poses.device), diagonal=1).bool()
+        return rel_trans_err[:, mask].mean(), rel_rot_err[:, mask].mean()
 
     def compute_relative_pose_loss(self, pred_trans, pred_rot, gt_trans, gt_rot):
         """

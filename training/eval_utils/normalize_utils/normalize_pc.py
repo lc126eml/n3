@@ -40,7 +40,8 @@ def normalize_pointcloud_invariant(
     valid_mask: torch.Tensor, 
     c2w_poses: Optional[torch.Tensor] = None, 
     eps: float = 1e-6, 
-    return_pts: bool = False
+    return_pts: bool = False,
+    pose_convention: str = "c2w",
 ) -> Tuple[torch.Tensor, ...]:
     """
     Normalizes a point cloud (and optionally c2w poses) to be translation 
@@ -69,6 +70,8 @@ def normalize_pointcloud_invariant(
             centroid (torch.Tensor): (B, 3)
             inv_scale (torch.Tensor): (B,)
     """
+    if pose_convention not in {"c2w", "w2c"}:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
     
     # --- 1. Calculate Centroid and Scale (from point cloud) ---
     B, S, H, W, C = pts3d.shape
@@ -112,27 +115,26 @@ def normalize_pointcloud_invariant(
     # .view() reshapes avg_scale for broadcasting: (B,) -> (B, 1, 1, 1, 1)
     pts3d_normalized = pts3d_centered * inv_scale.view(B, 1, 1, 1, 1)
 
-    # --- 4. Normalize c2w Poses (if provided) ---
+    # --- 4. Normalize Poses (if provided) ---
     
     c2w_poses_normalized = None
     if c2w_poses is not None:        
-        # Decompose Original Poses
         R_e = c2w_poses[..., :3, :3]  # Shape (B, S, 3, 3)
         t_e = c2w_poses[..., :3, 3]   # Shape (B, S, 3)
 
-        # --- Apply Pose Transformation ---        
-        R_aligned = R_e 
-        
-        # t'_e = s * (t_e - centroid)
-        # (B, S, 3) - (B, 1, 3) -> (B, S, 3)
-        t_e_centered = t_e - centroid.view(B, 1, 3)
-        
-        # (B, 1, 1) * (B, S, 3) -> (B, S, 3)
-        t_aligned = t_e_centered * inv_scale.view(B, 1, 1)
-
-        # Reconstruct the Aligned Poses
         c2w_poses_normalized = c2w_poses.clone()
-        c2w_poses_normalized[..., :3, :3] = R_aligned
+        c2w_poses_normalized[..., :3, :3] = R_e
+
+        if pose_convention == "c2w":
+            # c2w translation is the camera center in world coordinates.
+            t_aligned = (t_e - centroid.view(B, 1, 3)) * inv_scale.view(B, 1, 1)
+        else:
+            # w2c row-vector form: x_cam = x_world @ R.T + t.
+            # For X_new = inv_scale * (X_old - centroid), camera coordinates are scaled
+            # consistently by inv_scale, giving t' = inv_scale * (t + R @ centroid).
+            r_centroid = (R_e @ centroid.view(B, 1, 3, 1)).squeeze(-1)
+            t_aligned = (t_e + r_centroid) * inv_scale.view(B, 1, 1)
+
         c2w_poses_normalized[..., :3, 3] = t_aligned
             
     return pts3d_normalized, c2w_poses_normalized, centroid, inv_scale
@@ -254,6 +256,7 @@ def normalize_depth_cam_extrinsics(
     extrinsics: Optional[torch.Tensor] = None,
     global_points3d: Optional[torch.Tensor] = None, 
     inv_scale: Optional[torch.Tensor] = None,
+    pose_convention: str = "c2w",
 ) -> Tuple[Optional[torch.Tensor], ...]:
     """
     Normalizes depths, camera points, global points, and camera extrinsics by a given scale factor.
@@ -278,6 +281,9 @@ def normalize_depth_cam_extrinsics(
         - `normalized_extrinsics` (torch.Tensor | None): Extrinsics with scaled translation.
         - `normalized_global_points3d` (torch.Tensor | None): Scaled global points.
     """
+    if pose_convention not in {"c2w", "w2c"}:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+
     # Initialize return values
     normalized_depths = None
     normalized_cam_points = None

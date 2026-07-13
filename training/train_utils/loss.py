@@ -33,7 +33,7 @@ class MultitaskLoss(torch.nn.Module):
     - Point loss
     - Tracking loss (not cleaned yet, dirty code is at the bottom of this file)
     """
-    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, asg_weight=30, **kwargs):
+    def __init__(self, camera=None, angle_pose=None, depth=None, point=None, track=None, switch=None, vggt=True, regulize_scale=None, asg_weight=30, pose_convention="c2w", **kwargs):
         super().__init__()
         # Loss configuration dictionaries for each task
         self.camera = camera
@@ -45,6 +45,9 @@ class MultitaskLoss(torch.nn.Module):
         self.vggt = vggt
         self.regulize_scale = regulize_scale
         self.asg_weight = asg_weight
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+        self.pose_convention = pose_convention
 
         self.pose_enc_loss = PoseEncodingLoss(loss_type="l1")
 
@@ -69,10 +72,11 @@ class MultitaskLoss(torch.nn.Module):
             relative_neighbors=angle_pose.get("relative_neighbors", -1),
             loss_type=angle_pose.get("loss_type", "l2"),
             beta=angle_pose.get("beta", 1.0),
+            pose_convention=getattr(self, "pose_convention", "c2w"),
         )
 
 
-    def forward(self, predictions, batch, data_keys, pred_data_keys) -> torch.Tensor:
+    def forward(self, predictions, batch, data_keys, pred_data_keys, pose_convention=None) -> torch.Tensor:
         """
         Compute the total multi-task loss.
         
@@ -83,6 +87,8 @@ class MultitaskLoss(torch.nn.Module):
         Returns:
             Dict containing individual losses and total objective
         """
+        if pose_convention is None:
+            pose_convention = self.pose_convention
         total_loss = 0
         loss_dict = {}
         
@@ -136,7 +142,9 @@ class MultitaskLoss(torch.nn.Module):
                     weight_trans = self.angle_pose.get("weight_trans")
                     weight_rot = self.angle_pose.get("weight_rot")
 
-                    abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err = self.pose_loss(pred_poses, gt_poses)
+                    abs_trans_err, abs_rot_err, rel_trans_err, rel_rot_err = self.pose_loss(
+                        pred_poses, gt_poses, pose_convention=pose_convention
+                    )
                     
                     
                     trans_err = relative_weight * rel_trans_err + absolute_weight * abs_trans_err

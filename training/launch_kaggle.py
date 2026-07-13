@@ -16,9 +16,9 @@ _N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/omega.zi
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/liucong126/pts-align-to-gt-omega-seed42-mct-r3-42/logs/ckpts/checkpoint.pt',
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/miratowa1/pts-align-to-gt-omega-seed42-mct-r4-42/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
- 'kernel_id': 'zhuangminghui/pts-align-to-gt-omega-seed42-mct-r4-42',
+ 'kernel_id': 'miratowa1/pts-align-to-gt-omega-seed42-mct-r5-42',
  'total_run_time_hr': 11.6}
 # END_KAGGLE_RUNTIME_OVERRIDES
 

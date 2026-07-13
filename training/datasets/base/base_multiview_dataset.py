@@ -54,9 +54,12 @@ class BaseMultiViewDataset(EasyDataset):
         seq_aug_crop=False,
         augs=None,
         align_poses=True, 
+        pose_convention="c2w",
         **kwargs,
     ):
         assert num_views is not None, "undefined num_views"
+        if pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
         self.num_views = num_views
         self.split = split
         self.random_crop_prob = 0.0
@@ -85,6 +88,16 @@ class BaseMultiViewDataset(EasyDataset):
         self.allow_repeat = allow_repeat
         self.seq_aug_crop = seq_aug_crop
         self.align_poses = align_poses
+        self.pose_convention = pose_convention
+
+    @staticmethod
+    def _invert_pose_np(pose):
+        inv_pose = pose.copy()
+        R = pose[:3, :3]
+        t = pose[:3, 3]
+        inv_pose[:3, :3] = R.T
+        inv_pose[:3, 3] = -R.T @ t
+        return inv_pose.astype(np.float32, copy=False)
 
     def set_augs(self, augs, transform=None):
         """Dynamically set augmentations after instantiation."""
@@ -597,6 +610,9 @@ class BaseMultiViewDataset(EasyDataset):
             views["pts3d"].append(pts3d)
             views["pts3d_cam"].append(pts3d_cam)
             views["valid_mask"].append(valid_mask & np.isfinite(pts3d).all(axis=-1))
+
+        if self.pose_convention == "w2c":
+            views["camera_pose"] = [self._invert_pose_np(pose) for pose in views["camera_pose"]]
 
         if self.split == "train" and self.image_aug is not None:
             if self.cojitter and random.random() > self.cojitter_ratio:

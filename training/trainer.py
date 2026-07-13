@@ -92,11 +92,16 @@ from train_utils.checkpoint import DDPCheckpointSaver, robust_torch_save
 
 from eval_utils.eval_wrapper import eval_batch
 from eval_utils.align_utils.align_camera import align_camera_and_points_batch_ext
-from eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch, align_extrinsics_torch, align_pred_to_gt_torch_batch_roma, align_c2w_poses_points_torch, align_rotation_only_torch, align_c2w_poses_points_rotation_only, reverse_transform
+from eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch, align_extrinsics_torch, align_pred_to_gt_torch_batch_roma, align_c2w_poses_points_torch, align_rotation_only_torch, align_c2w_poses_points_rotation_only, align_poses_points_torch, align_poses_points_rotation_only, reverse_transform
 from eval_utils.normalize_utils.normalize_pc import normalize_depth_cam_extrinsics
 from eval_utils.align_utils.depth_median_scaling import median_scale_depth_torch, median_scale_depth_torch_batch
 from eval_utils.normalize_utils.normalize_pc import normalize_pointcloud_vggt, normalize_pr_pointcloud, normalize_pointcloud_invariant, calculate_depth_scale
-from eval_utils.transform_utils import global_points_from_cam, cam_points_from_depth
+from eval_utils.transform_utils import (
+    global_points_from_cam,
+    cam_points_from_depth,
+    poses_to_c2w,
+    poses_from_c2w,
+)
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt_omega.utils.pose_enc import encoding_to_camera as omega_pose_encoding_to_extri_intri
 from dust3r.utils.camera import center_c2w_poses_batch, get_pred_world_to_gt_world_transforms
@@ -170,6 +175,9 @@ class Trainer:
         self._setup_env_variables(cfg.get("env_variables"))
 
         self.data_conf = cfg.data
+        self.pose_convention = self.data_conf.get("pose_convention", "c2w")
+        if self.pose_convention not in {"c2w", "w2c"}:
+            raise ValueError(f"data.pose_convention must be 'c2w' or 'w2c', got {self.pose_convention!r}")
         self.model_conf = cfg.model
         self.loss_conf = cfg.loss
         self.logging_conf = cfg.logging
@@ -548,6 +556,7 @@ class Trainer:
             image_size_hw=image_size_hw,
             build_intrinsics=build_intrinsics,
         )
+
 
     # @staticmethod
     # def _sync_pose_encoding_translation(pose_enc: torch.Tensor, extrinsics: torch.Tensor) -> torch.Tensor:
@@ -2280,6 +2289,7 @@ class Trainer:
         # return batch
     def _postprocess(self, batch, pred, pp_conf, pred_data_keys):
         data_keys = self.data_conf.data_keys 
+        pose_convention = self.pose_convention
         if pp_conf.get('to_extri'):
            # The image tensor `batch['img']` has a shape of (B, S, C, H, W).
            # We extract the last two dimensions (Height, Width) for the image size.
@@ -2297,60 +2307,64 @@ class Trainer:
         if pp_conf.align.get('to_first_cam', {}).get('enabled'):
             with torch.no_grad():
                 if pp_conf.align.to_first_cam.get("points"):
-                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points])
+                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], pose_convention=pose_convention)
                 else:
-                    batch[data_keys.extrinsics], _ = align_camera_and_points_batch_ext(batch[data_keys.extrinsics])
+                    batch[data_keys.extrinsics], _ = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], pose_convention=pose_convention)
     
         if pp_conf.align.get('pr_align_cam', {}).get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             pred['pose_aligned'] = True
             if pp_conf.align.pr_align_cam.points:
-                pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points])                    
+                pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], pose_convention=pose_convention)                    
             else:
-                pred[pred_data_keys.extrinsics], _ = align_camera_and_points_batch_ext(poses=pred[pred_data_keys.extrinsics])
+                pred[pred_data_keys.extrinsics], _ = align_camera_and_points_batch_ext(poses=pred[pred_data_keys.extrinsics], pose_convention=pose_convention)
 
         if pp_conf.transform.get('global_from_cam') and pred[pred_data_keys.extrinsics] is not None:
             # Detach pts3d_cam to prevent exploding gradients.
             # The gradient for the camera pose is proportional to the magnitude of the points.
             # Detaching breaks this unstable feedback loop.
-            pred[pred_data_keys.global_from_cam] = global_points_from_cam(pred[pred_data_keys.extrinsics], batch[data_keys.pts3d_cam])
+            pred[pred_data_keys.global_from_cam] = global_points_from_cam(pred[pred_data_keys.extrinsics], batch[data_keys.pts3d_cam], pose_convention=pose_convention)
             # pred[pred_data_keys.global_from_cam] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.pts3d_cam])
             # pred[pred_data_keys.global_from_cam] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.pts3d_cam].detach())
 
         if pp_conf.transform.get('global_from_cam_detach_pose') and pred[pred_data_keys.extrinsics] is not None:
-            pred[pred_data_keys.global_from_cam_detach_pose] = global_points_from_cam(batch[data_keys.extrinsics], pred[pred_data_keys.pts3d_cam])
+            pred[pred_data_keys.global_from_cam_detach_pose] = global_points_from_cam(batch[data_keys.extrinsics], pred[pred_data_keys.pts3d_cam], pose_convention=pose_convention)
 
         if (pp_conf.transform.get('cam_from_depth') or pp_conf.transform.get('global_from_depth')) and pred[pred_data_keys.intrinsics] is not None:
             pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(pred[pred_data_keys.intrinsics], pred[pred_data_keys.depths].detach())
 
             if pp_conf.transform.global_from_depth  and pred[pred_data_keys.extrinsics] is not None:
-                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth].detach())
+                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth].detach(), pose_convention=pose_convention)
 
         if pp_conf.align.get('center_world', {}).get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             center_world_key = pred_data_keys.get("global_to_center_world", "global_to_center_world")
             with torch.no_grad():
-                mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=batch[data_keys.extrinsics], return_poses=True)
-                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
+                batch_c2w = poses_to_c2w(batch[data_keys.extrinsics], pose_convention)
+                mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=batch_c2w, return_poses=True)
+                origin_pose = poses_from_c2w(mean_pose_in_old_world, pose_convention)
+                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(
+                    batch[data_keys.extrinsics], batch[data_keys.world_points], origin_pose, pose_convention=pose_convention
+                )
                 # pred[pred_data_keys.extrinsics], pred[center_world_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world.detach())
 
         if pp_conf.normalize.get('gt_pts'):
             batch[data_keys.world_points], gt_avg_scale = normalize_pointcloud_vggt(batch[data_keys.world_points], batch[data_keys.valid_mask])
             # print(f"Normalize with scale {avg_scale}")
 
-            batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(gt_avg_scale, batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics])
+            batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(gt_avg_scale, batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], pose_convention=pose_convention)
 
         pts_align_conf = pp_conf.normalize.get("gt_pts_invariant", {})
         if pts_align_conf.get("enabled"):
             if pts_align_conf.get("translate"):
-                batch[data_keys.world_points], batch[data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=batch[data_keys.extrinsics], return_pts=True)
-                batch[data_keys.depths], batch[data_keys.pts3d_cam], _, _ = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam])
+                batch[data_keys.world_points], batch[data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=batch[data_keys.extrinsics], return_pts=True, pose_convention=pose_convention)
+                batch[data_keys.depths], batch[data_keys.pts3d_cam], _, _ = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], pose_convention=pose_convention)
             else:
                 centroid, inv_avg_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], return_pts=False)
-                batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points])
+                batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
                                     
         if pp_conf.normalize.get('gt_depth'):
             gt_avg_scale = calculate_depth_scale(batch[data_keys.depths], batch[data_keys.valid_mask], eps=1e-3, mode='mean')           
 
-            batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(norm_factor=gt_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points])
+            batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(norm_factor=gt_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
 
         if pp_conf.normalize.pr_pts.get('enabled'):
             if pp_conf.normalize.pr_pts.metric:
@@ -2360,9 +2374,9 @@ class Trainer:
                 pred['scale'] = 1.0 / norm_factor_pr
 
             if "depth" in pred:
-                pred["depth"], _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor_pr, pred["depth"], None, pred[pred_data_keys.extrinsics])
+                pred["depth"], _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor_pr, pred["depth"], None, pred[pred_data_keys.extrinsics], pose_convention=pose_convention)
             else:
-                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor=norm_factor_pr, extrinsics=pred[pred_data_keys.extrinsics])
+                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(norm_factor=norm_factor_pr, extrinsics=pred[pred_data_keys.extrinsics], pose_convention=pose_convention)
             # if "pose_enc" in pred and pred[pred_data_keys.extrinsics] is not None:
             #     pred["pose_enc"] = self._sync_pose_encoding_translation(
             #         pred["pose_enc"], pred[pred_data_keys.extrinsics]
@@ -2372,10 +2386,10 @@ class Trainer:
         pts_align_conf = pp_conf.normalize.get("pr_pts_invariant", {})
         if pts_align_conf.get("enabled"):
             if pts_align_conf.get("translate"):
-                pred[pred_data_keys.world_points], pred[pred_data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=pred[pred_data_keys.extrinsics], return_pts=True)
+                pred[pred_data_keys.world_points], pred[pred_data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=pred[pred_data_keys.extrinsics], return_pts=True, pose_convention=pose_convention)
             else:
                 centroid, inv_avg_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], return_pts=False)
-                _, _, pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, extrinsics=pred[pred_data_keys.extrinsics], global_points3d=pred[pred_data_keys.world_points])
+                _, _, pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, extrinsics=pred[pred_data_keys.extrinsics], global_points3d=pred[pred_data_keys.world_points], pose_convention=pose_convention)
             # if "pose_enc" in pred and pred[pred_data_keys.extrinsics] is not None:
             #     pred["pose_enc"] = self._sync_pose_encoding_translation(
             #         pred["pose_enc"], pred[pred_data_keys.extrinsics]
@@ -2391,9 +2405,14 @@ class Trainer:
                 # The aligned GT target should not move via gradients flowing
                 # through predicted-pose inversion and SVD-based pose centering.
                 with torch.no_grad():
-                    gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred[pred_data_keys.extrinsics], batch[data_keys.extrinsics])
+                    pred_c2w = poses_to_c2w(pred[pred_data_keys.extrinsics], pose_convention)
+                    batch_c2w = poses_to_c2w(batch[data_keys.extrinsics], pose_convention)
+                    gt_to_pred_transform = get_pred_world_to_gt_world_transforms(pred_c2w, batch_c2w)
                     mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=gt_to_pred_transform, return_poses=False)
-                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(batch[data_keys.extrinsics], batch[data_keys.world_points], mean_pose_in_old_world)
+                origin_pose = poses_from_c2w(mean_pose_in_old_world, pose_convention)
+                batch[data_keys.extrinsics], batch[data_keys.world_points] = align_camera_and_points_batch_ext(
+                    batch[data_keys.extrinsics], batch[data_keys.world_points], origin_pose, pose_convention=pose_convention
+                )
             else:
                 aligned_to_center_key = pred_data_keys.get("global_aligned_to_center", "global_aligned_to_center")
                 # Do not backprop through the pose-centering transform itself here.
@@ -2401,9 +2420,14 @@ class Trainer:
                 # and the SVD-based mean-pose estimate, which becomes numerically unstable
                 # once predicted poses drift away from a valid SE(3) manifold.
                 with torch.no_grad():
-                    pred_to_gt_transform = get_pred_world_to_gt_world_transforms(batch[data_keys.extrinsics], pred[pred_data_keys.extrinsics])
+                    batch_c2w = poses_to_c2w(batch[data_keys.extrinsics], pose_convention)
+                    pred_c2w = poses_to_c2w(pred[pred_data_keys.extrinsics], pose_convention)
+                    pred_to_gt_transform = get_pred_world_to_gt_world_transforms(batch_c2w, pred_c2w)
                     mean_pose_in_old_world, old_world_to_mean_pose, _ = center_c2w_poses_batch(c2w_poses=pred_to_gt_transform, return_poses=False)
-                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], mean_pose_in_old_world)
+                origin_pose = poses_from_c2w(mean_pose_in_old_world, pose_convention)
+                pred[pred_data_keys.extrinsics], pred[aligned_to_center_key] = align_camera_and_points_batch_ext(
+                    pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points], origin_pose, pose_convention=pose_convention
+                )
                 pred['pose_aligned'] = True
                 pred["pose_trans_aligned"] = True
 
@@ -2415,9 +2439,9 @@ class Trainer:
                 _, transform_params = align_pred_to_gt_torch_batch_roma(batch[data_keys.world_points], pred[pred_data_keys.world_points],  batch[data_keys.valid_mask], pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage, with_scale=with_scale, return_points=False)
                 with_scale = False   
                 if pts_align_conf.align_pose:
-                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_c2w_poses_points_torch(c2w_poses=batch[data_keys.extrinsics], transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale)
+                    batch[data_keys.extrinsics], batch[data_keys.world_points] = align_poses_points_torch(poses=batch[data_keys.extrinsics], transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
                 else:
-                    _, batch[data_keys.world_points] = align_c2w_poses_points_torch(transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale)
+                    _, batch[data_keys.world_points] = align_poses_points_torch(transform_params=transform_params, points3D=batch[data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
 
         pts_align_conf = pp_conf.align.get("pts_align_to_gt", {})
         if pts_align_conf.get("enabled"):
@@ -2445,20 +2469,20 @@ class Trainer:
                 if pts_align_conf.align_pose:
                     if pts_align_conf.get("to_pred_pose", False):
                         reversed_transform = reverse_transform(params_detached)
-                        _, pred[aligned_world_points_key] = align_c2w_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale)
-                        batch[data_keys.extrinsics], _ = align_c2w_poses_points_torch(c2w_poses=batch[data_keys.extrinsics], transform_params=reversed_transform, with_scale=False)
+                        _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
+                        batch[data_keys.extrinsics], _ = align_poses_points_torch(poses=batch[data_keys.extrinsics], transform_params=reversed_transform, with_scale=False, pose_convention=pose_convention)
                     else:
                         pred['pose_aligned'] = True
                         pred["pose_trans_aligned"] = True
-                        pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_c2w_poses_points_torch(c2w_poses=pred[pred_data_keys.extrinsics], transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale)
+                        pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_poses_points_torch(poses=pred[pred_data_keys.extrinsics], transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
                 else:
-                    _, pred[aligned_world_points_key] = align_c2w_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale)
+                    _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
 
                 if pts_align_conf.get("normalize_pose"):
-                    _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(1/transform_params['scale']))
+                    _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(1/transform_params['scale']), pose_convention=pose_convention)
                     pred["pose_trans_aligned"] = True                    
                 if pts_align_conf.get("normalize_depth"):
-                    pred["depth"], _, _, _ = normalize_depth_cam_extrinsics(norm_factor=(1/transform_params['scale']), depths=pred["depth"])
+                    pred["depth"], _, _, _ = normalize_depth_cam_extrinsics(norm_factor=(1/transform_params['scale']), depths=pred["depth"], pose_convention=pose_convention)
 
         pts_align_conf = pp_conf.align.get("pts_align_to_gt_rot", {})
         if pts_align_conf.get("enabled"):
@@ -2467,14 +2491,14 @@ class Trainer:
                 R_opt = align_rotation_only_torch(pred[pred_data_keys.world_points], batch[data_keys.world_points], batch[data_keys.valid_mask], )#pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage
                 if pts_align_conf.align_pose:
                     pred['pose_aligned'] = True
-                    pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_c2w_poses_points_rotation_only(R_opt, c2w_poses=pred[pred_data_keys.extrinsics], points3D=pred[pred_data_keys.world_points])
+                    pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_poses_points_rotation_only(R_opt, poses=pred[pred_data_keys.extrinsics], points3D=pred[pred_data_keys.world_points], pose_convention=pose_convention)
                 else:
-                    _, pred[aligned_world_points_key] = align_c2w_poses_points_rotation_only(R_opt, points3D=pred[pred_data_keys.world_points])
+                    _, pred[aligned_world_points_key] = align_poses_points_rotation_only(R_opt, points3D=pred[pred_data_keys.world_points], pose_convention=pose_convention)
 
         if pp_conf.align.get('depth_align_to_gt', {}).get('enabled'):
             pred["depth"], batch_median_pred, batch_median_gt = median_scale_depth_torch_batch(pred["depth"], batch[data_keys.depths], batch[data_keys.valid_mask], pred["depth_conf"], conf_percentage=pp_conf.align.depth_align_to_gt.conf_percentage)
             if pp_conf.align.depth_align_to_gt.pose:
-                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(batch_median_pred/batch_median_gt))
+                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(batch_median_pred/batch_median_gt), pose_convention=pose_convention)
 
 
     def _step(
@@ -2492,7 +2516,7 @@ class Trainer:
         self._postprocess(batch, y_hat, self.postprocess_conf.train, self.postprocess_conf.data_keys)
 
         # Compute the loss
-        loss_dict = self.loss(y_hat, batch, data_keys=self.data_conf.data_keys, pred_data_keys=self.postprocess_conf.data_keys)
+        loss_dict = self.loss(y_hat, batch, data_keys=self.data_conf.data_keys, pred_data_keys=self.postprocess_conf.data_keys, pose_convention=self.pose_convention)
         self._add_asg_auxiliary_loss(model, loss_dict)
         
         # concatenate y_hat, loss_dict and batch for visualizations
@@ -2530,7 +2554,7 @@ class Trainer:
 
         self._postprocess(batch, y_hat, self.postprocess_conf.val, self.postprocess_conf.data_keys)
 
-        y_hat_batch = eval_batch(y_hat=y_hat, batch=batch, metrics_conf=self.postprocess_conf.val.metrics, data_keys=self.data_conf.data_keys, pred_data_keys=self.postprocess_conf.data_keys)
+        y_hat_batch = eval_batch(y_hat=y_hat, batch=batch, metrics_conf=self.postprocess_conf.val.metrics, data_keys=self.data_conf.data_keys, pred_data_keys=self.postprocess_conf.data_keys, pose_convention=self.pose_convention)
 
         # Compute the loss
         # loss_dict = self.loss(y_hat, batch)

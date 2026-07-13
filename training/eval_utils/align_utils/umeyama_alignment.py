@@ -724,6 +724,68 @@ def align_c2w_poses_points_torch(
         aligned_points3D = aligned_pts_flat.reshape(original_pts_shape)
 
     return aligned_c2w_poses, aligned_points3D
+
+
+def align_w2c_poses_points_torch(
+    transform_params: Dict[str, torch.Tensor],
+    w2c_poses: Optional[torch.Tensor] = None,
+    points3D: Optional[torch.Tensor] = None,
+    with_scale: bool = False,
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """Apply a world-space Sim3 to w2c poses and 3D points.
+
+    The point transform is the same convention returned by the RoMa aligner:
+    p' = s * (p @ R_U.T) + t_U. A w2c matrix maps row-vector world points as
+    x_cam = p_world @ R_w2c.T + t_w2c, so the updated pose is:
+        R'_w2c = R_w2c @ R_U.T
+        t'_w2c = s * t_w2c - (R_w2c @ R_U.T @ t_U)
+    """
+    umeyama_R = transform_params["rotation"]
+    B = umeyama_R.shape[0]
+    umeyama_t = transform_params["translation"]
+    scale = transform_params.get("scale") if with_scale else None
+    if scale is None:
+        scale = torch.ones(B, device=umeyama_R.device, dtype=umeyama_R.dtype)
+
+    aligned_w2c_poses = None
+    if w2c_poses is not None:
+        R_e = w2c_poses[..., :3, :3]
+        t_e = w2c_poses[..., :3, 3]
+        R_u_t = umeyama_R.transpose(-2, -1)
+        R_aligned = R_e @ R_u_t.unsqueeze(1)
+        t_shift = (R_aligned @ umeyama_t.view(B, 1, 3, 1)).squeeze(-1)
+        t_aligned = scale.view(B, 1, 1) * t_e - t_shift
+
+        aligned_w2c_poses = w2c_poses.clone()
+        aligned_w2c_poses[..., :3, :3] = R_aligned
+        aligned_w2c_poses[..., :3, 3] = t_aligned
+
+    aligned_points3D = None
+    if points3D is not None:
+        original_pts_shape = points3D.shape
+        pts_flat = points3D.reshape(B, -1, 3)
+        aligned_pts_flat = pts_flat @ umeyama_R.transpose(-2, -1)
+        if with_scale and transform_params.get("scale") is not None:
+            aligned_pts_flat = transform_params["scale"].view(B, 1, 1) * aligned_pts_flat
+        aligned_pts_flat = aligned_pts_flat + umeyama_t.unsqueeze(1)
+        aligned_points3D = aligned_pts_flat.reshape(original_pts_shape)
+
+    return aligned_w2c_poses, aligned_points3D
+
+
+def align_poses_points_torch(
+    transform_params: Dict[str, torch.Tensor],
+    poses: Optional[torch.Tensor] = None,
+    points3D: Optional[torch.Tensor] = None,
+    with_scale: bool = False,
+    pose_convention: str = "c2w",
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    if pose_convention == "c2w":
+        return align_c2w_poses_points_torch(transform_params, poses, points3D, with_scale)
+    if pose_convention == "w2c":
+        return align_w2c_poses_points_torch(transform_params, poses, points3D, with_scale)
+    raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+
 def align_c2w_poses_points_rotation_only(
     R: torch.Tensor,
     c2w_poses: Optional[torch.Tensor] = None,
@@ -783,3 +845,40 @@ def align_c2w_poses_points_rotation_only(
         aligned_points3D = aligned_pts_flat.reshape(original_pts_shape)
 
     return aligned_c2w_poses, aligned_points3D
+
+
+def align_w2c_poses_points_rotation_only(
+    R: torch.Tensor,
+    w2c_poses: Optional[torch.Tensor] = None,
+    points3D: Optional[torch.Tensor] = None,
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """Apply a world-space rotation to w2c poses and 3D points."""
+    B = R.shape[0]
+    aligned_w2c_poses = None
+    if w2c_poses is not None:
+        R_e = w2c_poses[..., :3, :3]
+        R_aligned = R_e @ R.transpose(-2, -1).unsqueeze(1)
+        aligned_w2c_poses = w2c_poses.clone()
+        aligned_w2c_poses[..., :3, :3] = R_aligned
+        # Rotation around the world origin does not change w2c translation.
+
+    aligned_points3D = None
+    if points3D is not None:
+        original_pts_shape = points3D.shape
+        pts_flat = points3D.reshape(B, -1, 3)
+        aligned_points3D = (pts_flat @ R.transpose(-2, -1)).reshape(original_pts_shape)
+
+    return aligned_w2c_poses, aligned_points3D
+
+
+def align_poses_points_rotation_only(
+    R: torch.Tensor,
+    poses: Optional[torch.Tensor] = None,
+    points3D: Optional[torch.Tensor] = None,
+    pose_convention: str = "c2w",
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    if pose_convention == "c2w":
+        return align_c2w_poses_points_rotation_only(R, poses, points3D)
+    if pose_convention == "w2c":
+        return align_w2c_poses_points_rotation_only(R, poses, points3D)
+    raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")

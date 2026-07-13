@@ -15,7 +15,14 @@ from .metric_utils.depth_metric import calculate_depth_metrics_optimized
 from .metric_utils.recon_metric import calculate_corresponding_points_error_torch_optimized
 
 
-def eval_batch(y_hat: Dict[str, Any], batch: Dict[str, Any], metrics_conf: Dict[str, Any], data_keys: Dict[str, Any], pred_data_keys:  Dict[str, Any]) -> Dict[str, Any]:
+def eval_batch(
+    y_hat: Dict[str, Any],
+    batch: Dict[str, Any],
+    metrics_conf: Dict[str, Any],
+    data_keys: Dict[str, Any],
+    pred_data_keys: Dict[str, Any],
+    pose_convention: str = "c2w",
+) -> Dict[str, Any]:
     """
     Evaluates a batch of predictions against ground truth using a flexible configuration.
 
@@ -46,6 +53,18 @@ def eval_batch(y_hat: Dict[str, Any], batch: Dict[str, Any], metrics_conf: Dict[
             if cam_conf.get('auc'):
                 auc = calculate_auc(rot_errors_deg, trans_angle_errors_deg, max_threshold_deg=30)
                 all_metrics['auc'] = auc
+        if cam_conf.get('rel_err'):
+            rel_metrics = []
+            for gt_scene, pred_scene in zip(gt_poses, pred_poses):
+                rel_metrics.append(
+                    compute_all_pairs_relative_error(
+                        gt_scene, pred_scene, pose_convention=pose_convention
+                    )
+                )
+            if rel_metrics:
+                for key in rel_metrics[0]:
+                    vals = [m[key] for m in rel_metrics]
+                    all_metrics[key] = float(sum(vals) / len(vals))
             
 
     # --- Depth Metrics ---
