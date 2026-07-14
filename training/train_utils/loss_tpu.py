@@ -877,6 +877,8 @@ def compute_depth_loss(
     reg_loss_beta: float = 1.0,
     scale_invariant=False,
     scale_invariant_mode="scale",
+    log_depth=False,
+    log_depth_eps=1e-6,
     conf_weight=1.0,
     reg_weight=1.0,
     grad_weight=1.0,
@@ -894,6 +896,7 @@ def compute_depth_loss(
         alpha: Weight for confidence regularization
         gradient_loss_fn: Type of gradient loss to apply
         valid_range: Quantile range for outlier filtering
+        log_depth: Compute regression and gradient losses in log-depth space
     """
     pred_depth = predictions['depth']
     pred_depth_conf = predictions['depth_conf']
@@ -914,14 +917,20 @@ def compute_depth_loss(
             mode=scale_invariant_mode,
         )
 
+    loss_pred_depth = pred_depth
+    loss_gt_depth = gt_depth
+    if log_depth:
+        loss_pred_depth = torch.log(pred_depth.clamp_min(log_depth_eps))
+        loss_gt_depth = torch.log(gt_depth.clamp_min(log_depth_eps))
+
     need_conf_reg = (conf_weight > 0) or (reg_weight > 0)
     need_grad = (grad_weight > 0) and bool(gradient_loss_fn)
     if need_conf_reg or need_grad:
         # NOTE: we put conf inside regression_loss so that we can also apply conf loss to the gradient loss in a multi-scale manner
         # this is hacky, but very easier to implement
         loss_conf, loss_grad, loss_reg = regression_loss(
-            pred_depth,
-            gt_depth,
+            loss_pred_depth,
+            loss_gt_depth,
             gt_depth_mask,
             conf=pred_depth_conf,
             gradient_loss_fn=gradient_loss_fn if need_grad else None,

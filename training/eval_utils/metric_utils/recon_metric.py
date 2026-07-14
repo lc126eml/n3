@@ -36,6 +36,15 @@ def calculate_corresponding_points_error_torch_optimized(
     if points_gt.shape != points_pred.shape:
         raise ValueError(f"Input point clouds must have the same shape. "
                          f"Got {points_gt.shape} and {points_pred.shape}.")
+    finite_mask = torch.isfinite(points_gt).all(dim=-1) & torch.isfinite(points_pred).all(dim=-1)
+    points_gt = points_gt[finite_mask]
+    points_pred = points_pred[finite_mask]
+    nan = torch.tensor(float("nan"), device=points_gt.device, dtype=points_gt.dtype)
+    if points_gt.numel() == 0:
+        return {
+            'recon_mae': nan,
+            'recon_abs_rel': nan,
+        }
 
     # --- Error Calculation ---
     distances = torch.linalg.norm(points_gt - points_pred, dim=-1)
@@ -50,8 +59,7 @@ def calculate_corresponding_points_error_torch_optimized(
     # Create a mask to avoid division by zero for points at the origin.
     non_zero_mask = dist_from_origin > 1e-8
     
-    # Initialize relative metrics to zero.
-    abs_rel = torch.tensor(0.0, device=points_gt.device)    
+    abs_rel = torch.tensor(float("nan"), device=points_gt.device, dtype=points_gt.dtype)
 
     # Only compute relative metrics if there are points away from the origin.
     if torch.any(non_zero_mask):
@@ -63,6 +71,133 @@ def calculate_corresponding_points_error_torch_optimized(
     }
 
     return metrics
+
+
+def _finite_points(points: torch.Tensor) -> torch.Tensor:
+    points = points.reshape(-1, 3)
+    return points[torch.isfinite(points).all(dim=-1)]
+
+
+def _deterministic_subsample(points: torch.Tensor, max_points: int | None) -> torch.Tensor:
+    if max_points is None or max_points <= 0 or points.shape[0] <= max_points:
+        return points
+    indices = torch.linspace(
+        0,
+        points.shape[0] - 1,
+        steps=max_points,
+        device=points.device,
+    ).long()
+    return points[indices]
+
+
+def calculate_nearest_neighbor_pointcloud_metrics(
+    points_gt: torch.Tensor,
+    points_pred: torch.Tensor,
+    threshold: float = 0.05,
+    max_points: int | None = 200000,
+    workers: int = 24,
+) -> Dict[str, torch.Tensor]:
+    """Compute unordered point-cloud nearest-neighbor metrics.
+
+    Accuracy is pred->GT nearest-neighbor distance; completion is GT->pred
+    nearest-neighbor distance. Precision/recall/F1 are thresholded versions
+    of the same two directed distances.
+    """
+    device = points_gt.device
+    dtype = points_gt.dtype
+    nan = torch.tensor(float("nan"), device=device, dtype=dtype)
+
+    points_gt = _deterministic_subsample(_finite_points(points_gt), max_points)
+    points_pred = _deterministic_subsample(_finite_points(points_pred), max_points)
+
+    if points_gt.numel() == 0 or points_pred.numel() == 0:
+        return {
+            "nn_acc_mean": nan,
+            "nn_acc_median": nan,
+            "nn_comp_mean": nan,
+            "nn_comp_median": nan,
+            f"nn_precision@{threshold:.3f}m": nan,
+            f"nn_recall@{threshold:.3f}m": nan,
+            f"nn_f1@{threshold:.3f}m": nan,
+        }
+
+    gt_np = points_gt.detach().to(device="cpu", dtype=torch.float32).numpy()
+    pred_np = points_pred.detach().to(device="cpu", dtype=torch.float32).numpy()
+
+    pred_to_gt, _ = KDTree(gt_np).query(pred_np, workers=workers)
+    gt_to_pred, _ = KDTree(pred_np).query(gt_np, workers=workers)
+
+    pred_to_gt = torch.from_numpy(pred_to_gt).to(device=device, dtype=dtype)
+    gt_to_pred = torch.from_numpy(gt_to_pred).to(device=device, dtype=dtype)
+
+    precision = (pred_to_gt < threshold).float().mean()
+    recall = (gt_to_pred < threshold).float().mean()
+    f1 = 2.0 * precision * recall / (precision + recall + 1e-8)
+
+    return {
+        "nn_acc_mean": pred_to_gt.mean(),
+        "nn_acc_median": pred_to_gt.median(),
+        "nn_comp_mean": gt_to_pred.mean(),
+        "nn_comp_median": gt_to_pred.median(),
+        f"nn_precision@{threshold:.3f}m": precision,
+        f"nn_recall@{threshold:.3f}m": recall,
+        f"nn_f1@{threshold:.3f}m": f1,
+    }
+
+
+def calculate_batched_nearest_neighbor_pointcloud_metrics(
+    points_gt: torch.Tensor,
+    points_pred: torch.Tensor,
+    valid_mask: torch.Tensor | None = None,
+    threshold: float = 0.05,
+    max_points: int | None = 200000,
+    workers: int = 24,
+) -> Dict[str, torch.Tensor]:
+    """Compute NN metrics independently per scene and average scene results.
+
+    The first dimension is the scene dimension. Remaining point dimensions are
+    flattened within each scene, e.g. ``(B, S, H, W, 3) -> B x (S*H*W)``.
+    """
+    if points_gt.shape != points_pred.shape:
+        raise ValueError(
+            f"Batched point clouds must have the same shape. Got {points_gt.shape} and {points_pred.shape}."
+        )
+    if points_gt.ndim < 3 or points_gt.shape[-1] != 3:
+        raise ValueError(f"Expected batched point clouds shaped (B, ..., 3), got {points_gt.shape}.")
+    if points_gt.shape[0] == 0:
+        raise ValueError("Batched point clouds must contain at least one scene.")
+    if valid_mask is not None and valid_mask.shape != points_gt.shape[:-1]:
+        raise ValueError(
+            f"Mask shape must match point dimensions without XYZ. Got {valid_mask.shape} for {points_gt.shape}."
+        )
+
+    scene_metrics = []
+    for scene_idx in range(points_gt.shape[0]):
+        gt_scene = points_gt[scene_idx]
+        pred_scene = points_pred[scene_idx]
+        if valid_mask is not None:
+            scene_mask = valid_mask[scene_idx].bool()
+            gt_scene = gt_scene[scene_mask]
+            pred_scene = pred_scene[scene_mask]
+
+        scene_metrics.append(
+            calculate_nearest_neighbor_pointcloud_metrics(
+                gt_scene,
+                pred_scene,
+                threshold=threshold,
+                max_points=max_points,
+                workers=workers,
+            )
+        )
+
+    aggregated = {}
+    for key in scene_metrics[0]:
+        values = torch.stack([metrics[key] for metrics in scene_metrics])
+        finite = torch.isfinite(values)
+        aggregated[key] = values[finite].mean() if finite.any() else values[0]
+    return aggregated
+
+
 # import faiss
 def calculate_corresponding_points_error(points_gt, points_pred, metric='mean', include_relative=True):
     """
