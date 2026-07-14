@@ -188,18 +188,31 @@ postprocess:
         metric: false
     metrics:
       camera:
-        enabled: true
-        abs_err: true
+        enabled: True
+        abs_err: True
         rel_err: false
-        abs_err_angle: true
-        rel_err_angle: true
+        auc: false
+        # abs_err_angle: True
+        # rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: false
+        align: median
+        sq_rel: false
+        rmse: false
+        log_rmse: false
+        delta: false
+      intrinsics:
+        enabled: false
+        ray_dirs_err_deg: true
+        max_ray_points: 4096
       recon:
-        pts_err: true
-        from_cam_err: false
-        from_depth_err: false
+        pts_err: True
+        nn_metrics: false
+        nn_threshold: 0.05
+        nn_max_points: 200000
+        from_cam_err: False
+        from_depth_err: False
     transform:
       cam_from_depth: *cam_from_depth
       global_from_cam: *global_from_cam
@@ -382,10 +395,17 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
-    - name: asg
-      ratio: 0.01
-      param_names:
-        - "aggregator.asg.*"
+    # - name: frame_blocks
+    #   ratio: 1.0e-1
+    #   param_names:
+    #     - "aggregator.frame_blocks.*"
+    #     - "aggregator.inter_frame_blocks.*"
+    #     - "aggregator.camera_token.*"
+    #     - "aggregator.register_token.*"
+    # - name: asg
+    #   ratio: 0.01
+    #   param_names:
+    #     - "aggregator.asg.*"
     - name: camera_head
       ratio: 0.01
       param_names:
@@ -405,9 +425,9 @@ optim:
       - module_name: ["aggregator.patch_embed"]
         max_norm: 1.0   
         norm_type: 2
-      - module_name: ["aggregator.asg"]
-        max_norm: 5.0   
-        norm_type: 2
+      # - module_name: ["aggregator.asg"]
+      #   max_norm: 5.0   
+      #   norm_type: 2
       - module_name: ["aggregator"]
         max_norm: 5.0   
         norm_type: 2

@@ -190,13 +190,26 @@ postprocess:
         enabled: True
         abs_err: True
         rel_err: false
-        abs_err_angle: True
-        rel_err_angle: True
+        auc: false
+        # abs_err_angle: True
+        # rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: false
+        align: median
+        sq_rel: false
+        rmse: false
+        log_rmse: false
+        delta: false
+      intrinsics:
+        enabled: false
+        ray_dirs_err_deg: true
+        max_ray_points: 4096
       recon:
         pts_err: True
+        nn_metrics: false
+        nn_threshold: 0.05
+        nn_max_points: 200000
         from_cam_err: False
         from_depth_err: False
     transform:
@@ -243,9 +256,9 @@ loss:
   _target_: train_utils.loss.MultitaskLoss
   camera:
     weight: 5.0
-    weight_focal: 0
-    weight_trans: 0
-    weight_rot: 0
+    weight_focal: 0.5
+    weight_trans: 1.0
+    weight_rot: 1.0
     pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
     loss_type: "l1"   
     beta: 1.0
@@ -255,19 +268,20 @@ loss:
     weight_rot: 1.0
     relative_weight: 0.5
     absolute_weight: 0.5
-    compute_relative: False
-    compute_absolute: False
+    compute_relative: true
+    compute_absolute: true
     relative_neighbors: 1
     loss_type: "l2" 
     beta: 1.0
   depth:
     weight: 1.0
-    gradient_loss_fn: "" #"grad" 
+    gradient_loss_fn: "grad" #"grad" ""
     valid_range: 0.98
     reg_loss_type: "l2"
     reg_loss_beta: 1.0
     scale_invariant: false
     scale_invariant_mode: "scale"
+    log_depth: false
     conf_weight: 1.0
     gamma: 1.0
     alpha: 0.2
@@ -284,7 +298,7 @@ loss:
     global_from_cam_weight: 0.05
     global_from_depth_weight: 0.05
     cam_from_depth_weight: 0.05
-    gradient_loss_fn: "" #"normal" 
+    gradient_loss_fn: "normal" #"normal" ""
     valid_range: 0.98
     gamma: 1.0
     alpha: 0.2
@@ -308,7 +322,7 @@ loss:
   vggt: false
   asg_weight: 30
   enabled: true
-  track: null   
+  track:
 
 
 optim:
@@ -320,7 +334,7 @@ optim:
   warmup_batch_cost_discount: 0.5
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
-  warmup_configs: 
+  warmup_configs: []
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
@@ -330,30 +344,30 @@ optim:
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
-    - attr: "loss.angle_pose.compute_absolute"
-      value: true
-      epoch: *warmup_epoch3
-    - attr: "loss.angle_pose.compute_relative"
-      value: true
-      epoch: *warmup_epoch2
+    # - attr: "loss.angle_pose.compute_absolute"
+    #   value: true
+    #   epoch: *warmup_epoch2
+    # - attr: "loss.angle_pose.compute_relative"
+    #   value: true
+    #   epoch: *warmup_epoch2
     # - attr: "loss.camera.weight"
     #   value: 5.0
     #   epoch: *warmup_epochs
-    - attr: "loss.camera.weight_focal"
-      value: 0.5
-      epoch: *warmup_epoch2
-    - attr: "loss.camera.weight_trans"
-      value: 1.0
-      epoch: *warmup_epoch2
-    - attr: "loss.camera.weight_rot"
-      value: 1.0
-      epoch: *warmup_epoch2
-    - attr: "loss.depth.gradient_loss_fn"
-      value: "grad"
-      epoch: *warmup_epoch3
-    - attr: "loss.point.gradient_loss_fn"
-      value: "normal"
-      epoch: *warmup_epoch3
+    # - attr: "loss.camera.weight_focal"
+    #   value: 0.5
+    #   epoch: *warmup_epoch2
+    # - attr: "loss.camera.weight_trans"
+    #   value: 1.0
+    #   epoch: *warmup_epoch2
+    # - attr: "loss.camera.weight_rot"
+    #   value: 1.0
+    #   epoch: *warmup_epoch2
+    # - attr: "loss.depth.gradient_loss_fn"
+    #   value: "grad"
+    #   epoch: *warmup_epoch3
+    # - attr: "loss.point.gradient_loss_fn"
+    #   value: "normal"
+    #   epoch: *warmup_epoch3
     # - attr: "loss.point.global_aligned_weight"
     #   value: 1.0
     #   epoch: *warmup_epoch3
@@ -432,7 +446,7 @@ model:
   conf_logit_max: null
   enable_camera: True
   simple_camera: false
-  enable_depth: false
+  enable_depth: true
   enable_point: True
   enable_cam_point: False
   # VGGTOmega constructor defaults are intentionally left in the model code.

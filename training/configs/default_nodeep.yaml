@@ -190,13 +190,26 @@ postprocess:
         enabled: True
         abs_err: True
         rel_err: false
-        abs_err_angle: True
-        rel_err_angle: True
+        auc: false
+        # abs_err_angle: True
+        # rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: false
+        align: median
+        sq_rel: false
+        rmse: false
+        log_rmse: false
+        delta: false
+      intrinsics:
+        enabled: false
+        ray_dirs_err_deg: true
+        max_ray_points: 4096
       recon:
         pts_err: True
+        nn_metrics: false
+        nn_threshold: 0.05
+        nn_max_points: 200000
         from_cam_err: False
         from_depth_err: False
     transform:

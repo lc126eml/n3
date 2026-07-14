@@ -196,11 +196,12 @@ postprocess:
         metric: false
     metrics:
       camera:
-        enabled: true
-        abs_err: true
+        enabled: True
+        abs_err: True
         rel_err: false
-        abs_err_angle: true
-        rel_err_angle: true
+        auc: false
+        # abs_err_angle: True
+        # rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: false

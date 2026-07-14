@@ -149,11 +149,16 @@ postprocess:
         enabled: True
         abs_err: True
         rel_err: false
-        abs_err_angle: True
-        rel_err_angle: True
+        auc: false
+        # abs_err_angle: True
+        # rel_err_angle: True
         # all_pairs_err: True
       depth:
         enabled: True
+      intrinsics:
+        enabled: false
+        ray_dirs_err_deg: true
+        max_ray_points: 4096
       recon:
         pts_err: True
         from_cam_err: False
@@ -205,6 +210,7 @@ loss:
     weight: 1.0
     gradient_loss_fn: "grad" 
     valid_range: 0.98
+    log_depth: false
   # point: null
   # If you want to enable point, use the following config
   point: 
