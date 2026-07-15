@@ -36,8 +36,15 @@ class Aggregator(nn.Module):
         asg: bool = False,
         asg_max_hw: int = 512,
         loop: bool = True,
+        grad_start_layer: int = 0,
     ) -> None:
         super().__init__()
+
+        grad_start_layer = int(grad_start_layer)
+        if not 0 <= grad_start_layer <= depth:
+            raise ValueError(
+                f"grad_start_layer must be in [0, {depth}], got {grad_start_layer}"
+            )
 
         self.patch_token_start = 1 + num_register_tokens
         self.dinov3_hf_patch_embed = False
@@ -59,6 +66,7 @@ class Aggregator(nn.Module):
             else None
         )
         self.loop = loop
+        self.grad_start_layer = grad_start_layer
 
         self.frame_blocks = nn.ModuleList(
             [
@@ -229,25 +237,29 @@ class Aggregator(nn.Module):
 
         outputs = []
         for block_idx in range(self.depth):
-            tokens, frame_tokens = self._run_frame_block(
-                tokens,
-                batch_size,
-                num_frames,
-                num_tokens,
-                embed_dim,
-                block_idx,
-                frame_rope,
+            block_grad_enabled = torch.is_grad_enabled() and (
+                not self.training or block_idx >= self.grad_start_layer
             )
-            tokens, global_register_token = self._run_inter_frame_attention_block(
-                tokens,
-                batch_size,
-                num_frames,
-                num_tokens,
-                embed_dim,
-                block_idx,
-                self.inter_frame_attention_types[block_idx],
-                global_register_token,
-            )
+            with torch.set_grad_enabled(block_grad_enabled):
+                tokens, frame_tokens = self._run_frame_block(
+                    tokens,
+                    batch_size,
+                    num_frames,
+                    num_tokens,
+                    embed_dim,
+                    block_idx,
+                    frame_rope,
+                )
+                tokens, global_register_token = self._run_inter_frame_attention_block(
+                    tokens,
+                    batch_size,
+                    num_frames,
+                    num_tokens,
+                    embed_dim,
+                    block_idx,
+                    self.inter_frame_attention_types[block_idx],
+                    global_register_token,
+                )
             if block_idx in self.cached_layer_indices:
                 outputs.append(torch.cat([frame_tokens, tokens], dim=-1))
             else:
@@ -362,4 +374,3 @@ def slice_expand_and_flatten(token_tensor: torch.Tensor, batch_size: int, num_fr
     other_frame_tokens = token_tensor[:, 1:].expand(batch_size, num_frames - 1, *token_tensor.shape[2:])
     tokens = torch.cat([first_frame_token, other_frame_tokens], dim=1)
     return tokens.view(batch_size * num_frames, *tokens.shape[2:])
-
