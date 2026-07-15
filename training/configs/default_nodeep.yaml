@@ -150,12 +150,18 @@ postprocess:
       gt_pts_invariant: 
         enabled: True
         translate: True
+        min_scale: null
+        max_scale: null
+        min_valid_points: 3
       pr_pts:
         enabled: False
         metric: False
       pr_pts_invariant: 
         enabled: False
         translate: False
+        min_scale: 0.5
+        max_scale: 3.0
+        min_valid_points: 3
     transform:
       cam_from_depth: &cam_from_depth False
       global_from_cam: &global_from_cam False

@@ -40,6 +40,9 @@ def normalize_pointcloud_invariant(
     valid_mask: torch.Tensor, 
     c2w_poses: Optional[torch.Tensor] = None, 
     eps: float = 1e-6, 
+    min_scale: Optional[float] = None,
+    max_scale: Optional[float] = None,
+    min_valid_points: int = 3,
     return_pts: bool = False,
     pose_convention: str = "c2w",
 ) -> Tuple[torch.Tensor, ...]:
@@ -57,6 +60,10 @@ def normalize_pointcloud_invariant(
         c2w_poses (Optional[torch.Tensor]): The original c2w poses.
                                             Shape (B, S, 3, 4) or (B, S, 4, 4).
         eps (float): A small epsilon value for numerical stability.
+        min_scale (float, optional): Lower bound for the denominator scale.
+                                    Defaults to eps when omitted.
+        max_scale (float, optional): Optional upper bound for the denominator scale.
+        min_valid_points (int): Samples with fewer valid points use scale=1.
         return_pts (bool): If True, returns normalized entities and transform params.
                            If False, returns only the transform params.
     
@@ -65,46 +72,45 @@ def normalize_pointcloud_invariant(
             pts3d_normalized (torch.Tensor): (B, S, H, W, 3)
             c2w_poses_normalized (Optional[torch.Tensor]): (B, S, 3, 4 or 4, 4)
             centroid (torch.Tensor): The calculated centroid. (B, 3)
-            inv_scale (torch.Tensor): The calculated inv avg scale. (B,)
+            inv_scale (torch.Tensor): Reciprocal of the bounded average radius. (B,)
         If return_pts is False:
             centroid (torch.Tensor): (B, 3)
             inv_scale (torch.Tensor): (B,)
     """
     if pose_convention not in {"c2w", "w2c"}:
         raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
-    
-    # --- 1. Calculate Centroid and Scale (from point cloud) ---
-    B, S, H, W, C = pts3d.shape
-    device = pts3d.device
-    
-    valid_mask_float = valid_mask.float()
-    
-    # valid_count shape: (B,)
-    valid_count = valid_mask_float.sum(dim=[1, 2, 3]).clamp(min=eps)
+    if pts3d.ndim != 5 or pts3d.shape[-1] != 3:
+        raise ValueError(f"pts3d must have shape (B,S,H,W,3), got {tuple(pts3d.shape)}")
+    lower_scale = eps if min_scale is None else min_scale
 
-    # valid_mask_expanded shape: (B, S, H, W, 1)
-    valid_mask_expanded = valid_mask_float.unsqueeze(-1)
-    
-    # pts3d_sum shape: (B, 3)
-    pts3d_sum = (pts3d * valid_mask_expanded).sum(dim=[1, 2, 3])
-    
-    # centroid shape: (B, 3)
-    centroid = pts3d_sum / valid_count.view(B, 1).clamp(min=eps)
-    
-    # Center the point cloud
-    # centroid_broadcast_pts shape: (B, 1, 1, 1, 3)
-    centroid_broadcast_pts = centroid.view(B, 1, 1, 1, 3)
-    pts3d_centered = pts3d - centroid_broadcast_pts
+    B = pts3d.shape[0]
+    pts_work = pts3d
+    valid = valid_mask.bool()
+    valid_count = valid.sum(dim=(1, 2, 3))
 
-    # Calculate average scale
-    # dist_centered shape: (B, S, H, W)
-    dist_centered = torch.linalg.norm(pts3d_centered + 1e-8, dim=-1)
-    
-    # dist_sum shape: (B,)
-    dist_sum = (dist_centered * valid_mask_float).sum(dim=[1, 2, 3])
-    
-    # avg_scale shape: (B,)
-    inv_scale = 1.0 / (dist_sum / valid_count.clamp(min=eps)).clamp(min=eps, max=1e5)
+    # Inputs are required to be finite. Mask multiplication matches the VGGT
+    # normalization path and avoids an extra dense FP32 point-cloud copy.
+    # Counts stay exact in int64; CUDA autocast controls reduction precision.
+    masked_pts = pts_work * valid.unsqueeze(-1)
+    safe_point_count = valid_count + (valid_count == 0)
+    centroid = masked_pts.sum(dim=(1, 2, 3)) / safe_point_count.unsqueeze(-1)
+
+    # Keep the applied and returned transform in the point dtype so the dense
+    # centered point map remains mixed precision and the parameters match it.
+    centroid = centroid.to(dtype=pts_work.dtype)
+    pts3d_centered = pts_work - centroid.view(B, 1, 1, 1, 3)
+    distances = torch.linalg.vector_norm(pts3d_centered, dim=-1)
+    distance_sum = (distances * valid).sum(dim=(1, 2, 3))
+    estimated_scale = distance_sum / safe_point_count
+    scale = torch.where(
+        valid_count >= min_valid_points,
+        estimated_scale,
+        torch.ones_like(estimated_scale),
+    )
+    scale = scale.clamp_min(lower_scale)
+    if max_scale is not None:
+        scale = scale.clamp_max(max_scale)
+    inv_scale = scale.reciprocal().to(dtype=pts_work.dtype)
     
     # --- 2. Handle 'return_pts=False' case ---
     if not return_pts:
@@ -112,7 +118,6 @@ def normalize_pointcloud_invariant(
 
     # --- 3. Normalize 3D Points ---
     
-    # .view() reshapes avg_scale for broadcasting: (B,) -> (B, 1, 1, 1, 1)
     pts3d_normalized = pts3d_centered * inv_scale.view(B, 1, 1, 1, 1)
 
     # --- 4. Normalize Poses (if provided) ---

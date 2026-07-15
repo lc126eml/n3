@@ -2420,12 +2420,18 @@ class Trainer:
 
         pts_align_conf = pp_conf.normalize.get("gt_pts_invariant", {})
         if pts_align_conf.get("enabled"):
+            invariant_kwargs = {
+                "eps": float(pts_align_conf.get("eps", 1e-6)),
+                "min_scale": pts_align_conf.get("min_scale"),
+                "max_scale": pts_align_conf.get("max_scale"),
+                "min_valid_points": int(pts_align_conf.get("min_valid_points", 3)),
+            }
             if pts_align_conf.get("translate"):
-                batch[data_keys.world_points], batch[data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=batch[data_keys.extrinsics], return_pts=True, pose_convention=pose_convention)
-                batch[data_keys.depths], batch[data_keys.pts3d_cam], _, _ = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], pose_convention=pose_convention)
+                batch[data_keys.world_points], batch[data_keys.extrinsics], centroid, inv_normalization_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=batch[data_keys.extrinsics], return_pts=True, pose_convention=pose_convention, **invariant_kwargs)
+                batch[data_keys.depths], batch[data_keys.pts3d_cam], _, _ = normalize_depth_cam_extrinsics(inv_scale=inv_normalization_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], pose_convention=pose_convention)
             else:
-                centroid, inv_avg_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], return_pts=False)
-                batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
+                centroid, inv_normalization_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], return_pts=False, **invariant_kwargs)
+                batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_normalization_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
                                     
         if pp_conf.normalize.get('gt_depth'):
             gt_avg_scale = calculate_depth_scale(batch[data_keys.depths], batch[data_keys.valid_mask], eps=1e-3, mode='mean')           
@@ -2451,17 +2457,23 @@ class Trainer:
 
         pts_align_conf = pp_conf.normalize.get("pr_pts_invariant", {})
         if pts_align_conf.get("enabled"):
+            invariant_kwargs = {
+                "eps": float(pts_align_conf.get("eps", 1e-6)),
+                "min_scale": pts_align_conf.get("min_scale"),
+                "max_scale": pts_align_conf.get("max_scale"),
+                "min_valid_points": int(pts_align_conf.get("min_valid_points", 3)),
+            }
             if pts_align_conf.get("translate"):
-                pred[pred_data_keys.world_points], pred[pred_data_keys.extrinsics], centroid, inv_avg_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=pred[pred_data_keys.extrinsics], return_pts=True, pose_convention=pose_convention)
+                pred[pred_data_keys.world_points], pred[pred_data_keys.extrinsics], centroid, inv_normalization_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], c2w_poses=pred[pred_data_keys.extrinsics], return_pts=True, pose_convention=pose_convention, **invariant_kwargs)
             else:
-                centroid, inv_avg_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], return_pts=False)
-                _, _, pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_avg_scale, extrinsics=pred[pred_data_keys.extrinsics], global_points3d=pred[pred_data_keys.world_points], pose_convention=pose_convention)
+                centroid, inv_normalization_scale = normalize_pointcloud_invariant(pred[pred_data_keys.world_points], batch[data_keys.valid_mask], return_pts=False, **invariant_kwargs)
+                _, _, pred[pred_data_keys.extrinsics], pred[pred_data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_normalization_scale, extrinsics=pred[pred_data_keys.extrinsics], global_points3d=pred[pred_data_keys.world_points], pose_convention=pose_convention)
             # if "pose_enc" in pred and pred[pred_data_keys.extrinsics] is not None:
             #     pred["pose_enc"] = self._sync_pose_encoding_translation(
             #         pred["pose_enc"], pred[pred_data_keys.extrinsics]
             #     )
             pred["pose_trans_aligned"] = True
-            pred['scale'] = inv_avg_scale
+            pred['scale'] = inv_normalization_scale
             pred['translation'] = centroid
         
         pts_align_conf = pp_conf.align.get("pred_center", {})
