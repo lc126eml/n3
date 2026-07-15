@@ -36,6 +36,9 @@ class EasyDataset:
     def set_epoch(self, epoch):
         pass  # nothing to do by default
 
+    def set_seed(self, seed):
+        self.seed = seed
+
     # def make_sampler(
     #     self, batch_size, shuffle=True, drop_last=True, world_size=1, rank=0, fixed_length=False, seed=None
     # ):
@@ -122,10 +125,17 @@ class MulDataset(EasyDataset):
 
     def __getitem__(self, idx):
         if isinstance(idx, tuple):
-            idx, other, another = idx
-            return self.dataset[idx // self.multiplicator, other, another]
+            idx, *metadata = idx
+            return self.dataset[(idx // self.multiplicator, *metadata)]
         else:
             return self.dataset[idx // self.multiplicator]
+
+    def set_epoch(self, epoch):
+        self.dataset.set_epoch(epoch)
+
+    def set_seed(self, seed):
+        self.seed = seed
+        self.dataset.set_seed(seed)
 
     @property
     def _resolutions(self):
@@ -145,6 +155,11 @@ class ResizedDataset(EasyDataset):
         assert isinstance(new_size, int) and new_size > 0
         self.new_size = new_size
         self.dataset = dataset
+        # The mapping has a fixed size, so keep it in shared memory. Persistent
+        # DataLoader workers then observe in-place epoch updates made by the
+        # main process instead of retaining their initial mapping copy.
+        self._idxs_mapping = torch.empty(new_size, dtype=torch.int64).share_memory_()
+        self._mapping_epoch = torch.full((), -1, dtype=torch.int64).share_memory_()
 
     def __len__(self):
         return self.new_size
@@ -158,6 +173,7 @@ class ResizedDataset(EasyDataset):
 
     def set_epoch(self, epoch):
         # this random shuffle only depends on the epoch
+        epoch = int(epoch)
         rng = np.random.default_rng(seed=epoch + 777)
 
         # shuffle all indices
@@ -167,19 +183,30 @@ class ResizedDataset(EasyDataset):
         shuffled_idxs = np.concatenate(
             [perm] * (1 + (len(self) - 1) // len(self.dataset))
         )
-        self._idxs_mapping = shuffled_idxs[: self.new_size]
+        mapping = torch.as_tensor(
+            shuffled_idxs[: self.new_size], dtype=torch.int64
+        )
+        self._idxs_mapping.copy_(mapping)
+        # Publish the epoch only after the complete mapping has been copied.
+        self._mapping_epoch.fill_(epoch)
+        self.dataset.set_epoch(epoch)
 
         assert len(self._idxs_mapping) == self.new_size
 
     def __getitem__(self, idx):
-        assert hasattr(
-            self, "_idxs_mapping"
-        ), "You need to call dataset.set_epoch() to use ResizedDataset.__getitem__()"
+        assert self._mapping_epoch.item() >= 0, (
+            "You need to call dataset.set_epoch() to use ResizedDataset.__getitem__()"
+        )
         if isinstance(idx, tuple):
-            idx, other, another = idx
-            return self.dataset[self._idxs_mapping[idx], other, another]
+            idx, *metadata = idx
+            mapped_idx = int(self._idxs_mapping[idx].item())
+            return self.dataset[(mapped_idx, *metadata)]
         else:
-            return self.dataset[self._idxs_mapping[idx]]
+            return self.dataset[int(self._idxs_mapping[idx].item())]
+
+    def set_seed(self, seed):
+        self.seed = seed
+        self.dataset.set_seed(seed)
 
     @property
     def _resolutions(self):
@@ -216,10 +243,15 @@ class CatDataset(EasyDataset):
         for dataset in self.datasets:
             dataset.set_epoch(epoch)
 
+    def set_seed(self, seed):
+        self.seed = seed
+        for dataset in self.datasets:
+            dataset.set_seed(seed)
+
     def __getitem__(self, idx):
-        other = None
+        metadata = ()
         if isinstance(idx, tuple):
-            idx, other, another = idx
+            idx, *metadata = idx
 
         if not (0 <= idx < len(self)):
             raise IndexError()
@@ -228,8 +260,8 @@ class CatDataset(EasyDataset):
         dataset = self.datasets[db_idx]
         new_idx = idx - (self._cum_sizes[db_idx - 1] if db_idx > 0 else 0)
 
-        if other is not None and another is not None:
-            new_idx = (new_idx, other, another)
+        if metadata:
+            new_idx = (new_idx, *metadata)
         return dataset[new_idx]
 
     @property

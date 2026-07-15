@@ -123,6 +123,7 @@ postprocess:
         align_pose: True
       pts_align_to_gt:
         enabled: &pts_align_to_gt False
+        detach_transform: False
         conf_percentage: 80
         with_scale: True
         align_pose: True

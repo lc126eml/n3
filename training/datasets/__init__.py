@@ -75,7 +75,10 @@ def get_data_loader(
             debug_enumerate_batches=debug_enumerate_batches,
             resolution_cost_power=resolution_cost_power,
         )
-        dataset.seed = seed
+        if hasattr(dataset, "set_seed"):
+            dataset.set_seed(seed)
+        else:
+            dataset.seed = seed
         shuffle = False
 
         if num_workers == 0:

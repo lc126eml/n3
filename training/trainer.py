@@ -188,10 +188,12 @@ class Trainer:
         self.log_per_optimizer_step = cfg.optim.get("log_per_optimizer_step", False)
         self.max_epochs = cfg.max_epochs
         self.mode = cfg.get("mode", "train")
-        self.val_epoch_freq = cfg.get("val_epoch_freq", 1)
         self.limit_train_batches = cfg.get("limit_train_batches")
         self.limit_val_batches = cfg.get("limit_val_batches")
         self.optim_conf = cfg.optim
+        self.val_freq = int(self.optim_conf.get("val_freq", cfg.get("val_epoch_freq", 1)))
+        if self.val_freq <= 0:
+            raise ValueError(f"optim.val_freq must be positive, got {self.val_freq}")
         self.compile_conf = cfg.get("compile")
         if self.compile_conf and self.compile_conf.get("enabled"):
             print("torch.compile is disabled in this trainer; forcing compile.enabled=False.", flush=True)
@@ -346,6 +348,9 @@ class Trainer:
                 if resume_cfg:
                     self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
             self._load_resuming_checkpoint(self._resume_ckpt_path, checkpoint=self._resume_checkpoint)
+            # Re-establish every epoch-gated runtime transition because state_dicts
+            # do not preserve requires_grad flags or sampler batch-cost changes.
+            self.end_warmup(replay=True)
             self._resume_checkpoint.clear()
             self._resume_checkpoint = None
             gc.collect()
@@ -644,7 +649,7 @@ class Trainer:
             "mode": self.mode,
             "device": self.device_conf,
             "seed_value": self.seed_value,
-            "val_epoch_freq": self.val_epoch_freq,
+            "val_freq": self.val_freq,
             "cuda": self._maybe_to_container(self.cuda_conf),
             "limit_train_batches": self.limit_train_batches,
             "limit_val_batches": self.limit_val_batches,
@@ -1420,7 +1425,7 @@ class Trainer:
             self.model = model_weight_initializer(model=self.model)
 
     def is_intermediate_val_epoch(self, epoch):
-        return epoch % self.val_epoch_freq == 0 and epoch < self.max_epochs - 1
+        return (epoch + 1) % self.val_freq == 0 and epoch < self.max_epochs - 1
 
 
     def run(self):
@@ -1522,8 +1527,15 @@ class Trainer:
                 val=(current_phase == "val"),
             )
     
-    def end_warmup(self):
-        if self.epoch == self.optim_conf.warmup_epochs:
+    def end_warmup(self, replay: bool = False):
+        warmup_epoch = int(self.optim_conf.warmup_epochs)
+        # Replay only transitions that happened before the resumed epoch.  The
+        # transition at the resumed epoch is applied normally by run_train().
+        should_apply_main_warmup = (
+            warmup_epoch >= 0
+            and (warmup_epoch < self.epoch if replay else warmup_epoch == self.epoch)
+        )
+        if should_apply_main_warmup:
             unfreeze(self.model, True)
             # unfreeze_ignore(self.model, True, ignore_names=["patch_embeddings"])
             self._restore_native_frozen_params()
@@ -1533,8 +1545,29 @@ class Trainer:
             self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
         if not hasattr(self.optim_conf, "warmup_configs"):
             return
-        for warmup_conf in self.optim_conf.warmup_configs:
-            if self.epoch != warmup_conf.epoch:
+        warmup_configs = list(self.optim_conf.warmup_configs)
+        if replay:
+            # Stable sorting reconstructs transitions chronologically while
+            # retaining YAML order for multiple updates at the same epoch.
+            warmup_configs = sorted(
+                (
+                    conf
+                    for conf in warmup_configs
+                    if 0 <= int(conf.epoch) < self.epoch
+                ),
+                key=lambda conf: int(conf.epoch),
+            )
+        for warmup_conf in warmup_configs:
+            warmup_conf_epoch = int(warmup_conf.epoch)
+            should_apply = (
+                warmup_conf_epoch >= 0
+                and (
+                    warmup_conf_epoch < self.epoch
+                    if replay
+                    else warmup_conf_epoch == self.epoch
+                )
+            )
+            if not should_apply:
                 continue
 
             attr_path = warmup_conf.attr
@@ -1613,6 +1646,24 @@ class Trainer:
                 "Applied warmup batch-cost discount %.4f to train sampler",
                 discount,
             )
+
+    def _set_train_data_epoch(self, epoch: int) -> None:
+        """Advance all epoch-aware train-data objects, without double-calling aliases."""
+        train_loader = getattr(self, "train_loader", None)
+        if train_loader is None:
+            return
+
+        seen = set()
+        for obj in (
+            getattr(train_loader, "dataset", None),
+            getattr(train_loader, "sampler", None),
+            getattr(train_loader, "batch_sampler", None),
+        ):
+            if obj is None or id(obj) in seen:
+                continue
+            seen.add(id(obj))
+            if hasattr(obj, "set_epoch"):
+                obj.set_epoch(epoch)
 
     def _extract_train_augs(self, data_conf):
         train_augs = (
@@ -1698,17 +1749,19 @@ class Trainer:
         while self.epoch < self.max_epochs:
             self.end_warmup()
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
+            self._set_train_data_epoch(self.epoch)
             # self._apply_train_aug_schedule(self.epoch)
 
             train_epoch_start_time = time.time()
             ok = self.train_epoch(self.train_loader)
             last_train_epoch_duration_sec = time.time() - train_epoch_start_time
             if ok is False:
-                logging.error("Stopping training due to non-finite loss.")
-                break
+                raise FloatingPointError(
+                    f"Stopping training because a non-finite loss was detected at epoch {self.epoch}."
+                )
             
             ran_val = False
-            if (self.epoch + 1) % self.optim_conf.val_freq == 0:
+            if (self.epoch + 1) % self.val_freq == 0:
                 val_epoch_start_time = time.time()
                 val_metrics = self.run_val(val_loader=self.val_loader, epoch=self.epoch)
                 self.save_best_checkpoint(val_metrics, self.epoch)
@@ -1783,6 +1836,18 @@ class Trainer:
 
         return outs_json
 
+    @staticmethod
+    def _resolve_batch_limit(total_batches: int, configured_limit) -> int:
+        """Resolve an absolute or fractional batch limit against a loader length."""
+        if configured_limit is None:
+            return total_batches
+        if isinstance(configured_limit, float) and 0.0 <= configured_limit <= 1.0:
+            return min(total_batches, math.ceil(total_batches * configured_limit))
+        limit = int(configured_limit)
+        if limit < 0:
+            raise ValueError(f"Batch limit must be non-negative, got {configured_limit!r}")
+        return min(total_batches, limit)
+
     def val_epoch(self, val_loader, is_fresh_epoch: bool):
         curr_phases = ['val']
         curr_models = [self.model]
@@ -1800,8 +1865,14 @@ class Trainer:
             data_time = AverageMeter("Data Time", self.device, ":.4f")
             
             iters_per_epoch = len(current_val_loader)
+            limit_val_batches = self._resolve_batch_limit(
+                iters_per_epoch, self.limit_val_batches
+            )
+            if limit_val_batches == 0:
+                logging.info("Skipping validation loader %d because limit_val_batches=0", dl_idx)
+                continue
 
-            loss_names = ["objective"] + self._get_scalar_log_keys(phase)
+            loss_names = self._get_scalar_log_keys(phase)
             loss_names = [f"{phase}_{name}" for name in loss_names]
             
             loss_meters = {
@@ -1809,7 +1880,7 @@ class Trainer:
             }
 
             progress = ProgressMeter(
-                iters_per_epoch,
+                limit_val_batches,
                 [batch_time, data_time,
                 self.time_elapsed_meter,
                 *loss_meters.values(),],
@@ -1819,16 +1890,11 @@ class Trainer:
 
             end = time.time()
 
-            limit_val_batches = (
-                iters_per_epoch
-                if self.limit_val_batches is None
-                else self.limit_val_batches
-            )
             dataset_name = None
 
             for data_iter, batch in enumerate(current_val_loader):
-                # if data_iter > limit_val_batches:
-                #     break
+                if data_iter >= limit_val_batches:
+                    break
 
                 data_time.update(time.time() - end)
                 if dataset_name is None:
@@ -2457,32 +2523,39 @@ class Trainer:
             if pred_data_keys.world_points in pred:                
                 with_scale = pts_align_conf.with_scale
                 _, transform_params = align_pred_to_gt_torch_batch_roma(pred[pred_data_keys.world_points], batch[data_keys.world_points], batch[data_keys.valid_mask], pred["world_points_conf"], conf_percentage=pts_align_conf.conf_percentage, with_scale=with_scale, return_points=False)
+                detach_transform = bool(pts_align_conf.get("detach_transform", False))
+                applied_transform_params = (
+                    {
+                        key: value.detach() if value is not None else None
+                        for key, value in transform_params.items()
+                    }
+                    if detach_transform
+                    else transform_params
+                )
                 # 
                 if 'translation' not in pred:
                     if pts_align_conf.with_scale and not pp_conf.normalize.get("pr_pts_invariant", {}).get("enabled"):
-                        pred['scale'] = transform_params['scale']
-                    pred['translation'] = transform_params['translation']
+                        pred['scale'] = applied_transform_params['scale']
+                    pred['translation'] = applied_transform_params['translation']
                 # if pts_align_conf.with_scale:
                 #     pred["pose_trans_aligned"] = True
-                # params_detached = {k: v.detach() for k, v in transform_params.items() if v is not None}
-                params_detached = transform_params
                 if pts_align_conf.align_pose:
                     if pts_align_conf.get("to_pred_pose", False):
-                        reversed_transform = reverse_transform(params_detached)
-                        _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
+                        reversed_transform = reverse_transform(applied_transform_params)
+                        _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=applied_transform_params, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
                         batch[data_keys.extrinsics], _ = align_poses_points_torch(poses=batch[data_keys.extrinsics], transform_params=reversed_transform, with_scale=False, pose_convention=pose_convention)
                     else:
                         pred['pose_aligned'] = True
                         pred["pose_trans_aligned"] = True
-                        pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_poses_points_torch(poses=pred[pred_data_keys.extrinsics], transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
+                        pred[pred_data_keys.extrinsics], pred[aligned_world_points_key] = align_poses_points_torch(poses=pred[pred_data_keys.extrinsics], transform_params=applied_transform_params, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
                 else:
-                    _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=params_detached, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
+                    _, pred[aligned_world_points_key] = align_poses_points_torch(transform_params=applied_transform_params, points3D=pred[pred_data_keys.world_points], with_scale=with_scale, pose_convention=pose_convention)
 
                 if pts_align_conf.get("normalize_pose"):
-                    _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(1/transform_params['scale']), pose_convention=pose_convention)
+                    _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(1/applied_transform_params['scale']), pose_convention=pose_convention)
                     pred["pose_trans_aligned"] = True                    
                 if pts_align_conf.get("normalize_depth"):
-                    pred["depth"], _, _, _ = normalize_depth_cam_extrinsics(norm_factor=(1/transform_params['scale']), depths=pred["depth"], pose_convention=pose_convention)
+                    pred["depth"], _, _, _ = normalize_depth_cam_extrinsics(norm_factor=(1/applied_transform_params['scale']), depths=pred["depth"], pose_convention=pose_convention)
 
         pts_align_conf = pp_conf.align.get("pts_align_to_gt_rot", {})
         if pts_align_conf.get("enabled"):

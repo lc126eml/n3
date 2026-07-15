@@ -37,6 +37,7 @@ postprocess:
         enabled: False
       pts_align_to_gt:
         enabled: &pts_align_to_gt True
+        to_pred_pose: false
         conf_percentage: 80
         with_scale: True
         align_pose: True
@@ -60,5 +61,73 @@ postprocess:
         translate: true
 
 loss:
+  camera:
+    weight: 1.0
+    weight_focal: 0.5
+    weight_trans: 1.0
+    weight_rot: 1.0
+    pose_encoding_type: &pose_encoding_type absT_quaR_FoV #absT_quaR_logK
+    loss_type: "l1"   
+    beta: 1.0
+  angle_pose: 
+    weight: 1.0
+    weight_trans: 1.0
+    weight_rot: 1.0
+    relative_weight: 0.5
+    absolute_weight: 0.5
+    compute_relative: true
+    compute_absolute: true
+    relative_neighbors: 1
+    loss_type: "l1" 
+    beta: 1.0
+  regulize_scale:
+    enabled: false
+    scale_weight: 0.3
+    translation_weight: 0.0
   switch:
     pts_align_to_gt: *pts_align_to_gt
+optim:
+  val_freq: 1
+  param_group_modifiers: False
+  warmup_epochs: 30
+  warmup_configs: []
+  lr_multipliers:
+    - name: patch_embed
+      ratio: 1.0e-2
+      param_names:
+        - "aggregator.patch_embed.*"
+    - name: camera_head
+      ratio: 0.1
+      param_names:
+        - "camera_head.*"
+    - name: dense_head
+      ratio: 0.1
+      param_names:
+        - "dense_head.*"
+  gradient_clip:
+    _target_: train_utils.gradient_clip.GradientClipper
+    configs:
+      - module_name: ["aggregator.patch_embed"]
+        max_norm: 1.0   
+        norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["dense_head"]
+        max_norm: 5.0
+        norm_type: 2
+      - module_name: ["camera"]
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
+        norm_type: 2
+
+
+model:
+  # rope_freq: 100
+  # rope_freq: -1
+  enable_camera: true
+  simple_camera: false
+  first_cam: false
+  asg: false
+  asg_max_hw: 512
+  loop: false
+  enable_depth: false
