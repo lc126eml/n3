@@ -39,7 +39,7 @@ postprocess:
         enabled: &pts_align_to_gt True
         to_pred_pose: false
         conf_percentage: 80
-        with_scale: false
+        with_scale: True
         align_pose: True
         normalize_depth: False
         normalize_pose: False
@@ -57,8 +57,8 @@ postprocess:
         enabled: true
         translate: true
       pr_pts_invariant:
-        enabled: false
-        translate: false
+        enabled: true
+        translate: true
 
 loss:
   camera:
@@ -90,53 +90,12 @@ optim:
   val_freq: 1
   param_group_modifiers: False
   warmup_epochs: 30
-  warmup_configs:
-  # - attr: loss.angle_pose.compute_absolute
-  #   value: true
-  #   epoch: 1
-  # - attr: loss.angle_pose.compute_relative
-  #   value: true
-  #   epoch: 1
-  # - attr: loss.camera.weight_focal
-  #   value: 0.5
-  #   epoch: 1
-  # - attr: loss.camera.weight_trans
-  #   value: 1.0
-  #   epoch: 1
-  # - attr: loss.camera.weight_rot
-  #   value: 1.0
-  #   epoch: 1
-  - attr: loss.depth.gradient_loss_fn
-    value: grad
-    epoch: 2
-  - attr: loss.point.gradient_loss_fn
-    value: normal
-    epoch: 2
-  # frozen_module_names:
-      # - "*aggregator*"  # example, freeze the aggregator
-      # - "*patch_embed*"
-  # options:
-  #   lr:
-  #   - scheduler:
-  #       _target_: fvcore.common.param_scheduler.CompositeParamScheduler
-  #       schedulers:
-  #       - _target_: fvcore.common.param_scheduler.LinearParamScheduler
-  #         start_value: 5e-4
-  #         end_value: &lr_base 5e-4
-  #       - _target_: fvcore.common.param_scheduler.CosineParamScheduler
-  #         start_value: *lr_base
-  #         end_value: 1e-6
-  #       lengths: [0.05, 0.95] 
-  #       interval_scaling: ['rescaled', 'rescaled']
+  warmup_configs: []
   lr_multipliers:
     - name: patch_embed
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
-    - name: asg
-      ratio: 0.01
-      param_names:
-        - "aggregator.asg.*"
     - name: camera_head
       ratio: 0.1
       param_names:
@@ -149,9 +108,6 @@ optim:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
       - module_name: ["aggregator.patch_embed"]
-        max_norm: 1.0   
-        norm_type: 2
-      - module_name: ["aggregator.asg"]
         max_norm: 1.0   
         norm_type: 2
       - module_name: ["aggregator"]

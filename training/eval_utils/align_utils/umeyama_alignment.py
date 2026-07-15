@@ -92,8 +92,7 @@ def align_rotation_only_torch(
     except Exception as e:
         H_sq_sum = (H**2).sum(dim=(1, 2), keepdim=True)
         print(f"Error in roma.rigid_points_registration: {e}", f"{H_sq_sum=}")
-        breakpoint()
-        raise e
+        raise
     # 5. Compute Initial Rotation R = V @ U.T
     # R = Vh.T @ U.T = (U @ Vh).T
     R = (U @ Vh).transpose(-2, -1)
@@ -228,10 +227,12 @@ def align_pred_to_gt_torch_batch_roma(
                         compute_scaling=with_scale,
                     )
             except Exception as e:
-                mask_flat = mask.reshape(mask.shape[0], -1)
-                print(f"Error in roma.rigid_points_registration: {e}", f"valid points {mask_flat.sum(dim=1)}", f"total {mask_flat.size(1)}")
-                breakpoint()
-                raise e
+                print(
+                    f"Error in roma.rigid_points_registration: {e}",
+                    f"valid points {int(mask.sum().item())}",
+                    f"total {mask.numel()}",
+                )
+                raise
             
             # Unpack results based on with_scale
             if with_scale:

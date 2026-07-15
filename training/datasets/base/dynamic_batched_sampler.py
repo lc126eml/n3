@@ -263,7 +263,7 @@ class DynamicResolutionSampler(BatchSampler):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
-    def __iter__(self) -> Iterator[List[Tuple[int, Tuple[int, int], int]]]:
+    def __iter__(self) -> Iterator[List[Tuple[int, int, int]]]:
         if self.debug_enumerate_batches:
             rng = np.random.default_rng(seed=self.seed + self.epoch)
             all_sample_indices = np.arange(self.len_dataset)

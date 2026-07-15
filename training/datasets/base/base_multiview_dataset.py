@@ -85,10 +85,21 @@ class BaseMultiViewDataset(EasyDataset):
         self.aug_crop = 0
         self.set_augs(augs, transform)
         self.seed = seed
+        # DataLoader workers keep their own dataset objects when
+        # persistent_workers=True. Shared storage lets the main process update
+        # the epoch without restarting those workers.
+        self._shared_epoch = torch.zeros((), dtype=torch.int64).share_memory_()
         self.allow_repeat = allow_repeat
         self.seq_aug_crop = seq_aug_crop
         self.align_poses = align_poses
         self.pose_convention = pose_convention
+
+    @property
+    def epoch(self) -> int:
+        return int(self._shared_epoch.item())
+
+    def set_epoch(self, epoch: int) -> None:
+        self._shared_epoch.fill_(int(epoch))
 
     @staticmethod
     def _invert_pose_np(pose):
@@ -533,8 +544,9 @@ class BaseMultiViewDataset(EasyDataset):
 
         assert nview >= 1 and nview <= self.num_views
         # set-up the rng
-        if self.seed:  # reseed for each __getitem__
-            self._rng = np.random.default_rng(seed=self.seed + idx)
+        if self.seed is not None:  # reseed for each epoch and __getitem__
+            sample_seed = int(self.seed) + self.epoch * max(1, len(self)) + int(idx)
+            self._rng = np.random.default_rng(seed=sample_seed)
         elif not hasattr(self, "_rng"):
             seed = torch.randint(0, 2**32, (1,)).item()
             self._rng = np.random.default_rng(seed=seed)

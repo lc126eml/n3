@@ -16,7 +16,7 @@ data_keys:
 data_module:
   _target_: training.datasets.base.standalone_multiview_datamodule.StandaloneMultiViewDataModule
   pin_memory: true
-  persistent_workers: true
+  persistent_workers: false
   prefetch_factor: 2
   seed: 42
 
@@ -31,9 +31,9 @@ data_module:
     fixed_length: False
     datasets:
       - "HyperSim_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/hypersim_processed/train', transform=None, image_list_path='${data.data_root}/file_list', exclude_list_path='/home/liucong/codes/n3r/training/datasets/utils/hypersim_exclude.txt', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=80, min_interval=1, augs=${..augs}, pose_convention='${data.pose_convention}')"
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
-      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvs', transform=None, image_list_path='${data.data_root}/file_list', dataset_tag="blendedmvs", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvsp', transform=None, image_list_path='${data.data_root}/file_list', dataset_tag="blendedmvsp", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
+      - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/blendedmvs_processed/blendedmvspp', transform=None, image_list_path='${data.data_root}/file_list', dataset_tag="blendedmvspp", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
       - ScanNetpp_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/scannetpp_processed', transform=None, image_list_path='${data.data_root}/file_list', resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs}, pose_convention='${data.pose_convention}')
     # batch_size: 24
     batch_size: 68
