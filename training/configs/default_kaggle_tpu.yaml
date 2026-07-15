@@ -164,6 +164,9 @@ postprocess:
       pr_pts_invariant:
         enabled: false
         translate: false
+        min_scale: 0.5
+        max_scale: 3.0
+        min_valid_points: 3
     transform:
       cam_from_depth: &cam_from_depth false
       global_from_cam: &global_from_cam false
