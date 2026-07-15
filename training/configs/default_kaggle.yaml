@@ -478,6 +478,7 @@ model:
   asg: false
   asg_max_hw: 512
   loop: false
+  grad_start_layer: 0
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1

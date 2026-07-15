@@ -130,4 +130,5 @@ model:
   asg: false
   asg_max_hw: 512
   loop: false
+  grad_start_layer: 0
   enable_depth: false
