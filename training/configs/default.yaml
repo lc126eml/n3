@@ -123,6 +123,7 @@ postprocess:
         align_pose: True
       pts_align_to_gt:
         enabled: &pts_align_to_gt False
+        detach_transform: False
         conf_percentage: 80
         with_scale: True
         align_pose: True
@@ -149,12 +150,18 @@ postprocess:
       gt_pts_invariant: 
         enabled: True
         translate: True
+        min_scale: null
+        max_scale: null
+        min_valid_points: 3
       pr_pts:
         enabled: False
         metric: False
       pr_pts_invariant: 
         enabled: False
         translate: False
+        min_scale: 0.5
+        max_scale: 3.0
+        min_valid_points: 3
     transform:
       cam_from_depth: &cam_from_depth False
       global_from_cam: &global_from_cam False
@@ -202,9 +209,7 @@ postprocess:
         log_rmse: false
         delta: false
       intrinsics:
-        enabled: false
-        ray_dirs_err_deg: true
-        max_ray_points: 4096
+        enabled: true
       recon:
         pts_err: True
         nn_metrics: false
@@ -387,6 +392,13 @@ optim:
       ratio: 1.0e-2
       param_names:
         - "aggregator.patch_embed.*"
+    # - name: frame_blocks
+    #   ratio: 1.0e-1
+    #   param_names:
+    #     - "aggregator.frame_blocks.*"
+    #     - "aggregator.inter_frame_blocks.*"
+    #     - "aggregator.camera_token.*"
+    #     - "aggregator.register_token.*"
     # - name: asg
     #   ratio: 0.01
     #   param_names:
@@ -407,7 +419,7 @@ optim:
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
-      - module_name: ["aggregator"]
+      - module_name: ["aggregator.patch_embed"]
         max_norm: 1.0   
         norm_type: 2
       # - module_name: ["aggregator.asg"]

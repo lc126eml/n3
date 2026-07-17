@@ -156,9 +156,7 @@ postprocess:
       depth:
         enabled: True
       intrinsics:
-        enabled: false
-        ray_dirs_err_deg: true
-        max_ray_points: 4096
+        enabled: true
       recon:
         pts_err: True
         from_cam_err: False

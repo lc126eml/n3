@@ -13,6 +13,13 @@ max_epochs: &max_epochs 130
 break_at: 80
 logging:
   log_freq: 100
+  scalar_keys_to_log:
+    train:
+      mode: auto
+      keys_to_log: []
+    val:
+      mode: auto
+      keys_to_log: []
 
 # checkpoint:
 #   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/pts_align_to_gt_rcropP1.00_lr50_e130/2026-05-27_10-49-46/ckpts/checkpoint.pt
