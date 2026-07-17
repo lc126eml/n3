@@ -47,6 +47,7 @@ logging:
 
   scalar_keys_to_log:
     train:
+      mode: explicit # Set to auto to log scalar values actually returned by the loss.
       keys_to_log:
         - loss_objective
         - loss_camera
@@ -72,6 +73,7 @@ logging:
         # - cam_from_depth_loss_reg_point
         # - global_from_depth_loss_reg_point
     val:
+      mode: explicit # Set to auto to log metrics actually returned by eval_batch.
       keys_to_log:
         - recon_abs_rel
         - recon_mae
@@ -209,9 +211,7 @@ postprocess:
         log_rmse: false
         delta: false
       intrinsics:
-        enabled: false
-        ray_dirs_err_deg: true
-        max_ray_points: 4096
+        enabled: true
       recon:
         pts_err: True
         nn_metrics: false
@@ -288,6 +288,7 @@ loss:
     reg_loss_beta: 1.0
     scale_invariant: false
     scale_invariant_mode: "scale"
+    log_depth: false
     conf_weight: 1.0
     gamma: 1.0
     alpha: 0.2

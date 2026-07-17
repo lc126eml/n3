@@ -206,9 +206,7 @@ postprocess:
         log_rmse: false
         delta: false
       intrinsics:
-        enabled: false
-        ray_dirs_err_deg: true
-        max_ray_points: 4096
+        enabled: true
       recon:
         pts_err: True
         nn_metrics: false

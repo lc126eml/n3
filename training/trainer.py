@@ -24,6 +24,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import sys
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 os.environ["MKL_THREADING_LAYER"] = "GNU"
@@ -284,6 +285,7 @@ class Trainer:
         self.checkpoint_conf.save_dir = os.path.join(log_dir, "ckpts")
         
         safe_makedirs(self.logging_conf.log_dir)
+        self._copy_resume_val_stats()
         print(self.logging_conf.log_dir)
         self._write_run_metadata()
 
@@ -398,6 +400,42 @@ class Trainer:
                 f.write(json.dumps(metadata, indent=2))
         except Exception as exc:
             print(f"Failed to write run metadata: {exc}", flush=True)
+
+    def _copy_resume_val_stats(self) -> None:
+        """Carry validation history into the new log directory on full resume."""
+        if self._resume_ckpt_path is None or not self._resume_checkpoint:
+            return
+        if self._resume_checkpoint.get("trainer_config") is None:
+            return
+
+        _, distributed_rank = get_machine_local_and_dist_rank()
+        if distributed_rank != 0:
+            return
+
+        checkpoint_dir = Path(self._resume_ckpt_path).parent
+        checkpoint_log_dir = (
+            checkpoint_dir.parent if checkpoint_dir.name == "ckpts" else checkpoint_dir
+        )
+        source_path = checkpoint_log_dir / "val_stats.json"
+        destination_path = Path(self.logging_conf.log_dir) / "val_stats.json"
+        if not source_path.is_file():
+            return
+        if source_path.resolve() == destination_path.resolve():
+            return
+
+        try:
+            shutil.copy2(source_path, destination_path)
+            print(
+                f"Copied resumed validation stats from {source_path} to {destination_path}",
+                flush=True,
+            )
+        except OSError as exc:
+            logging.warning(
+                "Failed to copy resumed validation stats from %s to %s: %s",
+                source_path,
+                destination_path,
+                exc,
+            )
 
     def _find_resume_checkpoint_path(self, cfg) -> Optional[str]:
         requested_path = str(cfg.checkpoint.resume_checkpoint_path)
@@ -1278,13 +1316,48 @@ class Trainer:
     def _get_scalar_log_keys(self, phase):
         if phase in self._scalar_log_keys_cache:
             return self._scalar_log_keys_cache[phase]
-        if self.logging_conf.scalar_keys_to_log is not None:
-            keys = self.logging_conf.scalar_keys_to_log[phase].keys_to_log
-            pruned = self._prune_scalar_log_keys(phase, keys)
-            self._scalar_log_keys_cache[phase] = pruned
-            return pruned
+        scalar_conf = self.logging_conf.get("scalar_keys_to_log")
+        phase_conf = scalar_conf.get(phase) if scalar_conf is not None else None
+        if phase_conf is not None:
+            mode = str(phase_conf.get("mode", "explicit")).lower()
+            if mode == "auto":
+                # The objective is updated explicitly by the training loop, so its
+                # meter must exist before the first batch. Other auto meters are lazy.
+                keys = ["loss_objective"] if phase == "train" else []
+            elif mode == "explicit":
+                keys = phase_conf.get("keys_to_log", [])
+                keys = self._prune_scalar_log_keys(phase, keys)
+            else:
+                raise ValueError(
+                    f"logging.scalar_keys_to_log.{phase}.mode must be "
+                    f"'auto' or 'explicit', got {mode!r}"
+                )
+            keys = list(keys)
+            self._scalar_log_keys_cache[phase] = keys
+            return keys
         self._scalar_log_keys_cache[phase] = []
         return []
+
+    def _is_auto_scalar_logging(self, phase: str) -> bool:
+        scalar_conf = self.logging_conf.get("scalar_keys_to_log")
+        phase_conf = scalar_conf.get(phase) if scalar_conf is not None else None
+        return (
+            phase_conf is not None
+            and str(phase_conf.get("mode", "explicit")).lower() == "auto"
+        )
+
+    @staticmethod
+    def _auto_scalar_log_items(values: Mapping, phase: str):
+        items = []
+        for key, value in values.items():
+            if torch.is_tensor(value):
+                if value.numel() != 1:
+                    continue
+            elif not isinstance(value, (int, float, np.number)):
+                continue
+            metric_key = "loss_objective" if phase == "train" and key == "objective" else str(key)
+            items.append((metric_key, value))
+        return items
 
     def _get_loss_conf_with_warmup(self):
         loss_conf = OmegaConf.create(OmegaConf.to_container(self.loss_conf, resolve=False))
@@ -1927,6 +2000,12 @@ class Trainer:
                 )
 
                 if data_iter % self.logging_conf.log_freq == 0:
+                    progress.meters = [
+                        batch_time,
+                        data_time,
+                        self.time_elapsed_meter,
+                        *loss_meters.values(),
+                    ]
                     progress.display(data_iter)
 
             # Collect metrics for this dataloader
@@ -1948,9 +2027,9 @@ class Trainer:
 
     def _get_trainer_state(self, phase):
         return {
-            "Trainer/where": self.where,
+            # "Trainer/where": self.where,
             "Trainer/epoch": self.epoch,
-            f"Trainer/steps_{phase}": self.steps[phase],
+            # f"Trainer/steps_{phase}": self.steps[phase],
         }
 
     @staticmethod
@@ -2236,6 +2315,14 @@ class Trainer:
                     peak_alloc_mem.update(torch.cuda.max_memory_allocated() / (1024 ** 3))
                     peak_reserved_mem.update(torch.cuda.max_memory_reserved() / (1024 ** 3))
                     torch.cuda.reset_peak_memory_stats()
+                progress.meters = [
+                    batch_time,
+                    data_time,
+                    peak_alloc_mem,
+                    peak_reserved_mem,
+                    self.time_elapsed_meter,
+                    *loss_meters.values(),
+                ]
                 progress.display(data_iter)
 
         # Log metrics to CSV
@@ -2395,7 +2482,7 @@ class Trainer:
         if pp_conf.transform.get('global_from_cam_detach_pose') and pred[pred_data_keys.extrinsics] is not None:
             pred[pred_data_keys.global_from_cam_detach_pose] = global_points_from_cam(batch[data_keys.extrinsics], pred[pred_data_keys.pts3d_cam], pose_convention=pose_convention)
 
-        if (pp_conf.transform.get('cam_from_depth') or pp_conf.transform.get('global_from_depth')) and pred[pred_data_keys.intrinsics] is not None:
+        if (pp_conf.transform.get('cam_from_depth') or pp_conf.transform.get('global_from_depth')) and pred[pred_data_keys.intrinsics] is not None and pred_data_keys.depths in pred:
             pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(pred[pred_data_keys.intrinsics], pred[pred_data_keys.depths].detach())
 
             if pp_conf.transform.global_from_depth  and pred[pred_data_keys.extrinsics] is not None:
@@ -2609,7 +2696,14 @@ class Trainer:
 
         if log_enabled:
             step = self.steps[phase] if log_step is None else log_step
-            self._update_and_log_scalars(y_hat_batch, phase, step, loss_meters)
+            scalar_values = loss_dict if self._is_auto_scalar_logging(phase) else y_hat_batch
+            self._update_and_log_scalars(
+                scalar_values,
+                phase,
+                step,
+                loss_meters,
+                batch_size=batch["img"].shape[0],
+            )
             self._log_tb_visuals(y_hat_batch, phase, step)
             self.steps[phase] += 1
 
@@ -2660,22 +2754,31 @@ class Trainer:
         loss_meters: dict[str, AverageMeter],
         batch_size: int = 1,
     ) -> None:
-        keys_to_log = self._get_scalar_log_keys(phase)
+        auto_mode = self._is_auto_scalar_logging(phase)
+        if auto_mode:
+            scalar_items = self._auto_scalar_log_items(batch, phase)
+        else:
+            scalar_items = [
+                (key, batch[key])
+                for key in self._get_scalar_log_keys(phase)
+                if key in batch
+            ]
         if "camera_pose" in batch:
             batch_size = batch["camera_pose"].shape[0]
-        for key in keys_to_log:
-            if key in batch:
-                if torch.is_tensor(batch[key]):
-                    value = batch[key].detach()
-                else:
-                    value = batch[key]
-                if phase == "train":
-                    self._assert_finite_metric_value(f"{phase}_{key}", value, phase)
-                loss_meters[f"{phase}_{key}"].update(value, batch_size)
-                if step % self.logging_conf.log_freq == 0:
-                    value_item = value.item() if torch.is_tensor(value) else value
-                    if self.tb_writer is not None:
-                        self.tb_writer.log(f"Values/{phase}/{key}", value_item, step)
+        for key, raw_value in scalar_items:
+            value = raw_value.detach() if torch.is_tensor(raw_value) else raw_value
+            meter_name = f"{phase}_{key}"
+            if meter_name not in loss_meters:
+                loss_meters[meter_name] = AverageMeter(meter_name, self.device, ":.4f")
+            if phase == "train":
+                self._assert_finite_metric_value(meter_name, value, phase)
+            # The objective meter is updated after finite-loss checking and exactly
+            # once per batch/chunk by the training loop.
+            if not (auto_mode and phase == "train" and key == "loss_objective"):
+                loss_meters[meter_name].update(value, batch_size)
+            if step % self.logging_conf.log_freq == 0 and self.tb_writer is not None:
+                value_item = value.item() if torch.is_tensor(value) else value
+                self.tb_writer.log(f"Values/{phase}/{key}", value_item, step)
 
 
     def _log_tb_visuals(self, batch: Mapping, phase: str, step: int) -> None:
