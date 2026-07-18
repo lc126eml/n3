@@ -105,8 +105,6 @@ postprocess:
     aligned_global_from_cam: "aligned_global_from_cam"
     aligned_global_from_depth: "aligned_global_from_depth"
     aligned_world_points: "aligned_world_points"
-    global_aligned_to_center: "global_aligned_to_center"
-    global_to_center_world: "global_to_center_world"
   train:
     to_extri: True
     align:
@@ -229,7 +227,7 @@ postprocess:
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: 5 #*max_epochs
-  best_monitor: null #val_hypersim_recon_abs_rel
+  best_monitor: val_hypersim_recon_abs_rel
   best_mode: min
   best_full: false
   resume_checkpoint_path: null
@@ -302,9 +300,10 @@ loss:
   point: 
     weight: 1.0
     global_aligned_weight: 1.0
-    global_from_cam_weight: 0.05
-    global_from_depth_weight: 0.05
-    cam_from_depth_weight: 0.05
+    global_from_cam_weight: 1.0
+    global_from_depth_weight: 1.0
+    cam_from_depth_weight: 1.0
+    pts3d_cam_weight: 0.05
     gradient_loss_fn: "normal" #"normal" ""
     valid_range: 0.98
     gamma: 1.0
@@ -317,11 +316,7 @@ loss:
     aligned_valid_range: 0.8
     conf_percentage: 90
   switch:
-    pts_align_to_gt: *pts_align_to_gt
-    pts_align_to_gt_rot: *pts_align_to_gt_rot
-    gt_align_to_pts: *gt_align_to_pts
-    pts_align_to_center: *pts_align_to_center
-    pts_center_world: *pts_center_world
+    aligned_world_points: ${and:${pts_center_world}, ${and:${pts_align_to_center}, ${and:${pts_align_to_gt}, ${pts_align_to_gt_rot}}}}
   regulize_scale:
     enabled: false
     scale_weight: 0.3
