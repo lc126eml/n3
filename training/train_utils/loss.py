@@ -186,70 +186,25 @@ class MultitaskLoss(torch.nn.Module):
             # Create a version of the point config without 'conf_percentage' for specific loss calculations.
             point_key = pred_data_keys.world_points
             weight = self.point["weight"]
-            if self.switch is not None:
-                if self.switch.get("pts_align_to_gt") or self.switch.get("pts_align_to_gt_rot"):
-                    point_key = pred_data_keys.aligned_world_points
-                    weight = self.point["global_aligned_weight"]
-                elif self.switch.get("pts_align_to_center"):
-                    point_key = pred_data_keys.get("global_aligned_to_center", "global_aligned_to_center")
-                    weight = self.point["global_aligned_weight"]                
             
-            if point_key in predictions:
+            if point_key in predictions and weight > 0:
                 point_loss_dict, point_loss = compute_point_loss(predictions, batch, pts3d_name=point_key, **self.point_no_conf_percent)
                 total_loss = total_loss + point_loss * weight
                 loss_dict.update(point_loss_dict)
-            # if pred_data_keys.pts3d_cam in predictions:
-            #     loss_name = pred_data_keys.pts3d_cam
-            #     conf_name = pred_data_keys.cam_points_conf
-            #     point_loss_dict = compute_point_loss(predictions, batch, pts3d_name=loss_name, gt_pts_name=pred_data_keys.pts3d_cam,  pts3d_conf_name=conf_name, **self.point_no_conf_percent)
-            #     point_loss = point_loss_dict[f"{loss_name}_loss_conf_point"] + point_loss_dict[f"{loss_name}_loss_reg_point"] + point_loss_dict[f"{loss_name}_loss_grad_point"]
-            #     point_loss = point_loss * self.point["weight"]
-            #     total_loss = total_loss + point_loss
-            #     loss_dict.update(point_loss_dict)
 
-            # if pred_data_keys.cam_from_depth in predictions:
-            #     loss_name = pred_data_keys.cam_from_depth
-            #     conf_name = pred_data_keys.depth_conf
-            #     point_loss_dict = compute_point_loss(predictions, batch, pts3d_name=loss_name, gt_pts_name=pred_data_keys.pts3d_cam, pts3d_conf_name=conf_name, **self.aligned_point)
-            #     point_loss = point_loss_dict[f"{loss_name}_loss_conf_point"] + point_loss_dict[f"{loss_name}_loss_reg_point"] + point_loss_dict[f"{loss_name}_loss_grad_point"]
-            #     point_loss = point_loss * self.point["cam_from_depth_weight"]
-            #     total_loss = total_loss + point_loss
-            #     loss_dict.update(point_loss_dict)
-            # if self.pts_align_to_gt:
-            #     point_key = pred_data_keys.aligned_global_from_cam
-            # else:
-            #     point_key = pred_data_keys.global_from_cam
-            # if point_key in predictions:
-            #     loss_name = pred_data_keys.global_from_cam
-            #     conf_name = pred_data_keys.cam_points_conf
-            #     point_loss_dict = compute_point_loss(predictions, batch, pts3d_name=loss_name, gt_pts_name=pred_data_keys.world_points, pts3d_conf_name=conf_name, **self.aligned_point)
-            #     point_loss = point_loss_dict[f"{loss_name}_loss_conf_point"] + point_loss_dict[f"{loss_name}_loss_reg_point"] + point_loss_dict[f"{loss_name}_loss_grad_point"]
-            #     point_loss = point_loss * self.point["global_from_cam_weight"] 
-            #     total_loss = total_loss + point_loss
-            #     loss_dict.update(point_loss_dict)
-
-            # if pred_data_keys.global_from_cam_detach_pose in predictions:
-            #     loss_name = pred_data_keys.global_from_cam_detach_pose
-            #     conf_name = pred_data_keys.cam_points_conf
-            #     point_loss_dict = compute_point_loss(predictions, batch, pts3d_name=loss_name, gt_pts_name=pred_data_keys.world_points, pts3d_conf_name=conf_name, **self.aligned_point)
-            #     point_loss = point_loss_dict[f"{loss_name}_loss_conf_point"] + point_loss_dict[f"{loss_name}_loss_reg_point"] + point_loss_dict[f"{loss_name}_loss_grad_point"]
-            #     point_loss = point_loss * self.point["global_from_cam_weight"] 
-            #     total_loss = total_loss + point_loss
-            #     loss_dict.update(point_loss_dict)
-
-            # if self.pts_align_to_gt:
-            #     point_key = pred_data_keys.aligned_global_from_depth
-            # else:
-            #     point_key = pred_data_keys.global_from_depth
-            # if point_key in predictions:
-            #     loss_name = pred_data_keys.global_from_depth
-            #     conf_name = pred_data_keys.depth_conf
-            #     point_loss_dict = compute_point_loss(predictions, batch, pts3d_name=loss_name, gt_pts_name=pred_data_keys.world_points, pts3d_conf_name=conf_name, **self.aligned_point)
-            #     point_loss = point_loss_dict[f"{loss_name}_loss_conf_point"] + point_loss_dict[f"{loss_name}_loss_reg_point"] + point_loss_dict[f"{loss_name}_loss_grad_point"]
-            #     point_loss = point_loss * self.point["global_from_depth_weight"]
-            #     total_loss = total_loss + point_loss
-            #     loss_dict.update(point_loss_dict)
-
+            if self.point.get("global_from_depth_weight", 0) > 0 and pred_data_keys.global_from_depth in predictions:
+                point_loss_dict, point_loss = compute_point_loss(predictions, batch, pts3d_name=pred_data_keys.global_from_depth, pts3d_conf_name=pred_data_keys.depth_conf, **self.point_no_conf_percent)
+                total_loss = total_loss + point_loss * weight
+                loss_dict.update(point_loss_dict)
+            if self.point.get("cam_from_depth_weight", 0) > 0 and pred_data_keys.cam_from_depth in predictions:
+                point_loss_dict, point_loss = compute_point_loss(predictions, batch, gt_pts_name=pred_data_keys.pts3d_cam, pts3d_name=pred_data_keys.cam_from_depth, pts3d_conf_name=pred_data_keys.depth_conf, **self.point_no_conf_percent)
+                total_loss = total_loss + point_loss * weight
+                loss_dict.update(point_loss_dict)
+            if self.point.get("pts3d_cam_weight", 0) > 0 and pred_data_keys.pts3d_cam in predictions:
+                point_loss_dict, point_loss = compute_point_loss(predictions, batch, gt_pts_name=pred_data_keys.pts3d_cam, pts3d_name=pred_data_keys.pts3d_cam, pts3d_conf_name=pred_data_keys.cam_points_conf, **self.point_no_conf_percent)
+                total_loss = total_loss + point_loss * weight
+                loss_dict.update(point_loss_dict)
+            
         if self.regulize_scale is not None and self.regulize_scale.get("enabled"):
             scale = predictions.get("scale", None)
             translation = None #predictions.get("translation", None)
@@ -471,8 +426,8 @@ def compute_point_loss(
         valid_range: Quantile range for outlier filtering
     """
     prefix = ""
-    # if pts3d_name != "pts3d":
-    #     prefix = f"{pts3d_name}_"
+    if pts3d_name != "pts3d":
+        prefix = f"{pts3d_name}_"
     pred_points = check_and_fix_inf_nan(predictions[pts3d_name], loss_name=pts3d_name)
     pred_points_conf = predictions[pts3d_conf_name]
     gt_points = batch[gt_pts_name]
