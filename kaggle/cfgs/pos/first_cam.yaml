@@ -63,7 +63,13 @@ simple:
         pr_pts:
           enabled: false
           metric: False
-        gt_depth: False
+        gt_depth:
+          enabled: false
+          mode: mean
+        pose_translation:
+          gt_enabled: false
+          pred_enabled: false
+          eps: 1.0e-6
         gt_pts_invariant:
           enabled: false
           translate: true

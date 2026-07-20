@@ -64,7 +64,9 @@ simple:
         pr_pts:
           enabled: true
           metric: False
-        gt_depth: false
+        gt_depth:
+          enabled: false
+          mode: mean
         gt_pts_invariant: 
           enabled: false
           translate: false
