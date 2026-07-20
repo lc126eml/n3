@@ -104,7 +104,9 @@ net:
     cam_dim: 6
     pose_drop: 0.0
     vggt_cam: true
-    vggt_depth: true
+    vggt_depth:
+        enabled: true
+        mode: mean
     vggt_point: true
     vggt_local_point: true
 

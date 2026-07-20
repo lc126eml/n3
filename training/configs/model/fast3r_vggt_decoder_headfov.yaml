@@ -102,7 +102,9 @@ net:
     has_cam: true
     cam_dim: 2
     vggt_cam: true
-    vggt_depth: true
+    vggt_depth:
+        enabled: true
+        mode: mean
     vggt_point: true
     vggt_local_point: true
 

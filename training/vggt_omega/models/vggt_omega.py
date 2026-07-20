@@ -42,6 +42,7 @@ class VGGTOmega(nn.Module):
         asg_max_hw: int = 512,
         loop: bool = True,
         grad_start_layer: int = 0,
+        grad_end_layer: int = -1,
     ) -> None:
         super().__init__()
 
@@ -62,6 +63,7 @@ class VGGTOmega(nn.Module):
             asg_max_hw=asg_max_hw,
             loop=loop,
             grad_start_layer=grad_start_layer,
+            grad_end_layer=grad_end_layer,
         )
         _warn_if_rope_not_max(self.aggregator)
         self.camera_head = None

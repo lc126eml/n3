@@ -142,11 +142,18 @@ postprocess:
         # normalize_pose: False
       depth_align_to_gt:
         enabled: False
+        mode: mean
         conf_percentage: 80
         pose: False
     normalize:
       gt_pts: False
-      gt_depth: False
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: False
+        pred_enabled: False
+        eps: 1.0e-6
       gt_pts_invariant: 
         enabled: True
         translate: True
@@ -185,6 +192,7 @@ postprocess:
         normalize_pose: False
       depth_align_to_gt:
         enabled: false
+        mode: median
         conf_percentage: 80
         pose: True
     normalize:
@@ -473,6 +481,7 @@ model:
   asg_max_hw: 512
   loop: false
   grad_start_layer: 0
+  grad_end_layer: -1
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1

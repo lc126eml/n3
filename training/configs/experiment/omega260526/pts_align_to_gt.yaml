@@ -59,7 +59,13 @@ postprocess:
       pr_pts:
         enabled: false
         metric: false
-      gt_depth: false
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: false
+        pred_enabled: false
+        eps: 1.0e-6
       gt_pts_invariant:
         enabled: true
         translate: true
@@ -138,4 +144,5 @@ model:
   asg_max_hw: 512
   loop: false
   grad_start_layer: 0
+  grad_end_layer: -1  
   enable_depth: false

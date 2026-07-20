@@ -1,11 +1,56 @@
 import torch
 from typing import Optional, Tuple
 
+from eval_utils.transform_utils import poses_to_c2w
+
+
+def normalize_pose_translation(
+    poses: torch.Tensor,
+    eps: float = 1e-6,
+    pose_convention: str = "c2w",
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Normalize pose translation using only the camera translations.
+
+    The per-sample denominator is the mean distance of the camera centers from
+    the current world origin. Rotation and all non-pose data are unaffected.
+
+    Args:
+        poses: Batched poses with shape ``(B, S, 3, 4)`` or ``(B, S, 4, 4)``.
+        eps: Minimum usable translation scale. Degenerate samples use scale 1.
+        pose_convention: Convention of ``poses``, either ``"c2w"`` or ``"w2c"``.
+
+    Returns:
+        A tuple of the normalized poses and the applied per-sample scale ``(B,)``.
+    """
+    if pose_convention not in {"c2w", "w2c"}:
+        raise ValueError(f"pose_convention must be 'c2w' or 'w2c', got {pose_convention!r}")
+    if poses.ndim != 4 or poses.shape[-2:] not in {(3, 4), (4, 4)}:
+        raise ValueError(
+            f"poses must have shape (B,S,3,4) or (B,S,4,4), got {tuple(poses.shape)}"
+        )
+    if eps <= 0:
+        raise ValueError(f"eps must be positive, got {eps}")
+
+    # Always derive the scale from camera centers, even when the stored poses
+    # use w2c convention and their translation columns are not camera centers.
+    camera_centers = poses_to_c2w(poses, pose_convention)[..., :3, 3]
+    estimated_scale = torch.linalg.vector_norm(camera_centers, dim=-1).mean(dim=1)
+    valid_scale = torch.isfinite(estimated_scale) & (estimated_scale > eps)
+    scale = torch.where(valid_scale, estimated_scale, torch.ones_like(estimated_scale))
+    inv_scale = scale.reciprocal().to(dtype=poses.dtype)
+
+    normalized_poses = poses.clone()
+    normalized_poses[..., :3, 3] = poses[..., :3, 3] * inv_scale.view(-1, 1, 1)
+    return normalized_poses, scale.to(dtype=poses.dtype)
+
 def calculate_depth_scale(depthmaps, valid_mask, eps=1e-3, mode='mean', scale=2.0):
     """
     depthmaps: B, S, H, W
     valid_mask: B, S, H, W
     """
+    if mode not in {"mean", "median"}:
+        raise ValueError(f"mode must be 'mean' or 'median', got {mode!r}")
+
     dist = depthmaps.abs()
 
     if mode == 'mean':
@@ -13,7 +58,7 @@ def calculate_depth_scale(depthmaps, valid_mask, eps=1e-3, mode='mean', scale=2.
         valid_count = valid_mask.sum(dim=[1,2,3])
 
         avg_scale = (dist_sum / (valid_count + eps))
-    else:
+    else:  # median
         B = dist.shape[0]
         flat_dist = dist.reshape(B, -1)
         valid_mask = valid_mask.reshape(B, -1).bool()

@@ -37,14 +37,12 @@ class Aggregator(nn.Module):
         asg_max_hw: int = 512,
         loop: bool = True,
         grad_start_layer: int = 0,
+        grad_end_layer: int = -1,
     ) -> None:
         super().__init__()
 
         grad_start_layer = int(grad_start_layer)
-        if not 0 <= grad_start_layer <= depth:
-            raise ValueError(
-                f"grad_start_layer must be in [0, {depth}], got {grad_start_layer}"
-            )
+        grad_end_layer = int(grad_end_layer)
 
         self.patch_token_start = 1 + num_register_tokens
         self.dinov3_hf_patch_embed = False
@@ -67,6 +65,7 @@ class Aggregator(nn.Module):
         )
         self.loop = loop
         self.grad_start_layer = grad_start_layer
+        self.grad_end_layer = grad_end_layer
 
         self.frame_blocks = nn.ModuleList(
             [
@@ -119,7 +118,8 @@ class Aggregator(nn.Module):
         self.inter_frame_attention_types = ["global"] * depth
         for idx in register_attention_block_indices:
             if idx < 0 or idx >= depth:
-                raise ValueError(f"register_attention_block_indices contains invalid block index {idx}")
+                continue
+                # raise ValueError(f"register_attention_block_indices contains invalid block index {idx}")
             self.inter_frame_attention_types[idx] = "register"
 
         for name, value in (("_resnet_mean", _RESNET_MEAN), ("_resnet_std", _RESNET_STD)):
@@ -238,7 +238,9 @@ class Aggregator(nn.Module):
         outputs = []
         for block_idx in range(self.depth):
             block_grad_enabled = torch.is_grad_enabled() and (
-                not self.training or block_idx >= self.grad_start_layer
+                not self.training
+                or block_idx >= self.grad_start_layer
+                or block_idx <= self.grad_end_layer
             )
             with torch.set_grad_enabled(block_grad_enabled):
                 tokens, frame_tokens = self._run_frame_block(
