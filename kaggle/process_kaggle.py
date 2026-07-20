@@ -52,6 +52,38 @@ def _parse_time(value):
     return None
 
 
+def _apply_end_time_runtime_override(cfg: dict, *, now=None, max_hours: float = 11.5) -> float | None:
+    """Set simple.total_run_time_hr to the time remaining until cfg.end_time."""
+    end_time = cfg.get("end_time")
+    if end_time in (None, ""):
+        return None
+
+    if now is None:
+        now = datetime.now()
+
+    if isinstance(end_time, bool) or not isinstance(end_time, (int, float)):
+        return None
+
+    end_time_hr = float(end_time)
+    if not 0 <= end_time_hr < 24:
+        return None
+
+    now_hr = now.hour + now.minute / 60.0
+    total_run_time_hr = min(max_hours, end_time_hr - now_hr)
+    simple = cfg.setdefault("simple", [])
+    if not isinstance(simple, list):
+        return None
+
+    replaced = False
+    for item in simple:
+        if isinstance(item, dict) and "total_run_time_hr" in item:
+            item["total_run_time_hr"] = total_run_time_hr
+            replaced = True
+    if not replaced:
+        simple.insert(0, {"total_run_time_hr": total_run_time_hr})
+    return total_run_time_hr
+
+
 def _effective_left_time_for_selection(left_time, notebooks, default_left_time=30.0, now=None):
     if now is None:
         now = datetime.now()
@@ -957,6 +989,7 @@ def main():
     cfg = _load_yaml(cfg_path)
     if not cfg:
         raise ValueError(f"Empty or missing config: {cfg_path}")
+    _apply_end_time_runtime_override(cfg)
     resume_infer_info = _apply_resume_infer(cfg)
     if args.config_kernel:
         config_kernel_path = Path(args.config_kernel).expanduser()

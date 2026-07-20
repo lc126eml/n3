@@ -177,7 +177,7 @@ def _update_left_time(node, notebook, now, is_tpu: bool, quota_hours_override: f
                 notebook.get("kernel_id"),
             )
         return before_left, before_left, 0.0
-    elapsed_hr = (now - start_time).total_seconds() / 3600.0
+    elapsed_hr = min(12.0, (now - start_time).total_seconds() / 3600.0)
     left_time = before_left - elapsed_hr
     node["left_time"] = left_time
     if verbose:

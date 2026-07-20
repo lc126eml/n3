@@ -56,7 +56,13 @@ simple:
         pr_pts:
           enabled: false
           metric: False
-        gt_depth: False
+        gt_depth:
+          enabled: false
+          mode: mean
+        pose_translation:
+          gt_enabled: false
+          pred_enabled: false
+          eps: 1.0e-6
         gt_pts_invariant:
           enabled: true
           translate: false
@@ -64,10 +70,7 @@ simple:
           enabled: false
           translate: false
   - loss.switch:
-      pts_center_world: *pts_center_world
-      pts_align_to_gt: *pts_align_to_gt
-      gt_align_to_pts: *gt_align_to_pts
-      pts_align_to_center: *pts_align_to_center
+          aligned_world_points: false
   # - data.data_module.train_config.num_workers: 4
   # - data.data_module.train_config.resolution: "[(160,128),(224, 224),(240, 224),(240, 240)]"
   - lr: 1.0e-4

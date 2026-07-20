@@ -1,14 +1,13 @@
 id: 
 config_name: default_kaggle_vggt_pretrained
-n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
-desc: first_cam_omega
+n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/cam_from_depth.zip
+desc: first_cam_depth_pose
 desc_keys: ["seed","model.loop", "data.pose_convention", "model.rope_freq", "model.grad_start_layer"]
 memo: 
-memo_keys: ["seed","model.loop", "model.simple_camera", "data.pose_convention", "optim.warmup_epochs", "model.rope_freq", "model.grad_start_layer", "postprocess.val.metrics.recon.from_cam_err", "data.data_module.train_config.batch_size"]
+memo_keys: ["seed","model.loop", "model.simple_camera", "data.pose_convention", "optim.warmup_epochs", "model.rope_freq", "model.grad_start_layer", "model.grad_end_layer", "postprocess.val.metrics.recon.from_depth_err", "data.data_module.train_config.batch_size", "model.enable_point", "postprocess.train.transform.global_from_depth", "postprocess.train.normalize.gt_depth.enabled", "postprocess.train.normalize.pose_translation.gt_enabled", "model.depth"]
 run_id: 0
 total_runs: 10
 seed: 42
-end_time: 22.0
 simple:
   - total_run_time_hr: 11.
   - max_epochs: 130
@@ -16,14 +15,19 @@ simple:
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: [total_run_time_hr]
   - model.patch_embed: null
-  - model.enable_depth: false
+  - model.enable_depth: true
+  - model.enable_point: false
+  - loss.point: null
   - model.loop: false
   - model.simple_camera: false
   - model.rope_freq: -1
-  - model.depth: 12
-  - model.grad_start_layer: 0
+  - model.depth: 6
+  - model.grad_start_layer: 3
+  - model.grad_end_layer: -1
+  - model.register_attention_block_indices: [1, 3, 5, 7, 9, 11]
+  - model.cached_layer_indices: [1, 2, 3, 5]
   - data.pose_convention: c2w
-  - data.data_module.train_config.batch_size: 20
+  - data.data_module.train_config.batch_size: 60
   - data.data_module.train_config.augs.max_scale: 1.2
   - data.data_module.train_config.augs.random_crop_prob: 0.0
   - data.data_module.train_config.augs.pcrop: 0.0
@@ -56,7 +60,7 @@ simple:
         cam_from_depth: false
         global_from_cam: false
         global_from_cam_detach_pose: false
-        global_from_depth: false
+        global_from_depth: true
       metrics:
         camera:
           enabled: true
@@ -67,7 +71,7 @@ simple:
           # rel_err_angle: True
           # all_pairs_err: True
         depth:
-          enabled: false
+          enabled: true
           align: median
           sq_rel: false
           rmse: false
@@ -80,8 +84,8 @@ simple:
           nn_metrics: true
           nn_threshold: 0.05
           nn_max_points: 200000
-          from_cam_err: False
-          from_depth_err: False
+          from_cam_err: false
+          from_depth_err: true
 
   - postprocess.train:
       align:
@@ -114,15 +118,15 @@ simple:
           conf_percentage: 80
           pose: true
       normalize:
-        gt_pts: true
+        gt_pts: false
         pr_pts:
           enabled: false
           metric: False
         gt_depth:
-          enabled: false
+          enabled: true
           mode: mean
         pose_translation:
-          gt_enabled: false
+          gt_enabled: true
           pred_enabled: false
           eps: 1.0e-6
         gt_pts_invariant:
@@ -138,9 +142,9 @@ simple:
         cam_from_depth: false
         global_from_cam: false
         global_from_cam_detach_pose: false
-        global_from_depth: false
+        global_from_depth: true
   - loss.switch:
-          aligned_world_points: false
+      aligned_world_points: false
   # - data.data_module.train_config.num_workers: 4
   # - data.data_module.train_config.resolution: "[(160,128),(224, 224),(240, 224),(240, 240)]"
   - lr: 1.0e-4
