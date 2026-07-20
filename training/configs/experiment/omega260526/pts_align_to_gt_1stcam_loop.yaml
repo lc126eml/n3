@@ -57,7 +57,13 @@ postprocess:
       pr_pts:
         enabled: true
         metric: false
-      gt_depth: false
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: false
+        pred_enabled: false
+        eps: 1.0e-6
       gt_pts_invariant:
         enabled: false
         translate: true

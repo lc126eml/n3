@@ -148,11 +148,18 @@ postprocess:
         # normalize_pose: False
       depth_align_to_gt:
         enabled: false
+        mode: mean
         conf_percentage: 80
         pose: false
     normalize:
       gt_pts: false
-      gt_depth: false
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: false
+        pred_enabled: false
+        eps: 1.0e-6
       gt_pts_invariant:
         enabled: true
         translate: true
@@ -188,6 +195,7 @@ postprocess:
         normalize_pose: false
       depth_align_to_gt:
         enabled: false
+        mode: mean
         conf_percentage: 80
         pose: true
     normalize:

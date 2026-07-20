@@ -142,11 +142,18 @@ postprocess:
         # normalize_pose: False
       depth_align_to_gt:
         enabled: false
+        mode: mean
         conf_percentage: 80
         pose: false
     normalize:
       gt_pts: false
-      gt_depth: false
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: false
+        pred_enabled: false
+        eps: 1.0e-6
       gt_pts_invariant:
         enabled: true
         translate: true
@@ -185,6 +192,7 @@ postprocess:
         normalize_pose: false
       depth_align_to_gt:
         enabled: false
+        mode: mean
         conf_percentage: 80
         pose: true
     normalize:
@@ -474,12 +482,13 @@ model:
   num_global_register_tokens: 0
   num_register_tokens: 16
   cached_layer_indices: [2, 5, 8, 11]
-  register_attention_block_indices: [2, 4, 6, 8, 10]
+  register_attention_block_indices: [1, 3, 5, 7, 9, 11]
   dpt_frames_chunk_size: 8
   asg: false
   asg_max_hw: 512
   loop: false
   grad_start_layer: 0
+  grad_end_layer: -1
   # register_attention_block_indices: [2, 6, 9, 14, 20]
   # cached_layer_indices: (4, 11, 17, 23)
   rope_freq: -1

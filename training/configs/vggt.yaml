@@ -106,7 +106,8 @@ postprocess:
         normalize_depth: False
         normalize_pose: False
       depth_align_to_gt:
-        enabled: False
+        enabled: false
+        mode: mean
         conf_percentage: 80
         pose: False
     normalize:

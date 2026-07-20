@@ -96,7 +96,7 @@ from eval_utils.align_utils.align_camera import align_camera_and_points_batch_ex
 from eval_utils.align_utils.umeyama_alignment import align_pred_to_gt_torch_batch, align_extrinsics_torch, align_pred_to_gt_torch_batch_roma, align_c2w_poses_points_torch, align_rotation_only_torch, align_c2w_poses_points_rotation_only, align_poses_points_torch, align_poses_points_rotation_only, reverse_transform
 from eval_utils.normalize_utils.normalize_pc import normalize_depth_cam_extrinsics
 from eval_utils.align_utils.depth_median_scaling import median_scale_depth_torch, median_scale_depth_torch_batch
-from eval_utils.normalize_utils.normalize_pc import normalize_pointcloud_vggt, normalize_pr_pointcloud, normalize_pointcloud_invariant, calculate_depth_scale
+from eval_utils.normalize_utils.normalize_pc import normalize_pointcloud_vggt, normalize_pr_pointcloud, normalize_pointcloud_invariant, normalize_pose_translation, calculate_depth_scale
 from eval_utils.transform_utils import (
     global_points_from_cam,
     cam_points_from_depth,
@@ -2481,10 +2481,11 @@ class Trainer:
             pred[pred_data_keys.global_from_cam_detach_pose] = global_points_from_cam(batch[data_keys.extrinsics], pred[pred_data_keys.pts3d_cam], pose_convention=pose_convention)
 
         if (pp_conf.transform.get('cam_from_depth') or pp_conf.transform.get('global_from_depth')) and pred[pred_data_keys.intrinsics] is not None and pred_data_keys.depths in pred:
-            pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(pred[pred_data_keys.intrinsics], pred[pred_data_keys.depths].detach())
+            # pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(batch[data_keys.intrinsics], pred[pred_data_keys.depths].detach())
 
             if pp_conf.transform.global_from_depth  and pred[pred_data_keys.extrinsics] is not None:
-                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth].detach(), pose_convention=pose_convention)
+                # pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth].detach(), pose_convention=pose_convention)
+                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], batch[data_keys.pts3d_cam], pose_convention=pose_convention)
 
         if pp_conf.align.get('center_world', {}).get('enabled') and pred[pred_data_keys.extrinsics] is not None:
             center_world_key = pred_data_keys.get("global_to_center_world", "global_to_center_world")
@@ -2518,8 +2519,14 @@ class Trainer:
                 centroid, inv_normalization_scale = normalize_pointcloud_invariant(batch[data_keys.world_points], batch[data_keys.valid_mask], return_pts=False, **invariant_kwargs)
                 batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(inv_scale=inv_normalization_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
                                     
-        if pp_conf.normalize.get('gt_depth'):
-            gt_avg_scale = calculate_depth_scale(batch[data_keys.depths], batch[data_keys.valid_mask], eps=1e-3, mode='mean')           
+        gt_depth_conf = pp_conf.normalize.get('gt_depth', {})
+        if gt_depth_conf.get("enabled", False):
+            gt_avg_scale = calculate_depth_scale(
+                batch[data_keys.depths],
+                batch[data_keys.valid_mask],
+                eps=1e-3,
+                mode=gt_depth_conf.get("mode", "mean"),
+            )
 
             batch[data_keys.depths], batch[data_keys.pts3d_cam], batch[data_keys.extrinsics], batch[data_keys.world_points] = normalize_depth_cam_extrinsics(norm_factor=gt_avg_scale, depths=batch[data_keys.depths], cam_points=batch[data_keys.pts3d_cam], extrinsics=batch[data_keys.extrinsics], global_points3d=batch[data_keys.world_points], pose_convention=pose_convention)
 
@@ -2560,6 +2567,21 @@ class Trainer:
             pred["pose_trans_aligned"] = True
             pred['scale'] = inv_normalization_scale
             pred['translation'] = centroid
+
+        pose_translation_conf = pp_conf.normalize.get("pose_translation", {})
+        pose_translation_eps = float(pose_translation_conf.get("eps", 1e-6))
+        if pose_translation_conf.get("gt_enabled"):
+            batch[data_keys.extrinsics], _ = normalize_pose_translation(
+                batch[data_keys.extrinsics],
+                eps=pose_translation_eps,
+                pose_convention=pose_convention,
+            )
+        if pose_translation_conf.get("pred_enabled") and pred[pred_data_keys.extrinsics] is not None:
+            pred[pred_data_keys.extrinsics], _ = normalize_pose_translation(
+                pred[pred_data_keys.extrinsics],
+                eps=pose_translation_eps,
+                pose_convention=pose_convention,
+            )
         
         pts_align_conf = pp_conf.align.get("pred_center", {})
         if pts_align_conf.get('enabled') and pred[pred_data_keys.extrinsics] is not None:
@@ -2663,9 +2685,21 @@ class Trainer:
                     _, pred[pred_data_keys.world_points] = align_poses_points_rotation_only(R_opt, points3D=pred.pop(pred_data_keys.world_points), pose_convention=pose_convention)
 
         if pp_conf.align.get('depth_align_to_gt', {}).get('enabled'):
-            pred["depth"], batch_median_pred, batch_median_gt = median_scale_depth_torch_batch(pred.pop("depth"), batch[data_keys.depths], batch[data_keys.valid_mask], pred["depth_conf"], conf_percentage=pp_conf.align.depth_align_to_gt.conf_percentage)
-            if pp_conf.align.depth_align_to_gt.pose:
-                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(extrinsics=pred[pred_data_keys.extrinsics],  norm_factor=(batch_median_pred/batch_median_gt), pose_convention=pose_convention)
+            depth_align_conf = pp_conf.align.depth_align_to_gt
+            pred["depth"], batch_depth_scale, _ = median_scale_depth_torch_batch(
+                pred.pop("depth"),
+                batch[data_keys.depths],
+                batch[data_keys.valid_mask],
+                pred["depth_conf"],
+                conf_percentage=depth_align_conf.conf_percentage,
+                mode=depth_align_conf.get("mode", "median"),
+            )
+            if depth_align_conf.pose:
+                _, _, pred[pred_data_keys.extrinsics], _ = normalize_depth_cam_extrinsics(
+                    extrinsics=pred[pred_data_keys.extrinsics],
+                    inv_scale=batch_depth_scale,
+                    pose_convention=pose_convention,
+                )
 
 
     def _step(

@@ -47,8 +47,14 @@ postprocess:
         enabled: False
     normalize:
       gt_pts: True
-      gt_depth: False
-      gt_pts_invariant: 
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: False
+        pred_enabled: False
+        eps: 1.0e-6
+      gt_pts_invariant:
         enabled: False
       pr_pts:
         enabled: False
