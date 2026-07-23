@@ -2481,10 +2481,10 @@ class Trainer:
             pred[pred_data_keys.global_from_cam_detach_pose] = global_points_from_cam(batch[data_keys.extrinsics], pred[pred_data_keys.pts3d_cam], pose_convention=pose_convention)
 
         if (pp_conf.transform.get('cam_from_depth') or pp_conf.transform.get('global_from_depth')) and pred[pred_data_keys.intrinsics] is not None and pred_data_keys.depths in pred:
-            pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(batch[data_keys.intrinsics], pred[pred_data_keys.depths].detach())
+            pred[pred_data_keys.cam_from_depth] = cam_points_from_depth(batch[data_keys.intrinsics], pred[pred_data_keys.depths])
 
             if pp_conf.transform.global_from_depth  and pred[pred_data_keys.extrinsics] is not None:
-                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth].detach(), pose_convention=pose_convention)
+                pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], pred[pred_data_keys.cam_from_depth], pose_convention=pose_convention)
                 # pred[pred_data_keys.global_from_depth] = global_points_from_cam(pred[pred_data_keys.extrinsics], batch[data_keys.pts3d_cam], pose_convention=pose_convention)
 
         if pp_conf.align.get('center_world', {}).get('enabled') and pred[pred_data_keys.extrinsics] is not None:
