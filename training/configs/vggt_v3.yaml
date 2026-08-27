@@ -81,6 +81,12 @@ postprocess:
         abs_err: True
         rel_err: false
         auc: false
+        pts3d_pose:
+          enabled: false
+          normalize_translation: true
+          failure_mode: identity
+          confidence: {mode: threshold, threshold: 1.0, percentile: 85.0}
+          pnp: {iterations: 100, reprojection_error: 5.0, focal_candidates: 100, focal_min_factor: 0.5, focal_max_factor: 3.0}
         # abs_err_angle: True
         # rel_err_angle: True
         # all_pairs_err: True

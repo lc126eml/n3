@@ -1,5 +1,6 @@
 defaults:
-  - data: standalone_multiview_train
+  - data: standalone_multiview_train_14
+  - _self_
 
 exp_name: baseline
 img_size: 518
@@ -10,12 +11,15 @@ patch_size: 14
 
 limit_train_batches: null
 limit_val_batches: null
-mode: 'train'
-# mode: 'val'
+# mode: 'train'
+mode: 'val'
 
 seed: 42
 
 max_epochs: &max_epochs 15
+
+data:
+  pose_convention: w2c
 
 logging:
   run_folder_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
@@ -35,25 +39,9 @@ logging:
 
   scalar_keys_to_log:
     train:
-      keys_to_log:
-        - loss_objective
-        - loss_camera
-        - loss_T
-        - loss_R
-        - loss_Rel_T
-        - loss_Rel_R
-        - loss_Pose_T
-        - loss_Pose_R
-        - loss_FL
-        - loss_conf_depth
-        - loss_reg_depth
-        - loss_grad_depth
-        - loss_reg_point
-        - pts3d_cam_loss_reg_point
-        - global_from_cam_loss_reg_point
-        - cam_from_depth_loss_reg_point
-        - global_from_depth_loss_reg_point
+      mode: auto # Set to auto to log metrics actually returned by eval_batch.
     val:
+      mode: auto # Set to auto to log metrics actually returned by eval_batch.
       keys_to_log:
         - recon_abs_rel
         - recon_mae
@@ -90,31 +78,57 @@ postprocess:
     to_extri: True
     align:
       to_first_cam: 
-        enabled: False 
-        points: False
+        enabled: True 
+        points: True
       pr_align_cam:
         enabled: False
         points: False
       pred_center:
         enabled: &pts_align_to_center False
+      center_world:
+        enabled: &pts_center_world False
         align_pose: True
       pts_align_to_gt:
         enabled: &pts_align_to_gt False
+        detach_transform: False
         conf_percentage: 80
         with_scale: False
         align_pose: True
         normalize_depth: False
         normalize_pose: False
+      pts_align_to_gt_rot:
+        enabled: &pts_align_to_gt_rot False
+        conf_percentage: 80
+        with_scale: True
+        align_pose: True
+      gt_align_to_pts:
+        enabled: &gt_align_to_pts False
+        conf_percentage: 80
+        align_pose: True
+        # normalize_depth: False
+        # normalize_pose: False
       depth_align_to_gt:
-        enabled: false
+        enabled: False
         mode: mean
         conf_percentage: 80
         pose: False
     normalize:
       gt_pts: True
+      gt_depth:
+        enabled: false
+        mode: mean
+      pose_translation:
+        gt_enabled: False
+        pred_enabled: False
+        eps: 1.0e-6
+      gt_pts_invariant:
+        enabled: False
       pr_pts:
         enabled: False
         metric: False
+      pr_pts_invariant: 
+        enabled: False
+        translate: False
     transform:
       cam_from_depth: &cam_from_depth False
       global_from_cam: &global_from_cam False
@@ -152,7 +166,7 @@ postprocess:
         rel_err: false
         auc: false
         pts3d_pose:
-          enabled: false
+          enabled: true
           normalize_translation: true
           failure_mode: identity
           confidence: {mode: threshold, threshold: 1.0, percentile: 85.0}
@@ -166,6 +180,9 @@ postprocess:
         enabled: true
       recon:
         pts_err: True
+        nn_metrics: false
+        nn_threshold: 0.05
+        nn_max_points: 200000
         from_cam_err: False
         from_depth_err: False
     transform:
@@ -178,20 +195,23 @@ postprocess:
 checkpoint:
   save_dir: logs/${exp_name}/${logging.run_folder_name}/ckpts
   save_freq: *max_epochs
-  best_full: false
+  best_monitor: val_hypersim_recon_abs_rel
+  best_mode: min
+  best_full: true
   # resume_checkpoint_path: /lc/code/3D/vggt-training/training/logs/exp001/2025-10-24_23-14-55/ckpts/checkpoint.pt
-  resume_checkpoint_path: /lc/code/pretrained/vggt/weights/model.pt
+  resume_checkpoint_path: /home/liucong/codes/pretrained/vggt/model.pt
+  # /lc/code/pretrained/vggt/weights/model.pt
+  resume_config_skip_keys: [break_at]
   resume_optimizer: true
   lazy_resume_optimizer: true
-  strict: False
+  strict: true
   filter_keys:
-    enabled: True
-    heads_to_keep: 
-      - ['aggregator.patch_embed.', 'aggregator.patch_embed.']
+    enabled: true
+    heads_to_keep: null
     heads_to_discard:
       - 'track_head'
-    default_keep: False
-    # default_keep: True
+    # default_keep: False
+    default_keep: True
 
 
 loss:
@@ -215,7 +235,17 @@ loss:
     weight: 1.0
     gradient_loss_fn: "grad" 
     valid_range: 0.98
-    log_depth: false
+    reg_loss_type: "smooth_l1"
+    scale_invariant: false
+    # scale_invariant_mode: "scale"
+    conf_weight: 0.
+    reg_weight: 0.
+    gamma: 10.0
+    alpha: 0.2
+    grad_weight: 1.0
+    silog_weight: 1.0
+    silog_variance_focus: 0.85
+    silog_conf_weight: 1.0
   # point: null
   # If you want to enable point, use the following config
   point: 
@@ -226,43 +256,55 @@ loss:
     cam_from_depth_weight: 0.05
     gradient_loss_fn: "normal" 
     valid_range: 0.98
+    gamma: 30.0
+    alpha: 0.2
+    reg_loss_type: "smooth_l1"
+    conf_weight: 1.0
+    reg_weight: 1.0
+    grad_weight: 1.0
     aligned_valid_range: 0.8
     conf_percentage: 90
-  pts_align_to_gt: *pts_align_to_gt
-  pts_align_to_center: *pts_align_to_center
+  switch: null
+    # pts_align_to_gt: *pts_align_to_gt
+    # pts_align_to_gt_rot: *pts_align_to_gt_rot
+    # gt_align_to_pts: *gt_align_to_pts
+    # pts_align_to_center: *pts_align_to_center
+    # pts_center_world: *pts_center_world
+  regulize_scale:
+    enabled: True
+    scale_weight: 0.3
+    translation_weight: 0
   vggt: True
   enabled: true
   track: null   
 
 
 optim:
+  val_freq: 1
+  accumulation_mode: chunk_within_batch
+  log_per_optimizer_step: true
   param_group_modifiers: False
   warmup_epochs: -1
-
-  optimizer:
-    _target_: torch.optim.AdamW
-    lr: 1e-4
-    weight_decay: 0.05
-
-  frozen_module_names:
-      # - "*aggregator*"  # example, freeze the aggregator
-      - "*patch_embed*"
-
-
   amp:
     enabled: True
     amp_dtype: bfloat16
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
-      - module_name: ["aggregator", "point_head", "shared_dpt"]
-        max_norm: 1.0   # feel free to reduce this if you see instabilities, "track_head"
+      - module_name: ["aggregator.patch_embed"]
+        max_norm: 1.0   
         norm_type: 2
-      - module_name: ["depth"]
-        max_norm: 1.0   # feel free to reduce this if you see instabilities
+      # - module_name: ["aggregator.asg"]
+      #   max_norm: 5.0   
+      #   norm_type: 2
+      - module_name: ["aggregator"]
+        max_norm: 5.0   
+        norm_type: 2
+      - module_name: ["dense_head"]
+        max_norm: 5.0
         norm_type: 2
       - module_name: ["camera"]
-        max_norm: 1.0   # feel free to reduce this if you see instabilities
+        max_norm: 5.0   # feel free to reduce this if you see instabilities
         norm_type: 2
   options:
     lr:
@@ -291,14 +333,14 @@ model:
   enable_cam_point: False
   enable_track: False
   embed_dim: 1024
-  depth: 12
+  depth: 24
   num_heads: 16
   mlp_ratio: 4.0
   num_register_tokens: 4
   qkv_bias: True
   proj_bias: True
   ffn_bias: True
-  patch_embed: "dinov2_vitl14_reg"
+  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16"
   aa_order: ["frame", "global"]
   aa_block_size: 1
   qk_norm: True
@@ -306,21 +348,21 @@ model:
   # rope_freq: -1
   init_values: 0.01
   first_cam: True
-  intermediate_layer_idx: [2, 5, 8, 11]
-  # intermediate_layer_idx: [4, 11, 17, 23]
+  # intermediate_layer_idx: [2, 5, 8, 11]
+  intermediate_layer_idx: [4, 11, 17, 23]
 
 
 distributed:
   # check https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html for options
   backend: nccl
   comms_dtype: None
-  find_unused_parameters: False
+  find_unused_parameters: false
   timeout_mins: 30
-  gradient_as_bucket_view: True  # Less memory used
+  gradient_as_bucket_view: true  # Less memory used
   bucket_cap_mb: 25
-  broadcast_buffers: True
+  broadcast_buffers: true
 
 cuda:
-    cudnn_deterministic: False
-    cudnn_benchmark: False
-    allow_tf32: True
+  cudnn_deterministic: false
+  cudnn_benchmark: true
+  allow_tf32: true

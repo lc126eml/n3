@@ -206,6 +206,20 @@ postprocess:
         abs_err: True
         rel_err: false
         auc: false
+        pts3d_pose:
+          enabled: false
+          normalize_translation: true
+          failure_mode: identity
+          confidence:
+            mode: threshold
+            threshold: 1.0
+            percentile: 85.0
+          pnp:
+            iterations: 100
+            reprojection_error: 5.0
+            focal_candidates: 100
+            focal_min_factor: 0.5
+            focal_max_factor: 3.0
         # abs_err_angle: True
         # rel_err_angle: True
         # all_pairs_err: True
@@ -483,7 +497,7 @@ model:
   grad_start_layer: 0
   grad_end_layer: -1
   # register_attention_block_indices: [2, 6, 9, 14, 20]
-  # cached_layer_indices: (4, 11, 17, 23)
+  # cached_layer_indices: [4, 11, 17, 23]
   rope_freq: -1
   first_cam: false
 

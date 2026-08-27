@@ -1,3 +1,7 @@
+# pose from points
+pose estimated from 3d global points, seems not as good as predicted poses for vggt pretrained model (hypersim, dtu, eth3d)
+omega is much better than vggt (notes/pretrained.json)
+
 # Analysis of Normalizations
 ## pts_invariant
 scale the points and poses by scale of points
