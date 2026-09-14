@@ -550,7 +550,7 @@ class HyperSim_Multi(BaseMultiViewDataset):
             batched_views["depthmap"].append(depthmap.astype(np.float32))
             batched_views["camera_pose"].append(camera_pose.astype(np.float32))
             batched_views["camera_intrinsics"].append(intrinsics.astype(np.float32))
-            batched_views["dataset"].append("hypersim")
+            batched_views["dataset"].append("hypersim_val" if self.split == "val" else "hypersim")
             batched_views["label"].append(self.scenes[scene_id] + "-" + rgb_name)
             batched_views["instance"].append(f"{str(scene_id)}_{str(view_idx)}")
             batched_views["is_metric"].append(self.is_metric)

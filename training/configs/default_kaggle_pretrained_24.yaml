@@ -48,6 +48,7 @@ logging:
 
   scalar_keys_to_log:
     train:
+      mode: explicit # Set to auto to log scalar values actually returned by the loss.
       keys_to_log:
       - loss_objective
       - loss_camera
@@ -73,6 +74,7 @@ logging:
         # - cam_from_depth_loss_reg_point
         # - global_from_depth_loss_reg_point
     val:
+      mode: explicit # Set to auto to log metrics actually returned by eval_batch.
       keys_to_log:
       - recon_abs_rel
       - recon_mae
@@ -107,9 +109,9 @@ postprocess:
   train:
     to_extri: true
     align:
-      to_first_cam: 
-        enabled: True 
-        points: True
+      to_first_cam:
+        enabled: false
+        points: false
       pr_align_cam:
         enabled: false
         points: false
@@ -144,7 +146,7 @@ postprocess:
         conf_percentage: 80
         pose: false
     normalize:
-      gt_pts: true
+      gt_pts: false
       gt_depth:
         enabled: false
         mode: mean
@@ -153,8 +155,8 @@ postprocess:
         pred_enabled: false
         eps: 1.0e-6
       gt_pts_invariant:
-        enabled: false
-        translate: false
+        enabled: true
+        translate: true
       pr_pts:
         enabled: false
         metric: false
@@ -174,7 +176,7 @@ postprocess:
     align:
       to_first_cam:
         enabled: true
-        points: true
+        points: false
       pr_align_cam:
         enabled: true
         points: false
@@ -239,7 +241,8 @@ checkpoint:
   best_monitor: val_hypersim_recon_abs_rel
   best_mode: min
   best_full: false
-  resume_checkpoint_path: null
+  resume_checkpoint_path: /kaggle/input/datasets/sinayliu/vomega-ds/vggt_omega_1b_512.pt
+  # resume_checkpoint_path: /kaggle/input/datasets/sinayliu/vomega-ds/vggt_omega_1b_256_text.pt
   resume_config_skip_keys: [break_at]
   resume_optimizer: true
   lazy_resume_optimizer: true
@@ -263,15 +266,15 @@ checkpoint:
   #   default_keep: False
     # default_keep: True
   # resume_checkpoint_path: /lc/code/pretrained/dinov2/dinov2_vitl14_reg4_pretrain.pth
-  strict: false
+  strict: true
   filter_keys:
-    enabled: true
-    heads_to_keep:
-    - ['layer', 'aggregator.patch_embed.blocks']
+    enabled: false
+    heads_to_keep: 
+    # - ['layer', 'aggregator.patch_embed.blocks']
       # - ['*', 'aggregator.patch_embed.']
     heads_to_discard:
-    default_keep: false
-    # default_keep: True
+    # default_keep: false
+    default_keep: True
 
 
 loss:
@@ -337,7 +340,7 @@ loss:
     enabled: false
     scale_weight: 0.3
     translation_weight: 0
-  vggt: true
+  vggt: false
   asg_weight: 30
   enabled: true
   track:
@@ -350,43 +353,15 @@ optim:
   param_group_modifiers: false
   warmup_epochs: &warmup_epochs 15
   warmup_batch_cost_discount: 0.5
-  # Additive stages; warmup_epochs still unfreezes everything at epoch 15.
-  # Globs match canonical module names recursively (*word* means contains word).
-  # Ranges are zero-based [start, end), selecting BOTH aggregator block lists.
-  # Discounts replace the factor relative to the original batch-cost budget.
-  # When adopting this schedule on an older full resume, add
-  # optim.unfreeze_configs and optim.frozen_module_names to
-  # checkpoint.resume_config_skip_keys; otherwise the saved config takes precedence.
-  unfreeze_configs:
-    - epoch: 0
-      modules:
-        patterns: ["dense_head.point_proj*"]
-      batch_cost_discount: 1.0
-    - epoch: 1
-      modules:
-        frame_block_ranges: [[22, 24]]
-      batch_cost_discount: 0.8
-    # - epoch: 2
-    #   modules:
-    #     patterns: ["*_head"]
-    #   batch_cost_discount: 0.9
-    # - epoch: 3
-    #   modules:
-    #     frame_block_ranges: [[12, 24]]
-    #   batch_cost_discount: 0.75
-    # - epoch: 5
-    #   modules:
-    #     patterns: ["aggregator"]
-    #   batch_cost_discount: 0.7
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
   warmup_configs: []
     # - attr: "loss.angle_pose.relative_weight"
     #   value: 0.7
     #   epoch: *warmup_epochs
-  # - attr: "loss.regulize_scale.scale_weight"
-  #   value: 1.0
-  #   epoch: *warmup_epoch2
+    # - attr: "loss.regulize_scale.scale_weight"
+    #   value: 1.0
+    #   epoch: *warmup_epoch2
     # - attr: "loss.regulize_scale.translation_weight"
     #   value: 0.5
     #   epoch: *warmup_epoch3
@@ -426,8 +401,8 @@ optim:
     weight_decay: 0.05
 
   frozen_module_names:
-      - "*"  # Epoch 0 enables only the point prediction and confidence projections.
-      # - "*patch_embed*"
+      # - "*aggregator*"  # example, freeze the aggregator
+      - "*patch_embed*"
   lr_multipliers:
     - name: patch_embed
       ratio: 1.0e-2
@@ -499,29 +474,29 @@ model:
   conf_logit_max: null
   enable_camera: True
   simple_camera: false
-  enable_depth: false
-  enable_point: True
-  enable_cam_point: False
+  enable_depth: true
+  enable_point: true
+  enable_cam_point: false
   # VGGTOmega constructor defaults are intentionally left in the model code.
   # Override only the values needed for an experiment, e.g.:
-  patch_embed: "/kaggle/input/datasets/sinayliu/dino-ds/vitb16"
+  patch_embed: null
   patch_size: 16
-  embed_dim: 768
-  depth: 12
+  embed_dim: 1024
+  depth: 24
   num_global_register_tokens: 0
   num_register_tokens: 16
-  cached_layer_indices: [2, 5, 8, 11]
-  register_attention_block_indices: [1, 3, 5, 7, 9, 11]
+  # cached_layer_indices: [2, 5, 8, 11]
+  # register_attention_block_indices: [2, 4, 7, 10]
   dpt_frames_chunk_size: 8
   asg: false
   asg_max_hw: 512
   loop: false
   grad_start_layer: 0
   grad_end_layer: -1
-  # register_attention_block_indices: [2, 6, 9, 14, 20]
-  # cached_layer_indices: [4, 11, 17, 23]
-  rope_freq: -1
-  first_cam: true
+  register_attention_block_indices: [2, 6, 9, 14, 20]
+  cached_layer_indices: [4, 11, 17, 23]
+  rope_freq: 100
+  first_cam: false
 
 
 distributed:

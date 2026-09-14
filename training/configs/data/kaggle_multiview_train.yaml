@@ -3,7 +3,7 @@
 # Define the common data root and number of views
 # data_root: /lc/data/3D
 data_root: /home/liucong/data/3d
-pose_convention: c2w
+pose_convention: w2c
 
 data_keys:
   extrinsics: camera_pose
@@ -16,20 +16,21 @@ data_keys:
 data_module:
   _target_: training.datasets.base.standalone_multiview_datamodule.StandaloneMultiViewDataModule
   pin_memory: true
-  persistent_workers: true
+  persistent_workers: false
   prefetch_factor: 2
   seed: 42
   train_config:
     # resolution: '[(154,126),(224, 224),(238, 224),(238, 238),(392, 392), (392, 336), (392, 238), (392, 224), (238, 224), (392, 126)]'
     # resolution: '[(160,128),(224, 224),(240, 224),(240, 240),(384, 384), (384, 336), (384, 240), (384, 224), (240, 224), (384, 128)]'
+    resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (256, 224), (384, 128)]'
     # resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (256, 224), (384, 128), (400, 384), (400, 400), (416, 400), (416, 416), (432, 416), (432, 432), (448, 432), (448, 448), (464, 448), (464, 464)]'
-    resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416)]'
+    # resolution: '[(160,128),(224, 224),(240, 224),(240, 240), (384, 224), (384, 336), (384, 384), (400, 384), (400, 400), (416, 400), (416, 416)]'
     resolution_cost_power: 1.13
     num_views: 6
     debug_enumerate_batches: false
     fixed_length: false
     datasets:
-    - "HyperSim_Multi(allow_repeat=False, split='train', ROOT=[ '/kaggle/input/datasets/liucong12601/hsm-train-part01', '/kaggle/input/datasets/liucong12601/hsm-train-part02', '/kaggle/input/datasets/liucong12601/hsm-train-part03', '/kaggle/input/datasets/liucong12601/hsm-train-part04', '/kaggle/input/datasets/liucong12601/hsm-train-part05', ], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs}, pose_convention='${data.pose_convention}')"
+    - "HyperSim_Multi(allow_repeat=False, split='train', ROOT=[ '/kaggle/input/datasets/liucong12601/hsm-train-part01', '/kaggle/input/datasets/liucong12601/hsm-train-part02', '/kaggle/input/datasets/liucong12601/hsm-train-part03', '/kaggle/input/datasets/liucong12601/hsm-train-part04', '/kaggle/input/datasets/liucong12601/hsm-train-part05', ], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', exclude_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2/hypersim_exclude.txt', depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, transform=None, resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=6, max_interval=25, min_interval=1, augs=${..augs}, pose_convention='${data.pose_convention}')"
     - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT=["/kaggle/input/datasets/qqmail4092/bmvs-01", "/kaggle/input/datasets/qqmail4092/bmvs-02",], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list2", dataset_tag="blendedmvs", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
     - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT=["/kaggle/input/datasets/qqmail4092/bmvsp-01", "/kaggle/input/datasets/qqmail4092/bmvsp-02", "/kaggle/input/datasets/qqmail4092/bmvsp-03", "/kaggle/input/datasets/qqmail4092/bmvsp-04", "/kaggle/input/datasets/qqmail4092/bmvsp-05",], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list2", dataset_tag="blendedmvsp", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
     - BlendedMVS_Multi(allow_repeat=False, split='train', ROOT=["/kaggle/input/datasets/qqmail4092/bmvspp-01", "/kaggle/input/datasets/qqmail4092/bmvspp-02", "/kaggle/input/datasets/qqmail4092/bmvspp-03", "/kaggle/input/datasets/qqmail4092/bmvspp-04",], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list2", dataset_tag="blendedmvspp", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=1, max_interval=30, augs=${..augs}, pose_convention='${data.pose_convention}')
@@ -50,7 +51,7 @@ data_module:
     augs:
       cojitter: true
       cojitter_ratio: 0.3
-      aug_crop: 2
+      aug_crop: 6
       random_crop_prob: 0.0
       max_scale: 1.2
       # Optional linear schedules (use one or set to null)
@@ -91,12 +92,14 @@ data_module:
     num_views: 6
     distributed_sampler_mode: drop_last
     datasets:
-    - "HyperSim_Multi(allow_repeat=False, split='val', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/val'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, samples_per_scene=1, pose_convention='${data.pose_convention}')"
+    - "HyperSim_Multi(allow_repeat=False, split='test', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/test'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', exclude_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2/hypersim_exclude.txt', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
+    # , depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}
+    # - "HyperSim_Multi(allow_repeat=False, split='val', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/val'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', exclude_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2/hypersim_exclude.txt', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}, pose_convention='${data.pose_convention}') #160,128
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(504, 378), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}, pose_convention='${data.pose_convention}') #512, 384
-    batch_size: 2
+    batch_size: 8
     num_workers: 3
     augs:
       cojitter: false
@@ -112,7 +115,7 @@ data_module:
     num_views: 6
     distributed_sampler_mode: drop_last
     datasets:
-    - "HyperSim_Multi(allow_repeat=False, split='test', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/test'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', depth_filter_spec={'max_depth_le': 50, 'valid_count_ge': 100}, resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
+    - "HyperSim_Multi(allow_repeat=False, split='test', ROOT=['/kaggle/input/datasets/liucong12601/hsm-test-val/test'], image_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2', exclude_list_path='/kaggle/input/datasets/liucong12601/depth-file-list2/hypersim_exclude.txt', resolution=224, max_interval=15, min_interval=1, num_views=${..num_views}, seed=777, samples_per_scene=1, pose_convention='${data.pose_convention}')"
       # - SevenScenes_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/7scenes', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}, pose_convention='${data.pose_convention}') #160,128, 154,126
