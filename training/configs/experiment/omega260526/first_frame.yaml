@@ -1,7 +1,7 @@
 # @package _global_
 # First-frame as world coordinates (align poses + points to first cam).
 defaults:
-  - /default_nodeep
+  - /default_24
   - _self_
 
 gpu_lock_priority: 10
@@ -14,7 +14,8 @@ break_at: 80
 logging:
   log_freq: 100
 
-# checkpoint:
+checkpoint:
+  strict: false
 #   resume_checkpoint_path: /home/liucong/codes/n3r/training/configs/logs/test/to_first_cam_rcropP1.00_lr50_e130/2026-05-28_08-08-42/ckpts/checkpoint.pt
 #   resume_config_skip_keys: [break_at, seed, data.data_module.train_config.batch_size]
 data:
@@ -88,7 +89,7 @@ postprocess:
         normalize_depth: False
         normalize_pose: False
       depth_align_to_gt:
-        enabled: &enable_depth false
+        enabled: &enable_depth true
         conf_percentage: null
         pose: True
     normalize:

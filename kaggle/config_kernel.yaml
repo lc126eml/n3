@@ -1,115 +1,229 @@
 available_ids:
-- chencaihonga
-- chenrunze11
-- chuasiliu
-- cq1234
-- cshlhs
-- cycyxcy
+- cdong121
+- cfy002
+- cheaterchow
+- chengchi1007
+- chenhao1213
 - dddd110
 - denghaimeng
 - djiangjiang
 - du55148
+- dusi605
 - eastwangwei
-- fzzy123
+- elong1202
+- fanhuayang
+- geminiyy
+- gloden613
 - gorgeous0912
 - houwen
-- huoqiuxia
+- hsdfuieqg
+- hysz0821
+- jacksisi
 - jcy666
 - jiangshuai0210
+- jinzhanbo
 - jiwei313
+- jjjerry12138
 - jokerking1
 - jufuchao
-- kanwenbin
 - keyongkk
 - kezzymik
-- linyunlk243
 - liucong126
 - liucong12601
+- luanjing
 - ly1122
 - miratowa1
+- ohyeah00
+- permanentlove
 - phoenixcsw01
-- qcx2333
+- pycjn666
 - qinghui9527
+- qqmail4092
 - quepimao
-- robinrainy
 - roseqw
 - rqmiraitowa
-- rrrrmm
+- rushly
+- sinayliu
 - sollasi
-- srmmmm
-- sss45633
+- starysinger
 - straghtwizard
 - tangjiayuan1004
 - tangyujie123
+- tianxianglii
 - top1pcl
+- ttzyty
 - uamadeus
 - wenyangtang
+- wzywzy1227
+- xiaoluoalice
 - xpeng01
+- xulijuan
 - xulin5522
 - xuwenhui123
 - xwj66666
 - xx03071425
-- yangyangchengcheng
+- yangjiamin
 - yccwff
+- ycy1n66
 - yinmengmeng
 - yuanhahah
 - ywhicher
 - yyyyjay
-- zhaotianchi
-- zhikaiwang
-- zhoujiahui0199
-- zhuangminghui
-- zjl001
-exhausted_ids:
-- lemonlaila
-- rmoope
 - zhangtingfengztf
-- ycy1n66
-- tianxianglii
-- hsdfuieqg
-- jjjerry12138
-- ssss7777
-- pycjn666
-- ohyeah00
-- asdsad0000
-- asssmer
-- xulijuan
-- permanentlove
-- qqmail4092
-- ttzyty
-- zongjiaxin
-- jacksisi
-- cheaterchow
-- hysz0821
-- elong1202
-- wzywzy1227
-- luanjing
-- maoshuwen0415
-- geminiyy
-- autune
-- b201xiaoli
-- cdong121
-- xiaoluoalice
-- tangjudge
-- starysinger
-- rushly
-- jinzhanbo
-- dusi605
+- zhaotianchi
+- zhoujiahui0199
 - zhuxinchen07
 - zhuzichen123
-- sinayliu
-- chenhao1213
+- zjl001
+- zongjiaxin
 - zzr123123
+exhausted_ids:
+- chencaihonga
+- chenrunze11
 - smartchaochao
-- cfy002
-- gloden613
-- chengchi1007
-- yangjiamin
+- zhikaiwang
+- ssss7777
+- liucong12601
+- rrrrmm
+- lemonlaila
+- robinrainy
+- zhuangminghui
+- asdsad0000
+- linyunlk243
+- srmmmm
+- autune
+- asssmer
+- cycyxcy
+- cshlhs
+- kanwenbin
+- chuasiliu
+- cq1234
+- maoshuwen0415
+- sss45633
+- tangjudge
+- b201xiaoli
+- yangyangchengcheng
 sleep_time_hr: 0.0
 last_supabase_id: 497
 poll_interval_minutes: 10
 running_nodes:
-- id: fanhuayang
-  notebooks: []
-  left_time: 18.19468011388889
-finished_notebooks:
+- id: fzzy123
+  notebooks:
+  - kernel_id: fzzy123/first-cam-omega366-s42-dcc2w-mf100-r6
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:c2w; model.rope_freq:100;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-09-24 07:54:23'
+    resumed_from: tangjudge/first-cam-omega366-s42-dcc2w-mf100-r5
+    history_ids:
+    - autune/first-cam-omega366-s42-dcc2w-mf100-r0
+    - autune/first-cam-omega366-s42-dcc2w-mf100-r1
+    - chuasiliu/first-cam-omega366-s42-dcc2w-mf100-r2
+    - chuasiliu/first-cam-omega366-s42-dcc2w-mf100-r3
+    - tangjudge/first-cam-omega366-s42-dcc2w-mf100-r4
+    git_branch: omega
+  - kernel_id: fzzy123/pts-align-to-gt-omega014-s42-dcc2w-mf100-r6
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:c2w; model.rope_freq:100;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-09-24 07:54:29'
+    resumed_from: sss45633/pts-align-to-gt-omega014-s42-dcc2w-mf100-r5
+    history_ids:
+    - asssmer/pts-align-to-gt-omega014-s42-dcc2w-mf100-r0
+    - asssmer/pts-align-to-gt-omega014-s42-dcc2w-mf100-r1
+    - cq1234/pts-align-to-gt-omega014-s42-dcc2w-mf100-r2
+    - cq1234/pts-align-to-gt-omega014-s42-dcc2w-mf100-r3
+    - sss45633/pts-align-to-gt-omega014-s42-dcc2w-mf100-r4
+    git_branch: omega
+  left_time: 30.0
+- id: rmoope
+  notebooks:
+  - kernel_id: rmoope/pts-align-to-gt-omega042-s42-dcw2c-mf100-r2
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:w2c; model.rope_freq:100;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 2
+    total_runs: 10
+    start_time: '2026-09-24 07:54:40'
+    resumed_from: b201xiaoli/pts-align-to-gt-omega042-s42-dcw2c-mf100-r1
+    history_ids:
+    - b201xiaoli/pts-align-to-gt-omega042-s42-dcw2c-mf100-r0
+    git_branch: omega
+  - kernel_id: rmoope/pts-align-to-gt-omega729-s42-dcc2w-mf1-r6
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:c2w; model.rope_freq:-1;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-09-24 08:15:19'
+    resumed_from: sss45633/pts-align-to-gt-omega729-s42-dcc2w-mf1-r5
+    history_ids:
+    - asssmer/pts-align-to-gt-omega729-s42-dcc2w-mf1-r0
+    - asssmer/pts-align-to-gt-omega729-s42-dcc2w-mf1-r1
+    - cq1234/pts-align-to-gt-omega729-s42-dcc2w-mf1-r2
+    - cq1234/pts-align-to-gt-omega729-s42-dcc2w-mf1-r3
+    - sss45633/pts-align-to-gt-omega729-s42-dcc2w-mf1-r4
+    git_branch: omega
+  left_time: 30.0
+- id: huoqiuxia
+  notebooks:
+  - kernel_id: huoqiuxia/pts-align-to-gt-omega177-s42-dcw2c-mf1-r8
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:w2c; model.rope_freq:-1;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 8
+    total_runs: 10
+    start_time: '2026-09-24 08:15:27'
+    resumed_from: yangyangchengcheng/pts-align-to-gt-omega177-s42-dcw2c-mf1-r7
+    history_ids:
+    - asdsad0000/pts-align-to-gt-omega177-s42-dcw2c-mf1-r0
+    - asdsad0000/pts-align-to-gt-omega177-s42-dcw2c-mf1-r1
+    - cycyxcy/pts-align-to-gt-omega177-s42-dcw2c-mf1-r2
+    - cycyxcy/pts-align-to-gt-omega177-s42-dcw2c-mf1-r3
+    - maoshuwen0415/pts-align-to-gt-omega177-s42-dcw2c-mf1-r4
+    - maoshuwen0415/pts-align-to-gt-omega177-s42-dcw2c-mf1-r5
+    - yangyangchengcheng/pts-align-to-gt-omega177-s42-dcw2c-mf1-r6
+    git_branch: omega
+  - kernel_id: huoqiuxia/first-cam-omega050-s42-dcc2w-mf1-r6
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:c2w; model.rope_freq:-1;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 6
+    total_runs: 10
+    start_time: '2026-09-24 09:18:38'
+    resumed_from: tangjudge/first-cam-omega050-s42-dcc2w-mf1-r5
+    history_ids:
+    - autune/first-cam-omega050-s42-dcc2w-mf1-r0
+    - autune/first-cam-omega050-s42-dcc2w-mf1-r1
+    - chuasiliu/first-cam-omega050-s42-dcc2w-mf1-r2
+    - chuasiliu/first-cam-omega050-s42-dcc2w-mf1-r3
+    - tangjudge/first-cam-omega050-s42-dcc2w-mf1-r4
+    git_branch: omega
+  left_time: 30.0
+- id: qcx2333
+  notebooks:
+  - kernel_id: qcx2333/first-cam-omega571-s42-dcw2c-mf100-r1
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:w2c; model.rope_freq:100;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 1
+    total_runs: 10
+    start_time: '2026-09-24 09:20:48'
+    resumed_from: b201xiaoli/first-cam-omega571-s42-dcw2c-mf100-r0
+    history_ids: []
+    git_branch: omega
+  - kernel_id: qcx2333/pts-align-to-gt-omega056-s42-dcw2c-mf100-r8
+    memo: point_proj,epoch7[22, 24]; seed:42; data.pose_convention:w2c; model.rope_freq:100;
+      postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 8
+    total_runs: 10
+    start_time: '2026-09-24 09:41:46'
+    resumed_from: yangyangchengcheng/pts-align-to-gt-omega056-s42-dcw2c-mf100-r7
+    history_ids:
+    - asdsad0000/pts-align-to-gt-omega056-s42-dcw2c-mf100-r0
+    - asdsad0000/pts-align-to-gt-omega056-s42-dcw2c-mf100-r1
+    - cycyxcy/pts-align-to-gt-omega056-s42-dcw2c-mf100-r2
+    - cycyxcy/pts-align-to-gt-omega056-s42-dcw2c-mf100-r3
+    - maoshuwen0415/pts-align-to-gt-omega056-s42-dcw2c-mf100-r4
+    - maoshuwen0415/pts-align-to-gt-omega056-s42-dcw2c-mf100-r5
+    - yangyangchengcheng/pts-align-to-gt-omega056-s42-dcw2c-mf100-r6
+    git_branch: omega
+  left_time: 30.0
+finished_notebooks: []

@@ -7,6 +7,7 @@
 from wcmatch import fnmatch
 from functools import wraps
 from typing import List
+import math
 
 import torch.nn as nn
 
@@ -19,6 +20,65 @@ GLOB_FLAGS = (
     | fnmatch.EXTMATCH # extended patterns like *(foo|bar)
     | fnmatch.SPLIT    # "pat1|pat2" works out‑of‑the‑box
 )
+
+
+def unwrap_model(model: nn.Module) -> nn.Module:
+    """Use canonical module names through compilation or parallel wrappers."""
+    while True:
+        if hasattr(model, "_orig_mod"):
+            model = model._orig_mod
+        elif isinstance(model, (nn.DataParallel, nn.parallel.DistributedDataParallel)):
+            model = model.module
+        else:
+            return model
+
+
+def select_unfreeze_modules(model: nn.Module, selectors) -> list[nn.Module]:
+    """Resolve recursive globs and paired, end-exclusive aggregator block ranges."""
+    model = unwrap_model(model)
+    if not selectors or set(selectors) - {"patterns", "frame_block_ranges"}:
+        raise ValueError("modules requires patterns and/or frame_block_ranges")
+    patterns = selectors.get("patterns", [])
+    ranges = selectors.get("frame_block_ranges", [])
+    if isinstance(patterns, str) or isinstance(ranges, str):
+        raise ValueError("patterns and frame_block_ranges must be lists")
+    selected = {}
+    for pattern in patterns:
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError("Module patterns must be nonempty strings")
+        matches = {name: mod for name, mod in model.named_modules()
+                   if fnmatch.fnmatch(name, pattern, flags=GLOB_FLAGS)}
+        if not matches:
+            raise ValueError(f"Unfreeze pattern matched nothing: {pattern!r}")
+        selected.update(matches)
+    for bounds in ranges:
+        if (not hasattr(bounds, "__len__") or len(bounds) != 2
+                or any(type(i) is not int for i in bounds)):
+            raise ValueError(f"Block range must be [start, end] integers: {bounds}")
+        start, end = bounds
+        for name in ("frame_blocks", "inter_frame_blocks"):
+            blocks = getattr(getattr(model, "aggregator", None), name, None)
+            if blocks is None or not 0 <= start < end <= len(blocks):
+                raise ValueError(f"Invalid range {bounds} for aggregator.{name}")
+            for index in range(start, end):
+                selected[f"aggregator.{name}.{index}"] = blocks[index]
+    if not selected:
+        raise ValueError("An unfreeze stage must select at least one module")
+    return list(selected.values())
+
+
+def validate_unfreeze_configs(model: nn.Module, configs) -> None:
+    for index, conf in enumerate(configs):
+        try:
+            epoch = conf.get("epoch")
+            if type(epoch) is not int or epoch < 0:
+                raise ValueError("epoch must be a nonnegative integer")
+            discount = float(conf["batch_cost_discount"])
+            if not math.isfinite(discount) or discount <= 0:
+                raise ValueError("batch_cost_discount must be finite and positive")
+            select_unfreeze_modules(model, conf["modules"])
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            raise ValueError(f"Invalid optim.unfreeze_configs[{index}]: {exc}") from exc
 
 
 def freeze_modules(model: nn.Module, patterns: List[str], recursive: bool = True) -> nn.Module:

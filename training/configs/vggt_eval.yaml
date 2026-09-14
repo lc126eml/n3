@@ -340,7 +340,7 @@ model:
   qkv_bias: True
   proj_bias: True
   ffn_bias: True
-  patch_embed: "/home/liucong/codes/pretrained/dinov3/vitb16"
+  patch_embed: "dinov2_vitl14_reg"
   aa_order: ["frame", "global"]
   aa_block_size: 1
   qk_norm: True

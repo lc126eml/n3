@@ -356,6 +356,34 @@ optim:
   param_group_modifiers: False
   warmup_epochs: &warmup_epochs 15
   warmup_batch_cost_discount: 0.5
+  # Additive stages; warmup_epochs still unfreezes everything at epoch 15.
+  # Globs match canonical module names recursively (*word* means contains word).
+  # Ranges are zero-based [start, end), selecting BOTH aggregator block lists.
+  # Discounts replace the factor relative to the original batch-cost budget.
+  # When adopting this schedule on an older full resume, add
+  # optim.unfreeze_configs and optim.frozen_module_names to
+  # checkpoint.resume_config_skip_keys; otherwise the saved config takes precedence.
+  unfreeze_configs:
+    - epoch: 0
+      modules:
+        patterns: ["dense_head.point_proj*"]
+      batch_cost_discount: 1.0
+    - epoch: 1
+      modules:
+        frame_block_ranges: [[22, 24]]
+      batch_cost_discount: 0.8
+    # - epoch: 2
+    #   modules:
+    #     patterns: ["*_head"]
+    #   batch_cost_discount: 0.9
+    # - epoch: 3
+    #   modules:
+    #     frame_block_ranges: [[12, 24]]
+    #   batch_cost_discount: 0.75
+    # - epoch: 5
+    #   modules:
+    #     patterns: ["aggregator"]
+    #   batch_cost_discount: 0.7
   warmup_epoch2: &warmup_epoch2 1
   warmup_epoch3: &warmup_epoch3 2
   warmup_configs: [] 
@@ -404,8 +432,8 @@ optim:
     weight_decay: 0.05
 
   frozen_module_names:
-      # - "*aggregator*"  # example, freeze the aggregator
-      - "*patch_embed*"
+      - "*"  # Epoch 0 enables only the point prediction and confidence projections.
+      # - "*patch_embed*"
   lr_multipliers:
     - name: patch_embed
       ratio: 1.0e-2

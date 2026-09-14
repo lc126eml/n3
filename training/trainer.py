@@ -86,7 +86,10 @@ PROJECT_ROOT = _setup_project_root_from_file(__file__)
 from train_utils.general import *
 from train_utils.logging import setup_logging
 from train_utils.distributed import get_machine_local_and_dist_rank
-from train_utils.freeze import freeze_modules, unfreeze, unfreeze_ignore
+from train_utils.freeze import (
+    freeze_modules, unfreeze, select_unfreeze_modules, unwrap_model,
+    validate_unfreeze_configs,
+)
 from train_utils.optimizer import construct_optimizers
 from train_utils.normalization import normalize_camera_extrinsics_and_points_batch
 from train_utils.checkpoint import DDPCheckpointSaver, robust_torch_save
@@ -942,6 +945,9 @@ class Trainer:
         self._native_frozen_param_names = {
             name for name, param in self.model.named_parameters() if not param.requires_grad
         }
+        validate_unfreeze_configs(
+            self.model, self.optim_conf.get("unfreeze_configs", []) or []
+        )
         if getattr(self.optim_conf, "frozen_module_names", None):
             logging.info(
                 f"[Start] Freezing modules: {self.optim_conf.frozen_module_names}"
@@ -1599,46 +1605,39 @@ class Trainer:
             )
     
     def end_warmup(self, replay: bool = False):
-        warmup_epoch = int(self.optim_conf.warmup_epochs)
-        # Replay only transitions that happened before the resumed epoch.  The
-        # transition at the resumed epoch is applied normally by run_train().
-        should_apply_main_warmup = (
-            warmup_epoch >= 0
-            and (warmup_epoch < self.epoch if replay else warmup_epoch == self.epoch)
-        )
-        if should_apply_main_warmup:
-            unfreeze(self.model, True)
-            # unfreeze_ignore(self.model, True, ignore_names=["patch_embeddings"])
+        # Replay unfreezing chronologically so the latest discount wins.
+        # Stable sorting puts legacy warmup first at a shared epoch, followed
+        # by explicit stages in YAML order.
+        unfreeze_stages = [(int(self.optim_conf.warmup_epochs), None)]
+        unfreeze_stages.extend((int(conf.epoch), conf)
+                               for conf in self.optim_conf.get("unfreeze_configs", []) or [])
+        for epoch, conf in sorted(unfreeze_stages, key=lambda stage: stage[0]):
+            # The resumed epoch itself is handled by normal epoch entry.
+            if epoch < 0 or not (epoch < self.epoch if replay else epoch == self.epoch):
+                continue
+            model = unwrap_model(self.model)
+            modules = [model] if conf is None else select_unfreeze_modules(model, conf.modules)
+            before = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            for module in modules:
+                unfreeze(module)
             self._restore_native_frozen_params()
-            warmup_batch_cost_discount = float(
-                getattr(self.optim_conf, "warmup_batch_cost_discount", 0.5)
+            discount = float(self.optim_conf.get("warmup_batch_cost_discount", 0.5)
+                             if conf is None else conf.batch_cost_discount)
+            self._apply_train_sampler_batch_cost_discount(discount)
+            after = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            logging.info(
+                "Epoch %s: %sunfreeze transition from epoch %s, selectors=%s, "
+                "newly trainable parameters=%s, batch-cost discount=%s",
+                self.epoch, "replayed " if replay else "", epoch,
+                "all" if conf is None else conf.modules, after - before, discount,
             )
-            self._apply_train_sampler_batch_cost_discount(warmup_batch_cost_discount)
-        if not hasattr(self.optim_conf, "warmup_configs"):
-            return
-        warmup_configs = list(self.optim_conf.warmup_configs)
+
+        warmup_configs = list(self.optim_conf.get("warmup_configs", []) or [])
         if replay:
-            # Stable sorting reconstructs transitions chronologically while
-            # retaining YAML order for multiple updates at the same epoch.
-            warmup_configs = sorted(
-                (
-                    conf
-                    for conf in warmup_configs
-                    if 0 <= int(conf.epoch) < self.epoch
-                ),
-                key=lambda conf: int(conf.epoch),
-            )
+            warmup_configs.sort(key=lambda conf: int(conf.epoch))
         for warmup_conf in warmup_configs:
-            warmup_conf_epoch = int(warmup_conf.epoch)
-            should_apply = (
-                warmup_conf_epoch >= 0
-                and (
-                    warmup_conf_epoch < self.epoch
-                    if replay
-                    else warmup_conf_epoch == self.epoch
-                )
-            )
-            if not should_apply:
+            epoch = int(warmup_conf.epoch)
+            if epoch < 0 or not (epoch < self.epoch if replay else epoch == self.epoch):
                 continue
 
             attr_path = warmup_conf.attr
@@ -1687,7 +1686,7 @@ class Trainer:
         native_frozen = getattr(self, "_native_frozen_param_names", None)
         if not native_frozen:
             return
-        for name, param in self.model.named_parameters():
+        for name, param in unwrap_model(self.model).named_parameters():
             if name in native_frozen:
                 param.requires_grad = False
 
