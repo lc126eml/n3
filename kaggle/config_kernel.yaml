@@ -1,6 +1,4 @@
 available_ids:
-- chencaihonga
-- chenrunze11
 - chuasiliu
 - cq1234
 - cshlhs
@@ -60,7 +58,6 @@ available_ids:
 - zhoujiahui0199
 - zhuangminghui
 - zjl001
-exhausted_ids:
 - lemonlaila
 - rmoope
 - zhangtingfengztf
@@ -105,11 +102,43 @@ exhausted_ids:
 - gloden613
 - chengchi1007
 - yangjiamin
+- fanhuayang
+exhausted_ids: null
 sleep_time_hr: 0.0
 last_supabase_id: 497
 poll_interval_minutes: 10
 running_nodes:
-- id: fanhuayang
-  notebooks: []
-  left_time: 18.19468011388889
-finished_notebooks:
+- id: chencaihonga
+  left_time: 30.0
+  notebooks:
+  - kernel_id: chencaihonga/first-cam-omega978-s42-dcw2c-r0
+    memo: seed:42; data.pose_convention:w2c; postprocess.val.metrics.recon.from_cam_err:False;
+      data.data_module.train_config.batch_size:20
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-09-14 13:35:55'
+    resumed_from: null
+    history_ids: []
+    git_branch: omega
+  - kernel_id: chencaihonga/first-cam-omega356-s42-dcw2c-r0
+    memo: seed:42; data.pose_convention:w2c; postprocess.val.metrics.recon.from_cam_err:False;
+      data.data_module.train_config.batch_size:40
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-09-14 14:00:26'
+    resumed_from: null
+    history_ids: []
+    git_branch: omega
+- id: chenrunze11
+  left_time: 30.0
+  notebooks:
+  - kernel_id: chenrunze11/first-cam-omega037-s42-dcw2c-r0
+    memo: seed:42; data.pose_convention:w2c; postprocess.val.metrics.recon.from_cam_err:False;
+      data.data_module.train_config.batch_size:40
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-09-14 14:00:43'
+    resumed_from: null
+    history_ids: []
+    git_branch: omega
+finished_notebooks: null
