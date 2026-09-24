@@ -101,6 +101,7 @@ class EasyDataset:
             debug_enumerate_batches=debug_enumerate_batches,
             drop_last=drop_last,
             world_size=world_size,
+            rank=rank,
             seed=seed
         )
 

@@ -40,8 +40,6 @@ from .eth3d import ETH3D_Multi
 # from .base.collation import stack_multiview_batch
 
 
-num_processes=1
-
 def get_data_loader(
     dataset,
     batch_size,
@@ -56,6 +54,8 @@ def get_data_loader(
     accum_steps=1,
     debug_enumerate_batches=False,
     resolution_cost_power=1.0,
+    world_size=1,
+    rank=0,
 ):
     import torch
 
@@ -68,7 +68,8 @@ def get_data_loader(
             batch_size,
             shuffle=shuffle,
             drop_last=drop_last,
-            world_size=num_processes,
+            world_size=world_size,
+            rank=rank,
             fixed_length=fixed_length,
             seed=seed,
             accum_steps=accum_steps,

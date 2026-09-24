@@ -1,6 +1,6 @@
 id: 
 config_name: default_kaggle_vggt_pretrained_24
-n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
+n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/ddp.zip
 desc: first_cam_omega
 desc_keys: ["seed","model.loop", "data.pose_convention", "model.rope_freq", "model.grad_start_layer"]
 memo: point_proj,epoch7[22, 24]

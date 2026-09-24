@@ -7,18 +7,20 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
+import torch
 
 _IS_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
 os.environ["IS_KAGGLE"] = "True"
-_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/omega.zip'
+ENSURE_TORCH_VERSION = False
+_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/ddp.zip'
 # https://github.com/lc126eml/n3/archive/refs/heads/master.zip
 # https://github.com/lc126eml/n3/archive/refs/heads/kaggle.zip
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied in Trainer after resume merge.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = None
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/miratowa1/pts-align-to-gt-omega-seed42-mct-r4-42/logs/ckpts/checkpoint.pt',
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cfy002/pts-align-to-gt-omega776-s42-dcw2c-mf100-r1/logs/ckpts/checkpoint.pt',
  'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
- 'kernel_id': 'miratowa1/pts-align-to-gt-omega-seed42-mct-r5-42',
+ 'kernel_id': 'cfy002/pts-align-to-gt-omega776-s42-dcw2c-mf100-r2',
  'total_run_time_hr': 11.6}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
@@ -387,7 +389,7 @@ def check_torch_version_above(target: str = "2.6.0"):
 def main() -> None:
     project_root = _setup_project_root()
     project_root = _ensure_n3_repo_on_kaggle(project_root)
-    if check_torch_version_above("2.6.0"):
+    if ENSURE_TORCH_VERSION and check_torch_version_above("2.6.0"):
         install_libs([
             "torch==2.6.0",
             "torchvision==0.21.0",
@@ -436,9 +438,13 @@ def main() -> None:
 
     from training.trainer import Trainer
 
-    trainer = Trainer(cfg)
     try:
-        trainer.run()
+        if cfg.get("distributed", {}).get("enabled", False) and torch.cuda.device_count() > 1:
+            from train_utils.distributed import run_distributed
+
+            run_distributed(cfg)
+        else:
+            Trainer(cfg).run()
     except Exception as exc:
         # from kaggle.utils.supabase_utils import log_to_supabase
         # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")

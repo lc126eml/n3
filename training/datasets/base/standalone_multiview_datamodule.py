@@ -38,6 +38,8 @@ class StandaloneMultiViewDataModule:
         self.prefetch_factor = prefetch_factor
         self.seed = seed
         self.accum_steps = int(kwargs.get("accum_steps", 1))
+        self.world_size = 1
+        self.rank = 0
 
     def _dataloader_from_cfg(self, config: dict):
         """Creates a combined dataloader from a list of dataset strings."""
@@ -99,6 +101,8 @@ class StandaloneMultiViewDataModule:
             resolution_cost_power=self.train_config.get("resolution_cost_power", 1.0),
             persistent_workers=self.persistent_workers,
             prefetch_factor=self.prefetch_factor,
+            world_size=self.world_size,
+            rank=self.rank,
         )
         return train_loader
 

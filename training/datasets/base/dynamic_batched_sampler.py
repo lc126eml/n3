@@ -20,7 +20,7 @@ class DynamicResolutionSampler(BatchSampler):
     Args:
         dataset: The dataset to sample from.
         resolutions (List[Tuple[int, int]]): A list of possible (height, width) resolutions.
-        base_batch_size (int): The target batch size for the first resolution in the list.
+        base_batch_size (int): The per-GPU target batch size for the first resolution.
         min_view_size (int): The minimum number of views for a sample.
         max_view_size (int): The maximum number of views for a sample.
         accum_steps (int): Gradient accumulation steps used by training. Dynamic
@@ -58,6 +58,7 @@ class DynamicResolutionSampler(BatchSampler):
         debug_enumerate_batches: bool = True,
         drop_last: bool = True,
         world_size: int = 1,
+        rank: int = 0,
         seed: int = 777,
     ):
         if not resolutions:
@@ -78,6 +79,9 @@ class DynamicResolutionSampler(BatchSampler):
         self.debug_enumerate_batches = bool(debug_enumerate_batches)
         self.drop_last = drop_last
         self.world_size = world_size
+        self.rank = rank
+        if world_size < 1 or not 0 <= rank < world_size:
+            raise ValueError(f"Invalid distributed sampler rank/world_size: {rank}/{world_size}")
         self.seed = seed
         if self.patch_size <= 0:
             raise ValueError("patch_size must be > 0")
@@ -251,7 +255,7 @@ class DynamicResolutionSampler(BatchSampler):
         
         # 5. Calculate the expected number of batches for a single rank
         # The number of samples per rank divided by the average batch size per rank
-        avg_batch_size_per_rank = avg_global_batch_size / self.world_size
+        avg_batch_size_per_rank = avg_global_batch_size
         
         # if avg_batch_size_per_rank == 0:
         #     # Avoid division by zero if average batch size is extremely small
@@ -294,12 +298,12 @@ class DynamicResolutionSampler(BatchSampler):
                         continue
                     batch_indices = [
                         all_sample_indices[(cursor + i) % self.len_dataset]
-                        for i in range(dynamic_global_batch_size)
+                        for i in range(dynamic_global_batch_size * self.world_size)
                     ]
-                    cursor = (cursor + dynamic_global_batch_size) % self.len_dataset
+                    cursor = (cursor + dynamic_global_batch_size * self.world_size) % self.len_dataset
                     yield [
                         (int(sample_idx), res_idx, view_size)
-                        for sample_idx in batch_indices
+                        for sample_idx in batch_indices[self.rank::self.world_size]
                     ]
             return
 
@@ -338,22 +342,24 @@ class DynamicResolutionSampler(BatchSampler):
             dynamic_global_batch_size = self._adjust_batch_size_for_accum(
                 dynamic_global_batch_size
             )
+            # The cost model's batch size applies to each GPU.
+            global_step_size = dynamic_global_batch_size * self.world_size
             
             # print(resolution, view_size, pixels_per_sample, dynamic_global_batch_size, pixels_per_sample * dynamic_global_batch_size)
             # 3. Check for end of epoch
             remaining_samples = len(all_sample_indices) - samples_yielded
-            if remaining_samples < dynamic_global_batch_size:
+            if remaining_samples < global_step_size:
                 if self.drop_last:
                     break
                 else:
-                    dynamic_global_batch_size = remaining_samples
+                    global_step_size = remaining_samples
             
             # 4. Get the indices for the full global batch
-            batch_end_idx = samples_yielded + dynamic_global_batch_size
+            batch_end_idx = samples_yielded + global_step_size
             global_batch_indices = all_sample_indices[samples_yielded:batch_end_idx]
 
             # 5. Distribute indices among ranks
-            indices_for_this_rank = global_batch_indices
+            indices_for_this_rank = global_batch_indices[self.rank::self.world_size]
             
             # 6. Create the list of tuples for this rank's batch
             batch_for_this_rank = [
@@ -365,7 +371,7 @@ class DynamicResolutionSampler(BatchSampler):
             if batch_for_this_rank:
                  yield batch_for_this_rank
 
-            samples_yielded += dynamic_global_batch_size
+            samples_yielded += global_step_size
 
 def round_by(total, multiple, up=False):
     if up:

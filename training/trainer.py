@@ -134,6 +134,7 @@ class Trainer:
 
     EPSILON = 1e-8
     _RESUME_CONFIG_SKIP_KEYS_HARDCODED = (
+        "distributed",
         "checkpoint.resume_checkpoint_path",
         "checkpoint.resume_config_skip_keys",
         "checkpoint.resume_optimizer",
@@ -146,10 +147,17 @@ class Trainer:
         if not OmegaConf.is_config(cfg):
             cfg = OmegaConf.create(cfg)
 
+        self.is_distributed = bool(cfg.get("distributed", {}).get("enabled", False))
+        if self.is_distributed and not dist.is_initialized():
+            raise RuntimeError("distributed.enabled requires an initialized process group")
+        self.rank = dist.get_rank() if self.is_distributed else 0
+        self.world_size = dist.get_world_size() if self.is_distributed else 1
+        self._ddp_trainable_ids = None
+
         # --- Acquire a file lock to ensure exclusive GPU usage ---
         lock_path = "/tmp/gpu.lock"
         lock_priority = int(cfg.get("gpu_lock_priority", 10))
-        if lock_priority > 0:
+        if lock_priority > 0 and not self.is_distributed:
             self.gpu_lock = PriorityLock(lock_dir=lock_path, priority=lock_priority)
             print(f"Attempting to acquire lock on '{lock_path}' (priority={lock_priority})...")
             self.gpu_lock.acquire()
@@ -288,7 +296,8 @@ class Trainer:
         safe_makedirs(self.logging_conf.log_dir)
         self._copy_resume_val_stats()
         print(self.logging_conf.log_dir)
-        self._write_run_metadata()
+        if self.rank == 0:
+            self._write_run_metadata()
 
         self._setup_device(self.device_conf)
         self._setup_cuda_backend(self.cuda_conf)
@@ -303,12 +312,12 @@ class Trainer:
         setup_logging(
             __name__,
             output_dir=self.logging_conf.log_dir,
-            rank=0,
+            rank=self.rank,
             log_level_primary=self.logging_conf.log_level_primary,
             log_level_secondary=self.logging_conf.log_level_secondary,
             all_ranks=self.logging_conf.all_ranks,
         )
-        set_seeds(self.seed_value, self.max_epochs, 0)
+        set_seeds(self.seed_value, self.max_epochs, self.rank)
         amp_conf = getattr(self.optim_conf, "amp", None)
         if amp_conf is not None and bool(amp_conf.enabled):
             self.amp_type = get_amp_type(amp_conf.amp_dtype)
@@ -331,7 +340,7 @@ class Trainer:
             )
 
         self.csv_logger = None
-        if self.logging_conf.get("csv_writer") and self.logging_conf.csv_writer.get("enabled"):
+        if self.rank == 0 and self.logging_conf.get("csv_writer") and self.logging_conf.csv_writer.get("enabled"):
             csv_conf = self.logging_conf.csv_writer
             csv_path = os.path.join(csv_conf.path, csv_conf.filename)
             
@@ -362,7 +371,7 @@ class Trainer:
             
 
         # Save the full config for reproducibility (after applying resume overrides).
-        if self.mode != "val":
+        if self.mode != "val" and self.rank == 0:
             conf_to_save = OmegaConf.create(self.cfg)
             self._trainer_config_snapshot = conf_to_save
             config_path = os.path.join(self.logging_conf.log_dir, "trainer_config.yaml")
@@ -722,12 +731,12 @@ class Trainer:
         if env_variables_conf is not None:
             for variable_name, value in env_variables_conf.items():
                 os.environ[variable_name] = value
-        print(torch.cuda.get_device_name(0))
-        print(torch.cuda.get_device_capability(0))
-        print(f"Environment:\n{json.dumps(dict(os.environ), sort_keys=True, indent=2)}")
+        if self.rank == 0:
+            print(torch.cuda.get_device_name(0))
+            print(torch.cuda.get_device_capability(0))
+            print(f"Environment:\n{json.dumps(dict(os.environ), sort_keys=True, indent=2)}")
 
     def _setup_cuda_backend(self, cuda_conf) -> None:
-        self.rank = 0
         if torch.cuda.is_available():
             torch.backends.cudnn.deterministic = cuda_conf.cudnn_deterministic
             torch.backends.cudnn.benchmark = cuda_conf.cudnn_benchmark
@@ -904,7 +913,7 @@ class Trainer:
 
 
     def _setup_device(self, device):
-        self.local_rank = 0
+        self.local_rank = int(os.environ.get("LOCAL_RANK", "0")) if self.is_distributed else 0
         if device == "cuda":
             self.device = torch.device("cuda", self.local_rank)
             torch.cuda.set_device(self.local_rank)
@@ -961,8 +970,9 @@ class Trainer:
             )
 
         model_summary_path = os.path.join(self.logging_conf.log_dir, "model.txt")
-        model_summary(self.model, log_file=model_summary_path)
-        logging.info(f"Model summary saved to {model_summary_path}")
+        if self.rank == 0:
+            model_summary(self.model, log_file=model_summary_path)
+            logging.info(f"Model summary saved to {model_summary_path}")
 
         if self.compile_conf and self.compile_conf.get("enabled"):
             if not hasattr(torch, "compile"):
@@ -1006,13 +1016,16 @@ class Trainer:
         # Instantiate the data module from the config
         data_module = instantiate(self.data_conf.data_module, _recursive_=False)
         data_module.seed = self.seed_value
+        if self.is_distributed:
+            data_module.world_size = self.world_size
+            data_module.rank = self.rank
         if hasattr(data_module, "accum_steps"):
             data_module.accum_steps = int(self.accum_steps)
         if hasattr(data_module, "train_config") and isinstance(data_module.train_config, Mapping):
             data_module.train_config["accum_steps"] = int(self.accum_steps)
         self.data_module = data_module
 
-        if self.mode in ["train", "val"]:
+        if self.mode in ["train", "val"] and self.rank == 0:
             # Get the validation dataloader from the data module
             self.val_loader = data_module.val_dataloader()
             self.test_loader = data_module.test_dataloader()
@@ -1067,6 +1080,8 @@ class Trainer:
         return checkpoint_content
 
     def save_checkpoint(self, epoch, checkpoint_names=None):
+        if self.rank != 0:
+            return
         checkpoint_folder = self.checkpoint_conf.save_dir
         safe_makedirs(checkpoint_folder)
         # if checkpoint_names is None:
@@ -1091,7 +1106,7 @@ class Trainer:
         )
 
         saver.save_checkpoint(
-            model=self.model,
+            model=unwrap_model(self.model),
             ema_models = None,
             skip_saving_parameters=[],
             **checkpoint_content,
@@ -1181,6 +1196,8 @@ class Trainer:
                 self.best_checkpoint_epoch = None
 
     def save_best_checkpoint(self, metrics: Optional[Mapping[str, Any]], epoch: int) -> None:
+        if self.rank != 0:
+            return
         monitor, metric_value = self._select_best_checkpoint_metric(metrics)
         if monitor is None or metric_value is None:
             return
@@ -1207,13 +1224,13 @@ class Trainer:
                 epoch=epoch,
             )
             saver.save_checkpoint(
-                model=self.model,
+                model=unwrap_model(self.model),
                 ema_models=None,
                 skip_saving_parameters=[],
                 **self._build_checkpoint_content(epoch),
             )
         else:
-            checkpoint = self.model.state_dict()
+            checkpoint = unwrap_model(self.model).state_dict()
             robust_torch_save(checkpoint, checkpoint_path)
         for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
             if str(old_best_path) == checkpoint_path:
@@ -1524,10 +1541,13 @@ class Trainer:
         # gc.collect()
         # if torch.cuda.is_available():
         #     torch.cuda.empty_cache()
-        _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
+        if self.rank == 0:
+            _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
 
     def _log_epoch_metrics_to_csv(self, phase, metrics):
         """Logs epoch metrics to a CSV file if enabled."""
+        if self.rank != 0:
+            return
         data_dict = self._build_epoch_metrics_row(metrics)
         self.metrics_history.setdefault(phase, []).append(data_dict)
         self._sync_metrics_history_to_csv(phase=phase)
@@ -1805,6 +1825,26 @@ class Trainer:
                 ds.set_augs(augs)
         self._last_train_augs = augs
 
+    def _ensure_ddp_model(self) -> None:
+        if not self.is_distributed:
+            return
+        model = unwrap_model(self.model)
+        trainable_ids = tuple(id(param) for param in model.parameters() if param.requires_grad)
+        if trainable_ids == self._ddp_trainable_ids:
+            return
+        if not trainable_ids:
+            raise RuntimeError("DDP requires trainable parameters after the epoch's unfreeze stage")
+        self.model = nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[self.local_rank],
+            output_device=self.local_rank,
+            find_unused_parameters=bool(self.cfg.distributed.find_unused_parameters),
+            gradient_as_bucket_view=bool(self.cfg.distributed.gradient_as_bucket_view),
+            bucket_cap_mb=int(self.cfg.distributed.bucket_cap_mb),
+            broadcast_buffers=bool(self.cfg.distributed.broadcast_buffers),
+        )
+        self._ddp_trainable_ids = trainable_ids
+
     def run_train(self):
         last_train_epoch_duration_sec = 0.0
         last_val_epoch_duration_sec = 0.0
@@ -1815,10 +1855,12 @@ class Trainer:
             except (TypeError, ValueError):
                 logging.warning(f"Ignoring invalid total_run_time_hr={self.total_run_time_hr!r}")
                 limit_sec = None
-        _log_to_supabase( 0, f"training {self.epoch}")
+        if self.rank == 0:
+            _log_to_supabase( 0, f"training {self.epoch}")
         while self.epoch < self.max_epochs:
             self.end_warmup()
-            set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, 0)
+            self._ensure_ddp_model()
+            set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, self.rank)
             self._set_train_data_epoch(self.epoch)
             # self._apply_train_aug_schedule(self.epoch)
 
@@ -1831,7 +1873,7 @@ class Trainer:
                 )
             
             ran_val = False
-            if (self.epoch + 1) % self.val_freq == 0:
+            if self.rank == 0 and (self.epoch + 1) % self.val_freq == 0:
                 val_epoch_start_time = time.time()
                 val_metrics = self.run_val(val_loader=self.val_loader, epoch=self.epoch)
                 self.save_best_checkpoint(val_metrics, self.epoch)
@@ -1839,6 +1881,8 @@ class Trainer:
                 ran_val = True
 
             self.save_checkpoint(self.epoch)
+            if self.is_distributed:
+                dist.barrier()
 
             # gc.collect()
             if torch.cuda.is_available():
@@ -1846,12 +1890,19 @@ class Trainer:
 
             self.epoch += 1
 
-            if limit_sec is not None and limit_sec > 0:
+            stop_for_time = False
+            if self.rank == 0 and limit_sec is not None and limit_sec > 0:
                 elapsed_sec = time.time() - self.start_time
                 if elapsed_sec + last_train_epoch_duration_sec + last_val_epoch_duration_sec > limit_sec:
                     msg = f"Stopping before next epoch due to total_run_time_hr budget: elapsed={elapsed_sec/3600.0:.2f}h, limit={limit_sec/3600.0:.2f}h."
                     logging.info(msg)
-                    break
+                    stop_for_time = True
+            if self.is_distributed:
+                stop_tensor = torch.tensor(int(stop_for_time), device=self.device)
+                dist.broadcast(stop_tensor, src=0)
+                stop_for_time = bool(stop_tensor.item())
+            if stop_for_time:
+                break
             if self.epoch == self.cfg.get("break_at", -1):
                 logging.info(f"break_at {self.epoch}")
                 break
@@ -1877,6 +1928,8 @@ class Trainer:
             f.write(json.dumps(stats) + "\n")
 
     def run_val(self, val_loader=None, epoch=0, is_fresh_epoch=True):
+        if self.rank != 0:
+            return
         if not val_loader:
             return
 
@@ -1920,7 +1973,7 @@ class Trainer:
 
     def val_epoch(self, val_loader, is_fresh_epoch: bool):
         curr_phases = ['val']
-        curr_models = [self.model]
+        curr_models = [unwrap_model(self.model)]
         phase = curr_phases[0]
 
         for model in curr_models:
@@ -2227,9 +2280,9 @@ class Trainer:
                 loss = loss_dict["objective"]
                 loss_key = f"{phase}_loss_objective"
                 loss_value = loss.detach()
-                if not torch.isfinite(loss_value).all():
+                if self.loss_conf.get("check_finite", True) and not self._loss_is_finite_on_all_ranks(loss_value):
                     loss_value_item = loss_value.item()
-                    error_msg = f"Loss is {loss_value_item}, attempting to stop training"
+                    error_msg = f"Non-finite loss on at least one rank (local loss {loss_value_item}); stopping training"
                     logging.error(error_msg)
                     return False
 
@@ -2375,9 +2428,9 @@ class Trainer:
             batch_size = chunked_batch["img"].shape[0]
             loss_value = loss.detach()
 
-            if not torch.isfinite(loss_value).all():
+            if self.loss_conf.get("check_finite", True) and not self._loss_is_finite_on_all_ranks(loss_value):
                 loss_value_item = loss_value.item()
-                error_msg = f"Loss is {loss_value_item}, attempting to stop training"
+                error_msg = f"Non-finite loss on at least one rank (local loss {loss_value_item}); stopping training"
                 logging.error(error_msg)
                 return False
 
@@ -2386,6 +2439,12 @@ class Trainer:
             loss_meters[loss_key].update(loss_value, batch_size)
 
         return True
+
+    def _loss_is_finite_on_all_ranks(self, loss: torch.Tensor) -> bool:
+        is_finite = torch.isfinite(loss).all().to(dtype=torch.int)
+        if self.is_distributed:
+            dist.all_reduce(is_finite, op=dist.ReduceOp.MIN)
+        return bool(is_finite.item())
 
 
 
