@@ -642,6 +642,20 @@ class Trainer:
         current_state = self.model.state_dict()
         filtered = {}
         skipped = []
+        aggregator = getattr(self.model, "aggregator", None)
+        if aggregator is not None and  not getattr(aggregator, "first_cam", True):
+            for key in ("aggregator.camera_token", "aggregator.register_token"):
+                value = model_state_dict.get(key)
+                current_value = current_state.get(key)
+                if (
+                    torch.is_tensor(value)
+                    and torch.is_tensor(current_value)
+                    and value.shape[1] == 2
+                    and current_value.shape[1] == 1
+                ):
+                    logging.warning(f"trim {key}")
+                    model_state_dict[key] = value[:, 1:]
+
         for key, value in model_state_dict.items():
             current_value = current_state.get(key)
             if current_value is not None and torch.is_tensor(value) and torch.is_tensor(current_value):
