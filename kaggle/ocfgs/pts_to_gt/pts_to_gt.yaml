@@ -20,7 +20,7 @@ simple:
   - model.enable_depth: true
   # - model.loop: false
   # - model.simple_camera: false
-  - model.rope_freq: 100
+  - model.rope_freq: -1
   - model.first_cam: false
   # - model.depth: 24
   # - model.grad_start_layer: 0
