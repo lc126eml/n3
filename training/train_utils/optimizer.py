@@ -43,11 +43,14 @@ class OptimizerWrapper:
     def _validate_optimizer_schedulers(self):
         if self.schedulers is None:
             return
+        # ZeRO exposes only explicitly supplied defaults; AdamW's implicit
+        # defaults (including lr) belong to its local optimizer.
+        defaults = getattr(self.optimizer, "optim", self.optimizer).defaults
         for _, sched_map in enumerate(self.schedulers):
             for option, _ in sched_map.items():
-                assert option in self.optimizer.defaults, (
+                assert option in defaults, (
                     f"Optimizer option {option} not found in {self.optimizer}. "
-                    f"Valid options are {self.optimizer.defaults.keys()}"
+                    f"Valid options are {defaults.keys()}"
                 )
 
     def step_schedulers(self, where: float) -> None:
@@ -212,11 +215,27 @@ def map_scheduler_cfgs_to_param_groups(all_scheduler_cfgs: Iterable[List[dict]],
 # -----------------------------------------------------------------------------
 
 
+def _instantiate_optimizer(optimizer_conf, params, shard_optimizer_state: bool):
+    if not shard_optimizer_state:
+        return hydra.utils.instantiate(optimizer_conf, params)
+
+    from torch.distributed.optim import ZeroRedundancyOptimizer
+
+    defaults = (
+        OmegaConf.to_container(optimizer_conf, resolve=True)
+        if OmegaConf.is_config(optimizer_conf)
+        else dict(optimizer_conf)
+    )
+    optimizer_class = hydra.utils.get_class(defaults.pop("_target_"))
+    return ZeroRedundancyOptimizer(params, optimizer_class=optimizer_class, **defaults)
+
+
 def construct_optimizer(model: nn.Module,
                         optimizer_conf: Any,
                         options_conf: Union[Mapping[str, List], None] = None,
                         param_group_modifiers_conf: Union[List, None] = None,
-                        validate_param_groups: bool = True) -> OptimizerWrapper:
+                        validate_param_groups: bool = True,
+                        shard_optimizer_state: bool = False) -> OptimizerWrapper:
     """Build an OptimizerWrapper from hydra configs.
 
     *No* allowlist handling – we always optimize *all* model parameters.
@@ -230,7 +249,7 @@ def construct_optimizer(model: nn.Module,
     # No scheduler case – simple & fast
     # ──────────────────────────────────────────────────────────────────
     if not options_conf:
-        optimizer = hydra.utils.instantiate(optimizer_conf, named_parameters.values())
+        optimizer = _instantiate_optimizer(optimizer_conf, named_parameters.values(), shard_optimizer_state)
         return OptimizerWrapper(optimizer)
 
     # ──────────────────────────────────────────────────────────────────
@@ -262,11 +281,11 @@ def construct_optimizer(model: nn.Module,
     if validate_param_groups:
         validate_param_group_params(param_groups, model)
 
-    optimizer = hydra.utils.instantiate(optimizer_conf, param_groups)
+    optimizer = _instantiate_optimizer(optimizer_conf, param_groups, shard_optimizer_state)
     return OptimizerWrapper(optimizer, schedulers)
 
 
-def construct_optimizers(model: nn.Module, optim_conf) -> Union[List[OptimizerWrapper], None]:
+def construct_optimizers(model: nn.Module, optim_conf, shard_optimizer_state: bool = False) -> Union[List[OptimizerWrapper], None]:
     """Convenience wrapper producing a *single* OptimizerWrapper list."""
     if optim_conf is None:
         return None
@@ -276,6 +295,7 @@ def construct_optimizers(model: nn.Module, optim_conf) -> Union[List[OptimizerWr
         optim_conf.optimizer,
         _augment_lr_options_with_lr_multipliers(optim_conf),
         validate_param_groups=True,
+        shard_optimizer_state=shard_optimizer_state,
     )
     return [optimizer]
 

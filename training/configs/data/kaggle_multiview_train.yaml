@@ -17,7 +17,7 @@ data_module:
   _target_: training.datasets.base.standalone_multiview_datamodule.StandaloneMultiViewDataModule
   pin_memory: true
   persistent_workers: false
-  prefetch_factor: 2
+  prefetch_factor: 1
   seed: 42
   train_config:
     # resolution: '[(154,126),(224, 224),(238, 224),(238, 238),(392, 392), (392, 336), (392, 238), (392, 224), (238, 224), (392, 126)]'
@@ -47,7 +47,7 @@ data_module:
             "/kaggle/input/datasets/sinayliu/scnt-p11",
             "/kaggle/input/datasets/sinayliu/scnt-p12"], transform=None, image_list_path="/kaggle/input/datasets/liucong12601/depth-file-list2", resolution=${..resolution}, num_views=${..num_views}, samples_per_scene=3, max_interval=50, augs=${..augs}, pose_convention='${data.pose_convention}')
     batch_size: 6
-    num_workers: 4
+    num_workers: 2
     augs:
       cojitter: true
       cojitter_ratio: 0.3
@@ -99,8 +99,8 @@ data_module:
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(154,126), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}, pose_convention='${data.pose_convention}') #160,128
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(504, 378), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}, pose_convention='${data.pose_convention}') #512, 384
-    batch_size: 8
-    num_workers: 3
+    batch_size: 6
+    num_workers: 0
     augs:
       cojitter: false
       cojitter_ratio: 0.3
@@ -120,6 +120,6 @@ data_module:
       # - Infinigen_Multi(allow_repeat=False, split='train', ROOT='${data.data_root}/infinigen_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, augs=${..augs}, pose_convention='${data.pose_convention}')
       # - DTU_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/dtu_processed', resolution=(160,128), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=5, augs=${..augs}, pose_convention='${data.pose_convention}') #160,128, 154,126
       # - ETH3D_Multi(allow_repeat=False, split='test', ROOT='${data.data_root}/eth3d_processed', resolution=(512, 384), num_views=${..num_views}, seed=777, samples_per_scene=1, max_interval=10, augs=${..augs}, pose_convention='${data.pose_convention}') #512, 384, 504, 378
-    batch_size: 8
-    num_workers: 2
+    batch_size: 6
+    num_workers: 0
     augs: ${..validation_config.augs}

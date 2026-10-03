@@ -1,18 +1,22 @@
 available_ids:
+- chencaihonga
 - chengchi1007
 - chenhao1213
+- chenrunze11
+- chuasiliu
+- cq1234
+- cshlhs
+- cycyxcy
 - dddd110
 - denghaimeng
 - djiangjiang
-- du55148
-- dusi605
-- eastwangwei
+- elong1202
 - fanhuayang
+- fzzy123
 - geminiyy
-- gloden613
 - gorgeous0912
-- hsdfuieqg
-- hysz0821
+- houwen
+- huoqiuxia
 - jacksisi
 - jcy666
 - jiangshuai0210
@@ -21,96 +25,113 @@ available_ids:
 - jjjerry12138
 - jokerking1
 - jufuchao
+- kanwenbin
 - keyongkk
 - kezzymik
+- lemonlaila
+- linyunlk243
 - liucong126
+- liucong12601
 - luanjing
 - ly1122
+- maoshuwen0415
+- miratowa1
 - ohyeah00
 - permanentlove
 - phoenixcsw01
 - pycjn666
+- qcx2333
 - qinghui9527
 - qqmail4092
 - quepimao
+- rmoope
+- robinrainy
 - roseqw
+- rqmiraitowa
+- rrrrmm
 - rushly
-- sinayliu
-- sollasi
+- smartchaochao
+- srmmmm
+- sss45633
+- ssss7777
 - starysinger
-- straghtwizard
 - tangjiayuan1004
+- tangjudge
+- tangyujie123
 - tianxianglii
 - top1pcl
+- ttzyty
 - uamadeus
 - wenyangtang
 - wzywzy1227
 - xiaoluoalice
+- xpeng01
 - xulijuan
-- xuwenhui123
+- xulin5522
+- xwj66666
+- xx03071425
 - yangjiamin
+- yangyangchengcheng
 - yccwff
 - ycy1n66
-- yinmengmeng
 - yuanhahah
 - ywhicher
 - yyyyjay
-- zhaotianchi
+- zhangtingfengztf
+- zhikaiwang
 - zhoujiahui0199
+- zhuangminghui
 - zhuxinchen07
+- zhuzichen123
 - zjl001
 - zongjiaxin
-exhausted_ids:
-- chencaihonga
-- chenrunze11
-- smartchaochao
-- zhikaiwang
-- ssss7777
-- liucong12601
-- rrrrmm
-- lemonlaila
-- robinrainy
-- zhuangminghui
-- asdsad0000
-- linyunlk243
-- srmmmm
-- autune
-- asssmer
-- cycyxcy
-- cshlhs
-- kanwenbin
-- chuasiliu
-- cq1234
-- maoshuwen0415
-- sss45633
-- tangjudge
-- b201xiaoli
-- yangyangchengcheng
-- cdong121
-- fzzy123
-- rmoope
-- huoqiuxia
-- qcx2333
-- cfy002
-- liucong12601
-- xulin5522
-- xx03071425
-- tangyujie123
-- rqmiraitowa
-- zhuzichen123
-- miratowa1
-- houwen
-- elong1202
-- zhangtingfengztf
 - zzr123123
-- xwj66666
-- xpeng01
+exhausted_ids:
+- du55148
+- dusi605
+- zhaotianchi
+- straghtwizard
+- eastwangwei
+- hsdfuieqg
+- xuwenhui123
+- hysz0821
+- yinmengmeng
+- sollasi
+- sinayliu
+- gloden613
 - cheaterchow
+- asdsad0000
+- asssmer
+- autune
 sleep_time_hr: 0.0
 last_supabase_id: 497
 poll_interval_minutes: 10
 running_nodes:
-- id: ttzyty
+- id: b201xiaoli
+  left_time: 30.0
   notebooks:
-  left_time: 19.257843417222222
-finished_notebooks:
+  - kernel_id: b201xiaoli/first-cam-omega809-s42-dcc2w-mf100-r0
+    memo: point_proj,ddp, reproduce,epoch7[0, 24]; seed:42; data.pose_convention:c2w;
+      model.rope_freq:100; postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-10-08 15:27:15'
+    resumed_from: null
+    history_ids: []
+    git_branch: ddp
+  - kernel_id: b201xiaoli/first-cam-omega689-s42-dcc2w-mf100-r0
+    memo: point_proj,ddp, reproduce,epoch7[0, 24]; seed:42; data.pose_convention:c2w;
+      model.rope_freq:100; postprocess.val.metrics.recon.from_cam_err:False; data.data_module.train_config.batch_size:80
+    run_id: 0
+    total_runs: 10
+    start_time: '2026-10-08 15:48:10'
+    resumed_from: null
+    history_ids: []
+    git_branch: ddp
+- id: cdong121
+  left_time: 30.0
+  notebooks: []
+- id: cfy002
+  left_time: 30.0
+  notebooks: []
+finished_notebooks: []

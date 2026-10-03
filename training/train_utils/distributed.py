@@ -34,8 +34,11 @@ def _distributed_worker(rank, config, world_size, rendezvous_file):
     )
     try:
         from trainer import Trainer
-
         Trainer(cfg).run()
+    except Exception as e:
+        import traceback
+        print(f"Rank {rank} error:\n{traceback.format_exc()}")
+        raise
     finally:
         dist.destroy_process_group()
 
@@ -49,18 +52,18 @@ def run_distributed(cfg):
     if cfg.logging.get("run_folder_name") is not None:
         cfg.logging.run_folder_name = str(cfg.logging.run_folder_name)
     config = OmegaConf.to_container(cfg, resolve=False)
-    lock_priority = int(cfg.get("gpu_lock_priority", 10))
-    lock = PriorityLock(lock_dir="/tmp/gpu.lock", priority=lock_priority) if lock_priority > 0 else None
-    if lock is not None:
-        lock.acquire()
-    try:
-        with tempfile.TemporaryDirectory(prefix="n3r_ddp_") as rendezvous_dir:
-            mp.spawn(
-                _distributed_worker,
-                args=(config, world_size, os.path.join(rendezvous_dir, "rendezvous")),
-                nprocs=world_size,
-                join=True,
-            )
-    finally:
-        if lock is not None:
-            lock.release()
+    # lock_priority = int(cfg.get("gpu_lock_priority", 10))
+    # lock = PriorityLock(lock_dir="/tmp/gpu.lock", priority=lock_priority) if lock_priority > 0 else None
+    # if lock is not None:
+    #     lock.acquire()
+    # try:
+    with tempfile.TemporaryDirectory(prefix="n3r_ddp_") as rendezvous_dir:
+        mp.spawn(
+            _distributed_worker,
+            args=(config, world_size, os.path.join(rendezvous_dir, "rendezvous")),
+            nprocs=world_size,
+            join=True,
+        )
+    # finally:
+    #     if lock is not None:
+    #         lock.release()

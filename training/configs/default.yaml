@@ -534,6 +534,7 @@ model:
 distributed:
   # When enabled, each GPU keeps the same dynamic batch size as one GPU.
   enabled: false
+  shard_optimizer_state: false
   # check https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html for options
   backend: nccl
   comms_dtype: None

@@ -2,6 +2,6 @@
 python launch.py --cfg default_24.yaml
 
 python process_kaggle.py --add-node --cfg ocfgs/first_cam.yaml --run
-
-
 python process_kaggle.py --add-node --cfg ocfgs/pts_to_gt/pts_to_gt.yaml --run
+python process_kaggle.py --add-node --cfg ocfgs/first_cam_1.yaml --run
+python process_kaggle.py --add-node --cfg ocfgs/pts_to_gt/pts_to_gt_1.yaml --run

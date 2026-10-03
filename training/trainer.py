@@ -203,6 +203,9 @@ class Trainer:
         self.limit_train_batches = cfg.get("limit_train_batches")
         self.limit_val_batches = cfg.get("limit_val_batches")
         self.optim_conf = cfg.optim
+        self.shard_optimizer_state = self.is_distributed and bool(
+            cfg.distributed.get("shard_optimizer_state", False)
+        )
         self.val_freq = int(self.optim_conf.get("val_freq", cfg.get("val_epoch_freq", 1)))
         if self.val_freq <= 0:
             raise ValueError(f"optim.val_freq must be positive, got {self.val_freq}")
@@ -337,6 +340,7 @@ class Trainer:
             self.optims = construct_optimizers(
                 self.model,
                 self.optim_conf,
+                shard_optimizer_state=self.shard_optimizer_state,
             )
 
         self.csv_logger = None
@@ -1093,38 +1097,55 @@ class Trainer:
 
         return checkpoint_content
 
+    def _consolidate_optimizer_state(self) -> None:
+        if self.shard_optimizer_state:
+            for optim in self.optims:
+                optim.optimizer.consolidate_state_dict(to=0)
+
+    def _zero_optimizer_state(self) -> None:
+        if self.shard_optimizer_state:
+            dist.barrier()
+            for optim in self.optims:
+                optim.optimizer.zero_consolidated_state()
+
     def save_checkpoint(self, epoch, checkpoint_names=None):
-        if self.rank != 0:
-            return
-        checkpoint_folder = self.checkpoint_conf.save_dir
-        safe_makedirs(checkpoint_folder)
-        # if checkpoint_names is None:
-        checkpoint_names = ["checkpoint"]
-        if not (self.checkpoint_conf.save_freq > 0 and int(epoch + 1) % self.checkpoint_conf.save_freq == 0):
-            return
-            # if (
-            #     self.checkpoint_conf.save_freq > 0
-            #     and int(epoch) % self.checkpoint_conf.save_freq == 0
-            #     and (int(epoch) > 0 or self.checkpoint_conf.save_freq == 1)
-            # ):
-            #     checkpoint_names.append(f"checkpoint_{int(epoch)}")
+        logging.warning(f"_consolidate_optimizer_state {self.rank}")
+        self._consolidate_optimizer_state()
+        if self.rank == 0:
+            checkpoint_folder = self.checkpoint_conf.save_dir
+            safe_makedirs(checkpoint_folder)
 
-        checkpoint_content = self._build_checkpoint_content(epoch)
+            if checkpoint_names is None:
+                checkpoint_names = ["checkpoint"]
 
-        # Save the checkpoint for DDP only
-        saver = DDPCheckpointSaver(
-            checkpoint_folder,
-            checkpoint_names=checkpoint_names,
-            rank=0,
-            epoch=epoch,
-        )
+            logging.warning(f"_build_checkpoint_content {self.rank}")
+            checkpoint_content = self._build_checkpoint_content(epoch)
 
-        saver.save_checkpoint(
-            model=unwrap_model(self.model),
-            ema_models = None,
-            skip_saving_parameters=[],
-            **checkpoint_content,
-        )
+            # Save the checkpoint for DDP only
+            saver = DDPCheckpointSaver(
+                checkpoint_folder,
+                checkpoint_names=checkpoint_names,
+                rank=0,
+                epoch=epoch,
+            )
+            logging.warning(f"save_checkpoint {self.rank}")
+            saver.save_checkpoint(
+                model=unwrap_model(self.model),
+                ema_models = None,
+                skip_saving_parameters=[],
+                **checkpoint_content,
+            )
+
+            logging.warning(f"del_checkpoint {self.rank}")
+            del checkpoint_content
+            # gc.collect()
+            # torch.cuda.empty_cache()  # debug only
+
+        # Collective op: ALL ranks, must execute after rank‑0 IO
+        logging.warning(f"_zero_optimizer_state {self.rank}")
+        self._zero_optimizer_state()
+        logging.warning(f"_zero_optimizer_state after {self.rank}")
+
 
 
     def _best_checkpoint_mode(self) -> str:
@@ -1210,49 +1231,84 @@ class Trainer:
                 self.best_checkpoint_epoch = None
 
     def save_best_checkpoint(self, metrics: Optional[Mapping[str, Any]], epoch: int) -> None:
-        if self.rank != 0:
-            return
-        monitor, metric_value = self._select_best_checkpoint_metric(metrics)
-        if monitor is None or metric_value is None:
-            return
-        if not self._is_better_best_checkpoint_metric(metric_value):
-            return
-
-        self.best_checkpoint_metric = metric_value
-        self.best_checkpoint_epoch = epoch
-
-        checkpoint_folder = self.checkpoint_conf.save_dir
-        safe_makedirs(checkpoint_folder)
-        checkpoint_name = f"best_ep{int(epoch)}"
-        checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
+        monitor, metric_value = None, None
+        should_save = False
         best_full = bool(self.checkpoint_conf.get("best_full", False))
-        logging.info(
-            f"Saving best {'checkpoint' if best_full else 'model weights'} at epoch {epoch} to {checkpoint_path} "
-            f"({monitor}={metric_value:.6g})"
-        )
-        if best_full:
-            saver = DDPCheckpointSaver(
-                checkpoint_folder,
-                checkpoint_names=[checkpoint_name],
-                rank=0,
-                epoch=epoch,
+
+        # rank0计算是否要保存best ckpt
+        if self.rank == 0:
+            monitor, metric_value = self._select_best_checkpoint_metric(metrics)
+            should_save = (
+                monitor is not None
+                and metric_value is not None
+                and self._is_better_best_checkpoint_metric(metric_value)
             )
-            saver.save_checkpoint(
-                model=unwrap_model(self.model),
-                ema_models=None,
-                skip_saving_parameters=[],
-                **self._build_checkpoint_content(epoch),
+
+        # 同步 should_save flag 给所有rank，所有rank必须拿到相同布尔值
+        save_tensor = torch.tensor(int(should_save), device=self.device)
+        dist.broadcast(save_tensor, src=0)
+        should_save = bool(save_tensor.item())
+        if not should_save:
+            return
+
+        # ===================== Collective ops: ALL ranks must execute =====================
+        need_consolidate = should_save and best_full and self.shard_optimizer_state
+        if need_consolidate:
+            # all ranks: gather optimizer shards to rank0 GPU
+            self._consolidate_optimizer_state()
+
+        # -------------------- Only rank0 run IO/save logic --------------------
+        if self.rank == 0 and should_save:
+            self.best_checkpoint_metric = metric_value
+            self.best_checkpoint_epoch = epoch
+            checkpoint_folder = self.checkpoint_conf.save_dir
+            safe_makedirs(checkpoint_folder)
+            checkpoint_name = f"best_ep{int(epoch)}"
+            checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
+
+            logging.info(
+                f"Saving best {'checkpoint' if best_full else 'model weights'} at epoch {epoch} to {checkpoint_path} "
+                f"({monitor}={metric_value:.6g})"
             )
-        else:
-            checkpoint = unwrap_model(self.model).state_dict()
-            robust_torch_save(checkpoint, checkpoint_path)
-        for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
-            if str(old_best_path) == checkpoint_path:
-                continue
-            try:
-                old_best_path.unlink()
-            except OSError as exc:
-                logging.warning(f"Failed to remove old best checkpoint {old_best_path}: {exc}")
+
+            if best_full:
+                saver = DDPCheckpointSaver(
+                    checkpoint_folder,
+                    checkpoint_names=[checkpoint_name],
+                    rank=0,
+                    epoch=epoch,
+                )
+                checkpoint_content = self._build_checkpoint_content(epoch)
+                saver.save_checkpoint(
+                    model=unwrap_model(self.model),
+                    ema_models=None,
+                    skip_saving_parameters=[],
+                    **checkpoint_content,
+                )
+                # release large checkpoint dict immediately after IO
+                del checkpoint_content
+            else:
+                checkpoint = unwrap_model(self.model).state_dict()
+                robust_torch_save(checkpoint, checkpoint_path)
+                del checkpoint
+
+            # GC only on rank0 to collect large tensor objects
+            # import gc
+            # gc.collect()
+
+            for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
+                if str(old_best_path) == checkpoint_path:
+                    continue
+                try:
+                    old_best_path.unlink()
+                except OSError as exc:
+                    logging.warning(f"Failed to remove old best checkpoint {old_best_path}: {exc}")
+
+        # ===================== Collective ops: ALL ranks must execute =====================
+        if need_consolidate:
+            # all ranks: release consolidated full optimizer state cached on rank0 GPU
+            self._zero_optimizer_state()
+
 
 
     def _get_train_dataset_checkpoint_state(self):
@@ -1887,20 +1943,26 @@ class Trainer:
                 )
             
             ran_val = False
-            if self.rank == 0 and (self.epoch + 1) % self.val_freq == 0:
-                val_epoch_start_time = time.time()
-                val_metrics = self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+            if (self.epoch + 1) % self.val_freq == 0:
+                val_metrics = None
+                if self.rank == 0:
+                    val_epoch_start_time = time.time()
+                    val_metrics = self.run_val(val_loader=self.val_loader, epoch=self.epoch)
+                    last_val_epoch_duration_sec = time.time() - val_epoch_start_time
+                # if not _IS_KAGGLE:
                 self.save_best_checkpoint(val_metrics, self.epoch)
-                last_val_epoch_duration_sec = time.time() - val_epoch_start_time
                 ran_val = True
 
-            self.save_checkpoint(self.epoch)
-            if self.is_distributed:
-                dist.barrier()
+            if (self.checkpoint_conf.save_freq > 0 and int(self.epoch + 1) % self.checkpoint_conf.save_freq == 0):
+                if not _IS_KAGGLE:
+                    self.save_checkpoint(self.epoch)
 
-            # gc.collect()
+            gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+            if self.is_distributed:
+                dist.barrier()
 
             self.epoch += 1
 
@@ -1916,9 +1978,11 @@ class Trainer:
                 dist.broadcast(stop_tensor, src=0)
                 stop_for_time = bool(stop_tensor.item())
             if stop_for_time:
+                self.save_checkpoint(self.epoch)
                 break
             if self.epoch == self.cfg.get("break_at", -1):
                 logging.info(f"break_at {self.epoch}")
+                self.save_checkpoint(self.epoch)
                 break
         # _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
         self.epoch -= 1
@@ -1950,9 +2014,10 @@ class Trainer:
         # The concept of a "fresh epoch" is not directly available with CombinedLoader
         outs = self.val_epoch(val_loader, is_fresh_epoch=is_fresh_epoch)
         outs_json = self._to_jsonable(outs)
+        del outs
         # gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # if torch.cuda.is_available():
+        #     torch.cuda.empty_cache()
         #     torch.cuda.reset_peak_memory_stats()
 
         if self.tb_writer is not None:
@@ -2260,19 +2325,20 @@ class Trainer:
                         loss_meters[f"Grad/{key}"].update(grad_norm)
                     skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
+                skip_optimizer_step = self._sync_skip_optimizer_step(skip_optimizer_step)
                 if skip_optimizer_step:
                     logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
                     self.nonfinite_count+=1
                     if self.nonfinite_count > 5:
                         raise ValueError(f"Error because nonfinite gradients were detected.")
                     self.scaler.update()
-                    self._clear_optimizer_step_memory()
+                    # self._clear_optimizer_step_memory()
                 else:
                     # Optimizer step
                     for optim in self.optims:
                         self.scaler.step(optim.optimizer)
                     self.scaler.update()
-                    self._clear_optimizer_step_memory()
+                    # self._clear_optimizer_step_memory()
             else:
                 accum_steps = self.accum_steps
                 should_step = ((data_iter + 1) % accum_steps == 0) or (data_iter + 1 == limit_train_batches)
@@ -2356,6 +2422,7 @@ class Trainer:
                             loss_meters[f"Grad/{key}"].update(grad_norm)
                         skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
+                    skip_optimizer_step = self._sync_skip_optimizer_step(skip_optimizer_step)
                     if skip_optimizer_step:
                         logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
                         self.nonfinite_count+=1
@@ -2366,7 +2433,7 @@ class Trainer:
                         for optim in self.optims:
                             self.scaler.step(optim.optimizer)
                         self.scaler.update()
-                    self._clear_optimizer_step_memory()
+                    # self._clear_optimizer_step_memory()
 
             # Measure elapsed time
             batch_time.update(time.time() - end)
@@ -2391,12 +2458,20 @@ class Trainer:
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv("train", loss_meters)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        self._clear_optimizer_step_memory()
+        # if torch.cuda.is_available():
+        #     torch.cuda.empty_cache()
 
         return True
 
 
+
+    def _sync_skip_optimizer_step(self, skip: bool) -> bool:
+        if self.is_distributed:
+            skip_tensor = torch.tensor(int(skip), device=self.device)
+            dist.all_reduce(skip_tensor, op=dist.ReduceOp.MAX)
+            return bool(skip_tensor.item())
+        return skip
 
     def _clear_optimizer_step_memory(self) -> None:
         for optim in self.optims:
