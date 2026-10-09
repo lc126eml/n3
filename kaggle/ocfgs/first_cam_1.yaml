@@ -9,11 +9,11 @@ memo_keys: ["seed","model.loop", "model.simple_camera", "data.pose_convention", 
 run_id: 0
 total_runs: 10
 seed: 42
-end_time: 22.0
+# end_time: 22.0
 simple:
-  - total_run_time_hr: 11.
+  - total_run_time_hr: 11.3
   - max_epochs: 130
-  - break_at: 3
+  - break_at: 130
   - accum_steps: 4
   - checkpoint.resume_config_skip_keys: [total_run_time_hr]
   - distributed.enabled: true
@@ -26,8 +26,8 @@ simple:
   - model.rope_freq: 100
   # - model.depth: 12
   # - model.grad_start_layer: 0
-  - data.pose_convention: c2w
-  - data.data_module.train_config.batch_size: 80
+  - data.pose_convention: w2c
+  - data.data_module.train_config.batch_size: 70
   - data.data_module.train_config.augs.max_scale: 1.2
   - data.data_module.train_config.augs.random_crop_prob: 0.0
   - data.data_module.train_config.augs.pcrop: 0.0
@@ -38,6 +38,7 @@ simple:
       val_freq: 1
       warmup_epochs: -1
       warmup_batch_cost_discount: 0.55
+      exclude_param_names: ["aggregator.patch_embed", "camera_head", "dense_head.proj"]
       unfreeze_configs:
         - epoch: 0
           modules:
@@ -51,7 +52,7 @@ simple:
         #   modules:
         #     frame_block_ranges: [[20, 22]]
         #   batch_cost_discount: 0.75
-        - epoch: 0
+        - epoch: 5
           modules:
             frame_block_ranges: [[0, 24]]
           batch_cost_discount: 0.11

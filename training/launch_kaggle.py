@@ -425,6 +425,14 @@ def main() -> None:
         _apply_kaggle_runtime_overrides(cfg)
         _apply_kaggle_amp_policy(cfg)
 
+    # Full resume: load the checkpoint meta and merge the resumed run's config
+    # here so the merged distributed.enabled decides the launch mode.
+    from train_utils.checkpoint import load_resume_meta, merge_resume_config
+
+    resume_meta = load_resume_meta(cfg)
+    if resume_meta is not None:
+        cfg = merge_resume_config(cfg, resume_meta)
+
     if _IS_KAGGLE:
         print(f"[launch] Kaggle detected, project_root={project_root}")
         print(f"[launch] config_name={config_name}")
@@ -442,9 +450,9 @@ def main() -> None:
         if cfg.get("distributed", {}).get("enabled", False) and torch.cuda.device_count() > 1:
             from train_utils.distributed import run_distributed
 
-            run_distributed(cfg)
+            run_distributed(cfg, resume_meta=resume_meta)
         else:
-            Trainer(cfg).run()
+            Trainer(cfg, resume_meta=resume_meta).run()
     except Exception as exc:
         # from kaggle.utils.supabase_utils import log_to_supabase
         # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")

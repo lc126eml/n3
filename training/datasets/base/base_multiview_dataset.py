@@ -28,6 +28,7 @@ def get_ray_map(c2w1, c2w2, intrinsics, h, w):
     return ray_map
 
 
+MAX_RETRY = 10
 class BaseMultiViewDataset(EasyDataset):
     """Define all basic options.
 
@@ -558,7 +559,27 @@ class BaseMultiViewDataset(EasyDataset):
         resolution = self._resolutions[
             ar_idx
         ]  # DO NOT CHANGE THIS (compatible with BatchedRandomSampler)
-        views = self._get_views(idx, resolution, self._rng, nview)
+
+        views = None
+        rng = self._rng  # local copy, do not modify self._rng
+
+        for _ in range(MAX_RETRY):
+            try:
+                views = self._get_views(idx, resolution, rng, nview)
+                if len(views['img']) == nview:
+                    break
+                # len mismatch: will go to reseed and retry
+            except Exception:
+                # any exception from _get_views, swallow and retry
+                pass
+
+            # reseed local rng for next attempt, using current rng to generate new seed
+            new_seed = rng.integers(0, 2**32)
+            rng = np.random.default_rng(seed=new_seed)
+        else:
+            raise RuntimeError(f"Failed to get valid views after {MAX_RETRY} retries")
+
+        # views = self._get_views(idx, resolution, self._rng, nview)
         assert len(views['img']) == nview
 
         assert "camera_pose" in views

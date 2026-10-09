@@ -3,6 +3,7 @@ import os
 
 from hydra import initialize, compose
 from trainer import Trainer
+from train_utils.checkpoint import load_resume_meta, merge_resume_config
 from train_utils.distributed import run_distributed
 
 
@@ -21,11 +22,17 @@ def main():
     with initialize(version_base=None, config_path="configs"):
         cfg = compose(config_name=args.cfg)
 
+    # Full resume: load the checkpoint meta and merge the resumed run's config
+    # here so the merged distributed.enabled decides the launch mode.
+    resume_meta = load_resume_meta(cfg)
+    if resume_meta is not None:
+        cfg = merge_resume_config(cfg, resume_meta)
+
     if not cfg.get("distributed", {}).get("enabled", False)  or torch.cuda.device_count() <= 1:
-        Trainer(cfg).run()
+        Trainer(cfg, resume_meta=resume_meta).run()
         return
 
-    run_distributed(cfg)
+    run_distributed(cfg, resume_meta=resume_meta)
 
 
 if __name__ == "__main__":

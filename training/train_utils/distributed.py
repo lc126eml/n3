@@ -19,7 +19,7 @@ def get_machine_local_and_dist_rank():
     return local_rank, distributed_rank
 
 
-def _distributed_worker(rank, config, world_size, rendezvous_file):
+def _distributed_worker(rank, config, resume_meta, world_size, rendezvous_file):
     os.environ["RANK"] = str(rank)
     os.environ["LOCAL_RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
@@ -34,7 +34,7 @@ def _distributed_worker(rank, config, world_size, rendezvous_file):
     )
     try:
         from trainer import Trainer
-        Trainer(cfg).run()
+        Trainer(cfg, resume_meta=resume_meta).run()
     except Exception as e:
         import traceback
         print(f"Rank {rank} error:\n{traceback.format_exc()}")
@@ -43,7 +43,7 @@ def _distributed_worker(rank, config, world_size, rendezvous_file):
         dist.destroy_process_group()
 
 
-def run_distributed(cfg):
+def run_distributed(cfg, resume_meta=None):
     world_size = torch.cuda.device_count()
     if world_size < 2:
         raise RuntimeError("distributed.enabled requires at least two visible CUDA devices")
@@ -60,7 +60,7 @@ def run_distributed(cfg):
     with tempfile.TemporaryDirectory(prefix="n3r_ddp_") as rendezvous_dir:
         mp.spawn(
             _distributed_worker,
-            args=(config, world_size, os.path.join(rendezvous_dir, "rendezvous")),
+            args=(config, resume_meta, world_size, os.path.join(rendezvous_dir, "rendezvous")),
             nprocs=world_size,
             join=True,
         )

@@ -66,20 +66,21 @@ class OptimizerWrapper:
 # -----------------------------------------------------------------------------
 
 
-def validate_param_group_params(param_groups: List[Dict], model: nn.Module):
-    """Ensure param groups are non-overlapping and include all model params."""
+def validate_param_group_params(param_groups: List[Dict], model: nn.Module, excluded: Set[nn.Parameter] = None):
+    """Ensure param groups are non-overlapping and cover all non-excluded model params."""
 
     for pg in param_groups:
         assert len(pg["params"]) == len(set(pg["params"]))
 
     parameters = [set(pg["params"]) for pg in param_groups]
-    model_parameters = {p for _, p in model.named_parameters()}
+    excluded = excluded or set()
+    model_parameters = {p for _, p in model.named_parameters()} - excluded
 
     for p1, p2 in itertools.permutations(parameters, 2):
         assert p1.isdisjoint(p2), "Parameter groups should be disjoint"
 
     assert set.union(*parameters) == model_parameters, (
-        "Parameter groups must cover ALL model parameters "
+        "Parameter groups must cover all non-excluded model parameters "
         f"(found {len(set.union(*parameters))} / {len(model_parameters)})"
     )
 
@@ -163,6 +164,24 @@ def _unix_pattern_to_parameter_names(scheduler_cfg,
     )
 
 
+def exclude_param_pattern_to_parameter_names(patterns: Union[List[str], str, None],
+                                             parameter_names: Set[str]) -> Set[str]:
+    """Return parameter names that contain any of the given substrings."""
+    if patterns is None:
+        return set()
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    excluded: Set[str] = set()
+    for pat in patterns:
+        matches = {name for name in parameter_names if pat in name}
+        if matches:
+            logging.info(f"Excluding {len(matches)} parameter(s) matching substring [{pat}]")
+            excluded.update(matches)
+        else:
+            logging.warning(f"Exclude pattern [{pat}] matched no parameters")
+    return excluded
+
+
 # -----------------------------------------------------------------------------
 # Scheduler helpers
 # -----------------------------------------------------------------------------
@@ -235,13 +254,24 @@ def construct_optimizer(model: nn.Module,
                         options_conf: Union[Mapping[str, List], None] = None,
                         param_group_modifiers_conf: Union[List, None] = None,
                         validate_param_groups: bool = True,
-                        shard_optimizer_state: bool = False) -> OptimizerWrapper:
+                        shard_optimizer_state: bool = False,
+                        exclude_param_names: Union[List[str], str, None] = None) -> OptimizerWrapper:
     """Build an OptimizerWrapper from hydra configs.
 
-    *No* allowlist handling – we always optimize *all* model parameters.
+    Parameters matching ``exclude_param_names`` (substring match) are left out
+    of every optimizer parameter group.
     """
 
-    named_parameters = dict(model.named_parameters())
+    all_named_parameters = dict(model.named_parameters())
+    all_parameter_names = set(all_named_parameters.keys())
+    excluded_names = exclude_param_pattern_to_parameter_names(
+        exclude_param_names, all_parameter_names
+    )
+    excluded_params = {all_named_parameters[name] for name in excluded_names}
+    named_parameters = {
+        name: param for name, param in all_named_parameters.items()
+        if name not in excluded_names
+    }
     all_parameter_names = set(named_parameters.keys())
     module_cls_to_all_param_names = get_module_cls_to_param_names(model)
 
@@ -279,7 +309,7 @@ def construct_optimizer(model: nn.Module,
     )
 
     if validate_param_groups:
-        validate_param_group_params(param_groups, model)
+        validate_param_group_params(param_groups, model, excluded_params)
 
     optimizer = _instantiate_optimizer(optimizer_conf, param_groups, shard_optimizer_state)
     return OptimizerWrapper(optimizer, schedulers)
@@ -290,12 +320,14 @@ def construct_optimizers(model: nn.Module, optim_conf, shard_optimizer_state: bo
     if optim_conf is None:
         return None
 
+    exclude_param_names = getattr(optim_conf, "exclude_param_names", None)
     optimizer = construct_optimizer(
         model,
         optim_conf.optimizer,
         _augment_lr_options_with_lr_multipliers(optim_conf),
         validate_param_groups=True,
         shard_optimizer_state=shard_optimizer_state,
+        exclude_param_names=exclude_param_names,
     )
     return [optimizer]
 

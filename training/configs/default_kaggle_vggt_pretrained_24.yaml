@@ -471,6 +471,8 @@ optim:
       ratio: 0.1
       param_names:
         - "dense_head.*"
+  exclude_param_names:
+    - "aggregator.patch_embed"
   amp:
     enabled: false
     amp_dtype: bfloat16

@@ -24,7 +24,21 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Mapping, Protocol, runtime_checkable
 
 
+def log_gpu_memory(tag, rank=0):
+    device = torch.cuda.current_device()
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
 
+    logging.warning(
+        f"%s rank{rank}: allocated=%.2f GiB, reserved=%.2f GiB, "
+        "free=%.2f GiB, total=%.2f GiB, "
+        "peak_allocated=%.2f GiB",
+        tag,
+        torch.cuda.memory_allocated(device) / 2**30,
+        torch.cuda.memory_reserved(device) / 2**30,
+        free_bytes / 2**30,
+        total_bytes / 2**30,
+        torch.cuda.max_memory_allocated(device) / 2**30,
+    )
 
 def check_and_fix_inf_nan(input_tensor, loss_name="default", hard_max=100):
     """
