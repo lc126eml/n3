@@ -168,8 +168,7 @@ class Trainer:
         self._setup_timers()
 
         self._resume_ckpt_path = None
-        self._resume_checkpoint = None
-        self._resume_checkpoint_amp = None
+        self._resume_meta = None
         self._trainer_config_snapshot = None
         self.metrics_history = {"train": [], "val": []}
         self.best_checkpoint_metric = None
@@ -180,7 +179,7 @@ class Trainer:
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
-        if self.accumulation_mode == "across_batches" and self._resume_checkpoint is None:
+        if self.accumulation_mode == "across_batches":
             cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
         self.cfg = cfg
 
@@ -356,19 +355,13 @@ class Trainer:
         # if self._resume_ckpt_path is None:
         #     self._resume_ckpt_path = self._find_resume_checkpoint_path(cfg)
         # logging.info(f"{self._resume_ckpt_path=} {cfg.checkpoint.resume_checkpoint_path=}")
-        if self._resume_ckpt_path is not None:
-            if self._resume_checkpoint is None:
-                self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
-            if self._resume_checkpoint_amp is None and self._resume_checkpoint:
-                resume_cfg = self._resume_checkpoint.get("trainer_config")
-                if resume_cfg:
-                    self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
-            self._load_resuming_checkpoint(self._resume_ckpt_path, checkpoint=self._resume_checkpoint)
+        if self._resume_ckpt_path is not None and str(self._resume_ckpt_path).endswith(".pt"):
+            self._load_resuming_checkpoint(self._resume_ckpt_path, self._resume_meta)
             # Re-establish every epoch-gated runtime transition because state_dicts
             # do not preserve requires_grad flags or sampler batch-cost changes.
+            # Must run after the load so self.epoch is the resumed epoch.
             self.end_warmup(replay=True)
-            self._resume_checkpoint.clear()
-            self._resume_checkpoint = None
+            self._resume_meta = None
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -417,9 +410,9 @@ class Trainer:
 
     def _copy_resume_val_stats(self) -> None:
         """Carry validation history into the new log directory on full resume."""
-        if self._resume_ckpt_path is None or not self._resume_checkpoint:
+        if self._resume_ckpt_path is None or not self._resume_meta:
             return
-        if self._resume_checkpoint.get("trainer_config") is None:
+        if self._resume_meta.get("trainer_config") is None:
             return
 
         _, distributed_rank = get_machine_local_and_dist_rank()
@@ -537,14 +530,23 @@ class Trainer:
             sys.exit(0)
             return cfg
 
-        self._resume_checkpoint = self._load_checkpoint_file(self._resume_ckpt_path)
-        if not self._resume_checkpoint or not isinstance(self._resume_checkpoint, dict):
+        self._resume_meta = None
+        if str(self._resume_ckpt_path).endswith(".pt"):
+            base = str(self._resume_ckpt_path)[:-3]
+            meta_path = f"{base}_meta.pt"
+            if g_pathmgr.exists(meta_path):
+                # Split checkpoints keep everything resume needs in the meta
+                # file; avoid loading the multi-GB model file here.
+                self._resume_meta = self._load_checkpoint_file(meta_path)
+        if self._resume_meta is None:
+            # Legacy single-file checkpoint (model + meta in one file).
+            self._resume_meta = self._load_checkpoint_file(self._resume_ckpt_path)
+        if not self._resume_meta or not isinstance(self._resume_meta, dict):
             raise ValueError(f"Checkpoint could not be loaded: {self._resume_ckpt_path}")
-        resume_cfg = self._resume_checkpoint.get("trainer_config")
+        resume_cfg = self._resume_meta.get("trainer_config")
         if resume_cfg is None:
             print("Checkpoint does not contain trainer_config; cannot resume with minimal config.")
             return cfg
-        self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
         merged = OmegaConf.create(resume_cfg)
         # merged = OmegaConf.merge(cfg, base_cfg, force_add=True)
         resume_skip_keys = self._normalize_resume_skip_keys(cfg)
@@ -821,19 +823,51 @@ class Trainer:
 
         return new_ckpt
 
-    def _load_resuming_checkpoint(self, ckpt_path: str, checkpoint: Optional[Dict[str, Any]] = None):
+    def _restore_optimizer_state_dict(self, optimizer: torch.optim.Optimizer, state: Dict[str, Any]) -> None:
+        """Restore an optimizer state dict (a per-rank shard when ZeRO is used).
+
+        The saved state is mapped to parameters positionally within each param
+        group, so verify the group structure matches the freshly built
+        optimizer before loading; torch would raise ValueError otherwise.
+        """
+        saved_groups = state.get("param_groups") if isinstance(state, dict) else None
+        if saved_groups is not None:
+            saved_lens = [len(group.get("params", [])) for group in saved_groups]
+            current_lens = [len(group.get("params", [])) for group in optimizer.param_groups]
+            if saved_lens != current_lens:
+                raise ValueError(
+                    f"Optimizer param-group structure mismatch: saved {saved_lens} vs "
+                    f"current {current_lens}. The checkpoint was likely saved with a "
+                    f"different world size or optimizer config."
+                )
+        optimizer.load_state_dict(state)
+        state_bytes = sum(
+            value.numel() * value.element_size()
+            for param_state in optimizer.state.values()
+            for value in param_state.values()
+            if torch.is_tensor(value)
+        )
+        logging.info(
+            "Restored optimizer state: %d parameter states, %.2f GiB",
+            len(optimizer.state),
+            state_bytes / 2**30,
+        )
+
+    def _load_resuming_checkpoint(self, ckpt_path: str, meta: Optional[Dict[str, Any]] = None):
         # This method seems fine for single GPU as it loads to CPU first.
         logging.info(f"Resuming training from {ckpt_path}")
-        if checkpoint is None:
-            checkpoint = self._load_checkpoint_file(ckpt_path)
+        checkpoint = self._load_checkpoint_file(ckpt_path)
         if checkpoint is None:
             logging.warning("Checkpoint could not be loaded; skipping resume.")
             return
-            
+        if meta is not None:
+            # Merge epoch/steps/scaler/rng/etc. saved in the companion meta file.
+            checkpoint.update(meta)
+
         model_state_dict = self._normalize_model_state_dict(checkpoint)
-        
+
         if self.checkpoint_conf.get("filter_keys") and self.checkpoint_conf.filter_keys.get("enabled"):
-            if "trainer_config" in checkpoint:
+            if meta is not None:
                 logging.info("Checkpoint filter_keys is enabled but resume detected; skipping key filtering.")
             else:
                 filter_conf = self.checkpoint_conf.filter_keys
@@ -847,6 +881,7 @@ class Trainer:
 
         model_state_dict = self._filter_mismatched_model_state_dict(model_state_dict)
         missing_keys, unexpected_keys = self.model.load_state_dict(model_state_dict, strict=self.checkpoint_conf.strict)
+        del model_state_dict
         
         if missing_keys:
             logging.warning(f"Missing keys when loading model state dict: {missing_keys}")
@@ -859,28 +894,48 @@ class Trainer:
             logging.info(f"No unexpected keys when loading model state dict")
         if not self.checkpoint_conf.get("resume_optimizer", True):
             logging.info("Skipping optimizer state restore because checkpoint.resume_optimizer=False")
-        elif "optimizer" in checkpoint and self.optims:
-            logging.info(f"Loading the optimizer state dict")
-            opt_state = checkpoint["optimizer"]
-            try:
-                if isinstance(opt_state, list):
-                    if len(opt_state) != len(self.optims):
-                        logging.warning(
-                            f"Optimizer state count ({len(opt_state)}) does not match current optimizers "
-                            f"({len(self.optims)}); restoring the first {min(len(opt_state), len(self.optims))} only."
-                        )
-                    for optim, state in zip(self.optims, opt_state):
-                        optim.optimizer.load_state_dict(state)
-                else:
-                    if len(self.optims) == 1:
-                        self.optims[0].optimizer.load_state_dict(opt_state)
-                    else:
-                        logging.warning("Optimizer state is not a list but multiple optimizers exist; skipping restore.")
-            except Exception as exc:
-                if self.checkpoint_conf.get("lazy_resume_optimizer", False):
-                    logging.warning(f"Skipping optimizer state restore after load failure: {exc}")
-                else:
-                    raise
+        elif self.optims:
+            if str(ckpt_path).endswith(".pt"):
+                base = str(ckpt_path)[:-3]
+                optimizer_path = f"{base}_optimizer_{self.rank}.pt"
+                if g_pathmgr.exists(optimizer_path):
+                    logging.info(f"Loading the optimizer state dict from {optimizer_path}")
+                    opt_state = self._load_checkpoint_file(optimizer_path)
+                    if opt_state is not None:
+                        logging.info(f"Loading the optimizer state dict")
+                        if torch.cuda.is_available():
+                            logging.info(
+                                "CUDA memory before optimizer restore: allocated=%.2f GiB, reserved=%.2f GiB",
+                                torch.cuda.memory_allocated() / 2**30,
+                                torch.cuda.memory_reserved() / 2**30,
+                            )
+                        try:
+                            if isinstance(opt_state, list):
+                                logging.warning(f"{len(opt_state)=}  {len(self.optims)=}")
+                                if len(opt_state) != len(self.optims):
+                                    logging.warning(
+                                        f"Optimizer state count ({len(opt_state)}) does not match current optimizers "
+                                        f"({len(self.optims)}); restoring the first {min(len(opt_state), len(self.optims))} only."
+                                    )
+                                for optim, state in zip(self.optims, opt_state):
+                                    target = optim.optimizer.optim if self.shard_optimizer_state else optim.optimizer
+                                    self._restore_optimizer_state_dict(target, state)
+                            else:
+                                logging.warning(f" {len(self.optims)=}")
+                                if len(self.optims) == 1:
+                                    target = self.optims[0].optimizer.optim if self.shard_optimizer_state else self.optims[0].optimizer
+                                    self._restore_optimizer_state_dict(target, opt_state)
+                                else:
+                                    logging.warning("Optimizer state is not a list but multiple optimizers exist; skipping restore.")
+                            del opt_state
+                        except Exception as exc:
+                            logging.error(f"Skipping optimizer state restore after load failure: {exc}")
+                        if torch.cuda.is_available():
+                            logging.info(
+                                "CUDA memory after optimizer restore: allocated=%.2f GiB, reserved=%.2f GiB",
+                                torch.cuda.memory_allocated() / 2**30,
+                                torch.cuda.memory_reserved() / 2**30,
+                            )
 
         loaded_epoch = None
         if "epoch" in checkpoint:
@@ -897,10 +952,10 @@ class Trainer:
         self.ckpt_time_elapsed = checkpoint.get("time_elapsed", 0)
 
         if "scaler" in checkpoint and self.optim_conf.amp.enabled:
-            if self._resume_checkpoint_amp is None:
+            saved_amp = (checkpoint.get("trainer_config") or {}).get("optim", {}).get("amp")
+            if saved_amp is None:
                 self.scaler.load_state_dict(checkpoint["scaler"])
             else:
-                saved_amp = self._resume_checkpoint_amp
                 saved_enabled = saved_amp.get("enabled") if isinstance(saved_amp, dict) else None
                 saved_dtype = saved_amp.get("amp_dtype") if isinstance(saved_amp, dict) else None
                 current_enabled = self.optim_conf.amp.enabled
@@ -928,6 +983,7 @@ class Trainer:
             self._restore_train_dataset_checkpoint_state(checkpoint["train_dataset_checkpoint_state"])
         self._restore_metrics_history(checkpoint.get("metrics_history"))
         self._restore_best_checkpoint_state_from_history()
+        del checkpoint
 
 
     def _setup_device(self, device):
@@ -1076,7 +1132,6 @@ class Trainer:
             "prev_epoch": epoch,
             "steps": self.steps,
             "time_elapsed": self.time_elapsed_meter.val,
-            "optimizer": [optim.optimizer.state_dict() for optim in self.optims],
             "trainer_config": OmegaConf.to_container(self.cfg, resolve=True),
             "metrics_history": self.metrics_history,
             "rng_state": {
@@ -1090,12 +1145,19 @@ class Trainer:
         if train_dataset_checkpoint_state is not None:
             checkpoint_content["train_dataset_checkpoint_state"] = train_dataset_checkpoint_state
         
-        if len(self.optims) == 1:
-            checkpoint_content["optimizer"] = checkpoint_content["optimizer"][0]
         if self.optim_conf.amp.enabled:
             checkpoint_content["scaler"] = self.scaler.state_dict()
 
         return checkpoint_content
+
+    def _build_optimizer_content(self):
+        if self.shard_optimizer_state:
+            optimizer_content = [optim.optimizer.optim.state_dict() for optim in self.optims]        
+        else:
+            optimizer_content = [optim.optimizer.state_dict() for optim in self.optims]        
+        if len(self.optims) == 1:
+            optimizer_content = optimizer_content[0]
+        return optimizer_content
 
     def _consolidate_optimizer_state(self) -> None:
         if self.shard_optimizer_state:
@@ -1109,42 +1171,39 @@ class Trainer:
                 optim.optimizer.zero_consolidated_state()
 
     def save_checkpoint(self, epoch, checkpoint_names=None):
-        logging.warning(f"_consolidate_optimizer_state {self.rank}")
-        self._consolidate_optimizer_state()
+        # self._consolidate_optimizer_state()
+
+        checkpoint_folder = self.checkpoint_conf.save_dir
+        safe_makedirs(checkpoint_folder)
+        if checkpoint_names is None:
+            checkpoint_names = ["checkpoint"]
+        # Save the checkpoint for DDP only
+        saver = DDPCheckpointSaver(
+            checkpoint_folder,
+            checkpoint_names=checkpoint_names,
+            rank=self.rank,
+            epoch=epoch,
+        )
+
         if self.rank == 0:
-            checkpoint_folder = self.checkpoint_conf.save_dir
-            safe_makedirs(checkpoint_folder)
-
-            if checkpoint_names is None:
-                checkpoint_names = ["checkpoint"]
-
-            logging.warning(f"_build_checkpoint_content {self.rank}")
             checkpoint_content = self._build_checkpoint_content(epoch)
 
-            # Save the checkpoint for DDP only
-            saver = DDPCheckpointSaver(
-                checkpoint_folder,
-                checkpoint_names=checkpoint_names,
-                rank=0,
-                epoch=epoch,
-            )
-            logging.warning(f"save_checkpoint {self.rank}")
             saver.save_checkpoint(
                 model=unwrap_model(self.model),
+                meta=checkpoint_content,
                 ema_models = None,
                 skip_saving_parameters=[],
-                **checkpoint_content,
             )
 
-            logging.warning(f"del_checkpoint {self.rank}")
             del checkpoint_content
             # gc.collect()
             # torch.cuda.empty_cache()  # debug only
 
+        optimizer_content = self._build_optimizer_content()
+        saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
+        del optimizer_content
         # Collective op: ALL ranks, must execute after rank‑0 IO
-        logging.warning(f"_zero_optimizer_state {self.rank}")
-        self._zero_optimizer_state()
-        logging.warning(f"_zero_optimizer_state after {self.rank}")
+        # self._zero_optimizer_state()
 
 
 
@@ -1252,42 +1311,38 @@ class Trainer:
             return
 
         # ===================== Collective ops: ALL ranks must execute =====================
-        need_consolidate = should_save and best_full and self.shard_optimizer_state
-        if need_consolidate:
+        # need_consolidate = should_save and best_full and self.shard_optimizer_state
+        # if need_consolidate:
             # all ranks: gather optimizer shards to rank0 GPU
-            self._consolidate_optimizer_state()
+            # self._consolidate_optimizer_state()
 
-        # -------------------- Only rank0 run IO/save logic --------------------
-        if self.rank == 0 and should_save:
-            self.best_checkpoint_metric = metric_value
-            self.best_checkpoint_epoch = epoch
-            checkpoint_folder = self.checkpoint_conf.save_dir
-            safe_makedirs(checkpoint_folder)
-            checkpoint_name = f"best_ep{int(epoch)}"
-            checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
+        checkpoint_folder = self.checkpoint_conf.save_dir
+        safe_makedirs(checkpoint_folder)
+        checkpoint_name = f"best_ep{int(epoch)}"
 
-            logging.info(
-                f"Saving best {'checkpoint' if best_full else 'model weights'} at epoch {epoch} to {checkpoint_path} "
-                f"({monitor}={metric_value:.6g})"
+        if best_full:
+            saver = DDPCheckpointSaver(
+                checkpoint_folder,
+                checkpoint_names=[checkpoint_name],
+                rank=self.rank,
+                epoch=epoch,
             )
 
-            if best_full:
-                saver = DDPCheckpointSaver(
-                    checkpoint_folder,
-                    checkpoint_names=[checkpoint_name],
-                    rank=0,
-                    epoch=epoch,
-                )
+            if self.rank == 0:
                 checkpoint_content = self._build_checkpoint_content(epoch)
                 saver.save_checkpoint(
                     model=unwrap_model(self.model),
+                    meta=checkpoint_content,
                     ema_models=None,
                     skip_saving_parameters=[],
-                    **checkpoint_content,
                 )
-                # release large checkpoint dict immediately after IO
                 del checkpoint_content
-            else:
+            optimizer_content = self._build_optimizer_content()
+            saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
+            del optimizer_content
+        else:
+            if self.rank == 0:
+                checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
                 checkpoint = unwrap_model(self.model).state_dict()
                 robust_torch_save(checkpoint, checkpoint_path)
                 del checkpoint
@@ -1295,9 +1350,18 @@ class Trainer:
             # GC only on rank0 to collect large tensor objects
             # import gc
             # gc.collect()
-
-            for old_best_path in Path(checkpoint_folder).glob("best_ep*.pt"):
-                if str(old_best_path) == checkpoint_path:
+        if self.rank == 0:
+            self.best_checkpoint_metric = metric_value
+            self.best_checkpoint_epoch = epoch
+            logging.info(
+                f"Saving best {'checkpoint' if best_full else 'model weights'} at epoch {epoch}"
+                f"({monitor}={metric_value:.6g})"
+            )
+            for old_best_path in Path(checkpoint_folder).glob("best_ep*"):
+                old_name = old_best_path.name
+                if old_name == f"{checkpoint_name}.pt" or old_name.startswith(
+                    f"{checkpoint_name}_"
+                ):
                     continue
                 try:
                     old_best_path.unlink()
@@ -1305,9 +1369,9 @@ class Trainer:
                     logging.warning(f"Failed to remove old best checkpoint {old_best_path}: {exc}")
 
         # ===================== Collective ops: ALL ranks must execute =====================
-        if need_consolidate:
+        # if need_consolidate:
             # all ranks: release consolidated full optimizer state cached on rank0 GPU
-            self._zero_optimizer_state()
+            # self._zero_optimizer_state()
 
 
 

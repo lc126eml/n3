@@ -257,7 +257,7 @@ checkpoint:
   best_full: false
   resume_checkpoint_path: /kaggle/input/datasets/sinayliu/vomega-ds/vggt_omega_1b_512.pt
   # resume_checkpoint_path: /kaggle/input/datasets/sinayliu/vomega-ds/vggt_omega_1b_256_text.pt
-  resume_config_skip_keys: [break_at]
+  resume_config_skip_keys: [break_at, optim.exclude_param_names]
   resume_optimizer: true
   lazy_resume_optimizer: true
   # When resuming, checkpoint trainer_config is preferred by default.
@@ -471,6 +471,8 @@ optim:
       ratio: 0.1
       param_names:
         - "dense_head.*"
+  exclude_param_names:
+    - "aggregator.patch_embed"
   amp:
     enabled: false
     amp_dtype: bfloat16

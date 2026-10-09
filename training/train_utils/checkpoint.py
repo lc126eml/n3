@@ -53,17 +53,17 @@ class DDPCheckpointSaver:
         self.worker_id = rank
         self.epoch = epoch
 
-    def save_checkpoint(
+    def save_model_checkpoint(
         self,
         model: nn.Module,
         ema_models: Optional[List[Any]] = None,
         skip_saving_parameters: Optional[List[str]] = None,
-        **kwargs,
     ) -> None:
-        checkpoint = dict(**kwargs)
-        checkpoint["model"] = exclude_params_matching_unix_pattern(
-            patterns=skip_saving_parameters, state_dict=model.state_dict()
-        )
+        checkpoint = {
+            "model": exclude_params_matching_unix_pattern(
+                patterns=skip_saving_parameters, state_dict=model.state_dict()
+            )
+        }
         if ema_models is not None:
             checkpoint["ema_models"] = [
                 exclude_params_matching_unix_pattern(
@@ -73,20 +73,65 @@ class DDPCheckpointSaver:
                 for ema_model in ema_models
             ]
 
-        # DDP checkpoints are only saved on rank 0 (all workers are identical)
-        # We CANNOT move this before, for example to spare the creation of the
-        # `state_dict` on ranks other than rank 0, because some data loaders
-        # have implicit synchronization within their state
-        if self.worker_id == 0:
-            for ckpt_name in self.checkpoint_names:
-                checkpoint_path = os.path.join(
-                    self.checkpoint_folder, f"{ckpt_name}.pt"
-                )
-                logging.info(
-                    f"Saving checkpoint at epoch {self.epoch} to {checkpoint_path}"
-                )
-                robust_torch_save(checkpoint, checkpoint_path)
+        # DDP model checkpoints are only saved on rank 0.
+        # We CANNOT move this guard before the creation of the `state_dict`,
+        # because some data loaders have implicit synchronization within their state.
+        if self.worker_id != 0:
+            return
 
+        for ckpt_name in self.checkpoint_names:
+            checkpoint_path = os.path.join(
+                self.checkpoint_folder, f"{ckpt_name}.pt"
+            )
+            logging.info(
+                f"Saving model checkpoint at epoch {self.epoch} to {checkpoint_path}"
+            )
+            robust_torch_save(checkpoint, checkpoint_path)
+
+    def save_optimizer_checkpoint(self, optimizer_state_dicts: Any) -> None:
+        if optimizer_state_dicts is None:
+            return
+
+        for ckpt_name in self.checkpoint_names:
+            checkpoint_path = os.path.join(
+                self.checkpoint_folder,
+                f"{ckpt_name}_optimizer_{self.worker_id}.pt",
+            )
+            logging.info(
+                f"Saving optimizer checkpoint at epoch {self.epoch} to {checkpoint_path}"
+            )
+            robust_torch_save(optimizer_state_dicts, checkpoint_path)
+
+    def save_meta_checkpoint(self, meta: Dict[str, Any]) -> None:
+        if self.worker_id != 0:
+            return
+
+        for ckpt_name in self.checkpoint_names:
+            checkpoint_path = os.path.join(
+                self.checkpoint_folder, f"{ckpt_name}_meta.pt"
+            )
+            logging.info(
+                f"Saving meta checkpoint at epoch {self.epoch} to {checkpoint_path}"
+            )
+            robust_torch_save(meta, checkpoint_path)
+
+    def save_checkpoint(
+        self,
+        model: nn.Module,
+        optimizer_state_dicts: Optional[Any] = None,
+        meta: Optional[Dict[str, Any]] = None,
+        ema_models: Optional[List[Any]] = None,
+        skip_saving_parameters: Optional[List[str]] = None,
+    ) -> None:
+        self.save_model_checkpoint(
+            model=model,
+            ema_models=ema_models,
+            skip_saving_parameters=skip_saving_parameters,
+        )
+        if optimizer_state_dicts is not None:
+            self.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_state_dicts)
+        if meta is not None:
+            self.save_meta_checkpoint(meta=meta)
 
 
 
