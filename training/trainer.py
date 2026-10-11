@@ -147,6 +147,21 @@ class Trainer:
         if not OmegaConf.is_config(cfg):
             cfg = OmegaConf.create(cfg)
 
+        self._scalar_log_keys_cache = {}
+        self._setup_timers()
+
+        self._resume_ckpt_path = None
+        self._resume_meta = None
+        self._trainer_config_snapshot = None
+        self.metrics_history = {"train": [], "val": []}
+        self.best_checkpoint_metric = None
+        self.best_checkpoint_epoch = None
+        self.data_module = None
+
+        cfg = self._merge_resume_config(cfg)
+
+        # Derive distributed flags from the merged config: on resume the
+        # checkpoint's trainer_config may supply the distributed section.
         self.is_distributed = bool(cfg.get("distributed", {}).get("enabled", False))
         if self.is_distributed and not dist.is_initialized():
             raise RuntimeError("distributed.enabled requires an initialized process group")
@@ -164,18 +179,6 @@ class Trainer:
             print("Lock acquired. It is safe to proceed.")
             atexit.register(self.gpu_lock.release)
 
-        self._scalar_log_keys_cache = {}
-        self._setup_timers()
-
-        self._resume_ckpt_path = None
-        self._resume_meta = None
-        self._trainer_config_snapshot = None
-        self.metrics_history = {"train": [], "val": []}
-        self.best_checkpoint_metric = None
-        self.best_checkpoint_epoch = None
-        self.data_module = None
-
-        cfg = self._merge_resume_config(cfg)
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
@@ -550,6 +553,7 @@ class Trainer:
         merged = OmegaConf.create(resume_cfg)
         # merged = OmegaConf.merge(cfg, base_cfg, force_add=True)
         resume_skip_keys = self._normalize_resume_skip_keys(cfg)
+        print("distributed1", merged.distributed, cfg.distributed)
         _missing = object()
         for key_path in resume_skip_keys:
             try:
@@ -579,6 +583,7 @@ class Trainer:
                 )
         if merged.get("checkpoint"):
             merged.checkpoint.filter_keys = OmegaConf.create({"enabled": False})
+        print("distributed2", merged.distributed, cfg.distributed)
         return merged
 
     def _load_checkpoint_file(self, ckpt_path: str) -> Optional[Dict[str, Any]]:
@@ -835,6 +840,7 @@ class Trainer:
             saved_lens = [len(group.get("params", [])) for group in saved_groups]
             current_lens = [len(group.get("params", [])) for group in optimizer.param_groups]
             if saved_lens != current_lens:
+                self._log_optimizer_structure_mismatch(state, optimizer, saved_lens, current_lens)
                 raise ValueError(
                     f"Optimizer param-group structure mismatch: saved {saved_lens} vs "
                     f"current {current_lens}. The checkpoint was likely saved with a "
@@ -852,6 +858,75 @@ class Trainer:
             len(optimizer.state),
             state_bytes / 2**30,
         )
+
+    def _log_optimizer_structure_mismatch(
+        self,
+        state: Dict[str, Any],
+        optimizer: torch.optim.Optimizer,
+        saved_lens: List[int],
+        current_lens: List[int],
+    ) -> None:
+        """Emit diagnostics to identify why a saved optimizer shard does not fit.
+
+        A ZeRO shard is a round-robin subset of the full parameter list, so if
+        the saved param shapes appear as a subsequence of the current ones the
+        checkpoint came from the same model but a different sharding setup;
+        otherwise it came from a different model/optimizer config entirely.
+        """
+        saved_shapes = self._saved_optimizer_param_shapes(state)
+        current_shapes = [
+            tuple(param.shape)
+            for group in optimizer.param_groups
+            for param in group["params"]
+        ]
+        is_subsequence = False
+        if saved_shapes and len(saved_shapes) <= len(current_shapes):
+            matched = 0
+            for shape in current_shapes:
+                if matched < len(saved_shapes) and shape == saved_shapes[matched]:
+                    matched += 1
+            is_subsequence = matched == len(saved_shapes)
+        logging.error(
+            "Optimizer restore debug: rank=%d world_size=%d is_distributed=%s "
+            "shard_optimizer_state=%s optimizer=%s saved_lens=%s current_lens=%s "
+            "saved_shapes_is_subsequence_of_current=%s",
+            self.rank,
+            self.world_size,
+            self.is_distributed,
+            self.shard_optimizer_state,
+            type(optimizer).__name__,
+            saved_lens,
+            current_lens,
+            is_subsequence,
+        )
+        preview = 8
+        logging.error(
+            "Optimizer restore debug: saved param shapes (first %d of %d): %s",
+            preview, len(saved_shapes), saved_shapes[:preview],
+        )
+        logging.error(
+            "Optimizer restore debug: current param shapes (first %d of %d): %s",
+            preview, len(current_shapes), current_shapes[:preview],
+        )
+
+    @staticmethod
+    def _saved_optimizer_param_shapes(state: Dict[str, Any]) -> List[Optional[tuple]]:
+        """Recover saved param shapes from the optimizer's momentum buffers."""
+        shapes = []
+        state_entries = state.get("state", {}) if isinstance(state, dict) else {}
+        for group in state.get("param_groups", []):
+            for idx in group.get("params", []):
+                entry = state_entries.get(idx)
+                if entry is None:
+                    entry = state_entries.get(str(idx))
+                shape = None
+                if isinstance(entry, dict):
+                    for value in entry.values():
+                        if torch.is_tensor(value) and value.ndim > 0:
+                            shape = tuple(value.shape)
+                            break
+                shapes.append(shape)
+        return shapes
 
     def _load_resuming_checkpoint(self, ckpt_path: str, meta: Optional[Dict[str, Any]] = None):
         # This method seems fine for single GPU as it loads to CPU first.
@@ -903,6 +978,16 @@ class Trainer:
                     opt_state = self._load_checkpoint_file(optimizer_path)
                     if opt_state is not None:
                         logging.info(f"Loading the optimizer state dict")
+                        logging.info(
+                            "Optimizer restore context: rank=%d world_size=%d is_distributed=%s "
+                            "shard_optimizer_state=%s saved_type=%s num_optims=%d",
+                            self.rank,
+                            self.world_size,
+                            self.is_distributed,
+                            self.shard_optimizer_state,
+                            type(opt_state).__name__,
+                            len(self.optims),
+                        )
                         if torch.cuda.is_available():
                             logging.info(
                                 "CUDA memory before optimizer restore: allocated=%.2f GiB, reserved=%.2f GiB",
@@ -1154,7 +1239,18 @@ class Trainer:
         if self.shard_optimizer_state:
             optimizer_content = [optim.optimizer.optim.state_dict() for optim in self.optims]        
         else:
-            optimizer_content = [optim.optimizer.state_dict() for optim in self.optims]        
+            optimizer_content = [optim.optimizer.state_dict() for optim in self.optims]
+        group_lens = [
+            [len(group.get("params", [])) for group in content.get("param_groups", [])]
+            for content in optimizer_content
+        ]
+        logging.info(
+            "Saving optimizer state: rank=%d world_size=%d shard_optimizer_state=%s param-group lens=%s",
+            self.rank,
+            self.world_size,
+            self.shard_optimizer_state,
+            group_lens,
+        )
         if len(self.optims) == 1:
             optimizer_content = optimizer_content[0]
         return optimizer_content
