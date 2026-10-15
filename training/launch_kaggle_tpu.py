@@ -18,6 +18,7 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
     "N3R_GITHUB_ZIP_URL", "https://github.com/lc126eml/n3/archive/refs/heads/master.zip"
 )
 
+os.environ["IS_TPU"] = "True"
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied after Hydra compose.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = 'default_kaggle_tpu'

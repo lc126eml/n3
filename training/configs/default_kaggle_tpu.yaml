@@ -28,12 +28,12 @@ compile:
   fullgraph: false
   dynamic: true
 
-tpu_memory_debug_interval: 1
+tpu_memory_debug_interval: 0
 tpu_memory_debug_rank: 0
 tpu_check_loss_finite: false
 tpu_mp_loader_prefetch_size: 1
 tpu_mp_device_prefetch_size: 1
-tpu_debug_cpu_first_batch: true
+tpu_debug_cpu_first_batch: false
 tpu_debug_first_train_step: true
 tpu_debug_skip_first_optimizer_step: false
 tpu_xla_metrics_debug: true
