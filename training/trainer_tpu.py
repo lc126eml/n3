@@ -248,6 +248,10 @@ class TrainerTPU(Trainer):
                 if resume_cfg:
                     self._resume_checkpoint_amp = resume_cfg.get("optim", {}).get("amp", None)
             self._load_resuming_checkpoint(self._resume_ckpt_path, checkpoint=self._resume_checkpoint)
+            # The multi-GB checkpoint dict is only needed for the weight load;
+            # release it so every worker does not hold it for the whole run.
+            self._resume_checkpoint = None
+            gc.collect()
 
         if self.mode != "val" and self.is_master:
             conf_to_save = OmegaConf.create(self.cfg)
@@ -771,6 +775,24 @@ class TrainerTPU(Trainer):
         self.val_loader_cpu = None
         gc.collect()
 
+    def _epoch_end_memory_housekeeping(self, stage: str) -> None:
+        rss_before = self._host_memory_snapshot_mb().get("VmRSS")
+        gc.collect()
+        # Return already-freed glibc heap pages (transient checkpoint/compile
+        # buffers) to the OS so VmRSS does not ratchet up across epochs.
+        try:
+            import ctypes
+
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+        rss_after = self._host_memory_snapshot_mb().get("VmRSS")
+        if rss_before is not None and rss_after is not None:
+            self._master_print(
+                f"[trainer_tpu] mem_housekeeping stage={stage} "
+                f"VmRSS {rss_before:.1f}MB -> {rss_after:.1f}MB"
+            )
+
     def _set_eval_loaders_epoch(self, loaders, epoch: int) -> None:
         if not loaders:
             return
@@ -825,6 +847,8 @@ class TrainerTPU(Trainer):
             checkpoint_path = os.path.join(checkpoint_folder, f"{ckpt_name}.pt")
             self.xm.save(checkpoint_content, checkpoint_path, master_only=True)
         self._log_memory_snapshot("after_checkpoint_save", extra=f"epoch={epoch}")
+        del checkpoint_content
+        self._epoch_end_memory_housekeeping(f"save_checkpoint epoch={epoch}")
         self.xm.rendezvous(f"save_checkpoint_{epoch}_done")
 
     def run(self):
@@ -884,6 +908,7 @@ class TrainerTPU(Trainer):
                 self._log_memory_snapshot("after_release_val_loader", extra=f"epoch={self.epoch}")
                 last_val_epoch_duration_sec = time.time() - val_epoch_start_time
 
+            self._epoch_end_memory_housekeeping(f"epoch={self.epoch}")
             self.epoch += 1
             if limit_sec is not None and limit_sec > 0:
                 elapsed_sec = time.time() - self.start_time

@@ -4,6 +4,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+from venv import logger
+
 import torch
 import torch.nn as nn
 
@@ -157,6 +159,7 @@ class Aggregator(nn.Module):
         Otherwise, keep VGGT-Omega's built-in DINOv3-style patch embed.
         """
         if patch_embed is None:
+            logger.warning(f"patch_embed is None, calling _build_local_patch_embed")
             self.patch_embed = _build_local_patch_embed(patch_size=patch_size, embed_dim=embed_dim)
             return
 
@@ -170,6 +173,7 @@ class Aggregator(nn.Module):
             return
 
         if "dinov3" in patch_embed or "dino-ds" in patch_embed:
+            logger.warning(f"dino in patch_embed, calling DINOv3ViTModel")
             from transformers.models.dinov3_vit.modeling_dinov3_vit import DINOv3ViTModel
 
             self.patch_embed = DINOv3ViTModel.from_pretrained(patch_embed)

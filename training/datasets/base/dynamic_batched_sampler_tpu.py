@@ -22,11 +22,15 @@ class DynamicResolutionSamplerTPU(DynamicResolutionSampler):
         rank: int = 0,
         world_size: int = 1,
         dynamic_schedule: str = "batch",
+        fix_batch_views: bool = True,
+        epoch_res_num: int = 1,
         **kwargs,
     ):
         super().__init__(*args, world_size=world_size, **kwargs)
         self.rank = int(rank)
         self.dynamic_schedule = str(dynamic_schedule)
+        self.fix_batch_views = bool(fix_batch_views)
+        self.epoch_res_num = int(epoch_res_num)
         if self.rank < 0 or self.rank >= self.world_size:
             raise ValueError(
                 f"rank must be in [0, {self.world_size}), got {self.rank}"
@@ -66,13 +70,44 @@ class DynamicResolutionSamplerTPU(DynamicResolutionSampler):
         return dynamic_global_batch_size
 
     def _sample_epoch_layout(self):
+        """Draw the epoch's (resolutions, view_size) layout deterministically.
+
+        Returns (res_indices, view_size, avg_global_batch_size):
+        - res_indices: round-robin order of resolutions for this epoch. With
+          epoch_res_num > 0 a random subset of that size; with epoch_res_num <= 0
+          the full valid resolution set.
+        - view_size: a single view size constant for the epoch when
+          fix_batch_views is True, else None (sampled per batch).
+        - avg_global_batch_size: mean cost-derived global batch size over the
+          layout, used only by __len__ for progress reporting.
+        """
         rng = np.random.default_rng(seed=self.seed + self.epoch)
-        sampled_idx = int(rng.integers(len(self._valid_resolution_indices)))
-        res_idx = self._valid_resolution_indices[sampled_idx]
-        res_max_view = self._resolution_view_max[res_idx]
-        view_size = int(rng.integers(self.min_view_size, res_max_view + 1))
-        global_batch_size = self._sample_global_batch_size(res_idx, view_size)
-        return res_idx, view_size, global_batch_size
+        order = rng.permutation(self._valid_resolution_indices).tolist()
+        if self.epoch_res_num > 0:
+            res_indices = order[: min(self.epoch_res_num, len(order))]
+        else:
+            res_indices = order
+        if not res_indices:
+            raise RuntimeError("No valid resolutions available for epoch layout sampling")
+
+        if self.fix_batch_views:
+            view_cap = min(self._resolution_view_max[res_idx] for res_idx in res_indices)
+            view_size = int(rng.integers(self.min_view_size, view_cap + 1))
+        else:
+            view_size = None
+
+        batch_sizes = []
+        for res_idx in res_indices:
+            if view_size is not None:
+                vs = view_size
+            else:
+                vs = max(
+                    self.min_view_size,
+                    int(round((self.min_view_size + self._resolution_view_max[res_idx]) / 2.0)),
+                )
+            batch_sizes.append(float(self._sample_global_batch_size(res_idx, vs)))
+        avg_global_batch_size = sum(batch_sizes) / len(batch_sizes)
+        return res_indices, view_size, avg_global_batch_size
 
     def __len__(self) -> int:
         if self.dynamic_schedule == "epoch":
@@ -132,10 +167,17 @@ class DynamicResolutionSamplerTPU(DynamicResolutionSampler):
             return
 
         if self.dynamic_schedule == "epoch":
-            epoch_res_idx, epoch_view_size, epoch_global_batch_size = self._sample_epoch_layout()
+            epoch_res_indices, epoch_view_size, _ = self._sample_epoch_layout()
             samples_yielded = 0
+            batch_count = 0
             while samples_yielded < len(all_sample_indices):
-                dynamic_global_batch_size = epoch_global_batch_size
+                res_idx = int(epoch_res_indices[batch_count % len(epoch_res_indices)])
+                if epoch_view_size is not None:
+                    view_size = epoch_view_size
+                else:
+                    res_max_view = self._resolution_view_max[res_idx]
+                    view_size = int(rng.integers(self.min_view_size, res_max_view + 1))
+                dynamic_global_batch_size = self._sample_global_batch_size(res_idx, view_size)
                 remaining_samples = len(all_sample_indices) - samples_yielded
                 if remaining_samples < dynamic_global_batch_size:
                     if self.drop_last or remaining_samples < self.world_size:
@@ -148,12 +190,13 @@ class DynamicResolutionSamplerTPU(DynamicResolutionSampler):
                 global_batch_indices = all_sample_indices[samples_yielded:batch_end_idx]
                 indices_for_this_rank = global_batch_indices[self.rank :: self.world_size]
                 batch_for_this_rank = [
-                    (int(sample_idx), epoch_res_idx, epoch_view_size)
+                    (int(sample_idx), res_idx, view_size)
                     for sample_idx in indices_for_this_rank
                 ]
                 if batch_for_this_rank:
                     yield batch_for_this_rank
                 samples_yielded += dynamic_global_batch_size
+                batch_count += 1
             return
 
         samples_yielded = 0

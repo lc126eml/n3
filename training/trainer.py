@@ -124,7 +124,7 @@ def get_amp_type(amp_dtype: str):
 
 if _IS_KAGGLE:
     sys.path.insert(0, str(PROJECT_ROOT/ "kaggle"))
-    from utils.supabase_utils import log_to_supabase
+    # from utils.supabase_utils import log_to_supabase
 
 def _log_to_supabase(status, message):
     return
@@ -2031,8 +2031,8 @@ class Trainer:
                 ran_val = True
 
             if (self.checkpoint_conf.save_freq > 0 and int(self.epoch + 1) % self.checkpoint_conf.save_freq == 0):
-                if not _IS_KAGGLE:
-                    self.save_checkpoint(self.epoch)
+                # if not _IS_KAGGLE:
+                self.save_checkpoint(self.epoch)
 
             gc.collect()
             if torch.cuda.is_available():
@@ -2055,11 +2055,11 @@ class Trainer:
                 dist.broadcast(stop_tensor, src=0)
                 stop_for_time = bool(stop_tensor.item())
             if stop_for_time:
-                self.save_checkpoint(self.epoch)
+                # self.save_checkpoint(self.epoch)
                 break
             if self.epoch == self.cfg.get("break_at", -1):
                 logging.info(f"break_at {self.epoch}")
-                self.save_checkpoint(self.epoch)
+                # self.save_checkpoint(self.epoch)
                 break
         # _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
         self.epoch -= 1

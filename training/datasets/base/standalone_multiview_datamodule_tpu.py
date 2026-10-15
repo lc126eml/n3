@@ -48,6 +48,8 @@ class StandaloneMultiViewDataModuleTPU:
             prefetch_factor=self.prefetch_factor,
             seed=self.seed,
             dynamic_schedule=config.get("dynamic_schedule", "batch"),
+            fix_batch_views=config.get("fix_batch_views", True),
+            epoch_res_num=config.get("epoch_res_num", 1),
             world_size=self.world_size,
             rank=self.rank,
             distributed_sampler_mode=config.get("distributed_sampler_mode", "drop_last"),

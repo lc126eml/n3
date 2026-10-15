@@ -12,6 +12,139 @@ from sklearn.neighbors import NearestNeighbors
 import torch
 from typing import Tuple, Union, Dict
 
+def calculate_reconstruction_metrics_tpu(
+    pred_points,
+    gt_points,
+    valid_mask,
+    prefix: str,
+    nn_metrics_enabled: bool,
+    nn_threshold: float,
+    nn_max_points: int,
+) -> Dict[str, float]:
+    # Keep the tensors dense: the metric function applies the mask via masked
+    # reductions instead of boolean indexing (XLA/TPU-safe, fixed shapes).
+    if valid_mask is None:
+        metric_pred_points = pred_points.reshape(-1, 3)
+        metric_gt_points = gt_points.reshape(-1, 3)
+    else:
+        metric_pred_points = pred_points
+        metric_gt_points = gt_points
+
+    metrics = calculate_corresponding_points_error_torch_optimized_tpu(
+        metric_gt_points,
+        metric_pred_points,
+        mask=valid_mask,
+    )
+    if nn_metrics_enabled:
+        metrics.update(
+            calculate_batched_nearest_neighbor_pointcloud_metrics(
+                gt_points,
+                pred_points,
+                valid_mask=valid_mask,
+                threshold=nn_threshold,
+                max_points=nn_max_points,
+            )
+        )
+
+    return {f"{prefix}{key}": value.item() for key, value in metrics.items()}
+
+def calculate_reconstruction_metrics(
+    pred_points,
+    gt_points,
+    valid_mask,
+    prefix: str,
+    nn_metrics_enabled: bool,
+    nn_threshold: float,
+    nn_max_points: int,
+) -> Dict[str, float]:
+    if valid_mask is not None:
+        pred_points_flat = pred_points[valid_mask]
+        gt_points_flat = gt_points[valid_mask]
+    else:
+        pred_points_flat = pred_points.reshape(-1, 3)
+        gt_points_flat = gt_points.reshape(-1, 3)
+
+    metrics = calculate_corresponding_points_error_torch_optimized(
+        gt_points_flat,
+        pred_points_flat,
+    )
+    if nn_metrics_enabled:
+        metrics.update(
+            calculate_batched_nearest_neighbor_pointcloud_metrics(
+                gt_points,
+                pred_points,
+                valid_mask=valid_mask,
+                threshold=nn_threshold,
+                max_points=nn_max_points,
+            )
+        )
+
+    return {f"{prefix}{key}": value.item() for key, value in metrics.items()}
+
+def calculate_corresponding_points_error_torch_optimized_tpu(
+    points_gt: torch.Tensor,
+    points_pred: torch.Tensor,
+    mask: torch.Tensor = None,
+) -> Dict[str, torch.Tensor]:
+    """
+    Calculates reconstruction errors between two sets of points with known point-to-point correspondences using PyTorch.
+
+    This function assumes that the i-th point in `points_gt` corresponds directly
+    to the i-th point in `points_pred`.
+    The computation will be performed on the device of the input tensors (CPU or GPU).
+
+    All reductions are dense and fixed-shape (masked sums instead of boolean
+    indexing), so the computation is safe for XLA/TPU graphs.
+
+    Args:
+        points_gt (torch.Tensor): The reference points, a PyTorch tensor of shape (..., 3).
+        points_pred (torch.Tensor): The predicted points, a PyTorch tensor of shape (..., 3).
+        mask (torch.Tensor, optional): Boolean mask over points to include, shape (...).
+                                       Non-finite points are always excluded.
+
+    Returns:
+        Dict[str, torch.Tensor]: A dictionary containing the computed metrics as single-element tensors:
+                                 'recon_mae' (Mean Absolute Error),
+                                 'recon_abs_rel' (Absolute Relative Error),
+    """
+    # --- Pre-computation Checks ---
+    if points_gt.shape != points_pred.shape:
+        raise ValueError(f"Input point clouds must have the same shape. "
+                         f"Got {points_gt.shape} and {points_pred.shape}.")
+    nan = torch.tensor(float("nan"), device=points_gt.device, dtype=points_gt.dtype)
+
+    finite_mask = torch.isfinite(points_gt).all(dim=-1) & torch.isfinite(points_pred).all(dim=-1)
+    if mask is not None:
+        finite_mask = finite_mask & mask.bool()
+
+    # --- Error Calculation (dense masked reductions; no boolean indexing) ---
+    weights = finite_mask.to(points_gt.dtype)
+    count = weights.sum()
+    distances = torch.linalg.norm(points_gt - points_pred, dim=-1)
+
+    # Mean Absolute Error (MAE) over included points; NaN when the mask is empty.
+    safe_distances = torch.where(finite_mask, distances, torch.zeros_like(distances))
+    mae = torch.where(count > 0, safe_distances.sum() / count.clamp_min(1.0), nan)
+
+    # --- Relative Metrics ---
+    # Calculate the distance of each ground truth point from the origin.
+    dist_from_origin = torch.linalg.norm(points_gt, dim=-1)
+
+    # Only points away from the origin contribute to the relative error.
+    non_zero_mask = finite_mask & (dist_from_origin > 1e-8)
+    nz_weights = non_zero_mask.to(points_gt.dtype)
+    nz_count = nz_weights.sum()
+    safe_origin = torch.where(non_zero_mask, dist_from_origin, torch.ones_like(dist_from_origin))
+    rel_map = torch.where(non_zero_mask, distances / safe_origin, torch.zeros_like(distances))
+    abs_rel = torch.where(nz_count > 0, rel_map.sum() / nz_count.clamp_min(1.0), nan)
+
+    metrics = {
+        'recon_mae': mae,
+        'recon_abs_rel': abs_rel,
+    }
+
+    return metrics
+
 def calculate_corresponding_points_error_torch_optimized(
     points_gt: torch.Tensor,
     points_pred: torch.Tensor,

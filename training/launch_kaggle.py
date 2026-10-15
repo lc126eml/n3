@@ -456,7 +456,8 @@ def main() -> None:
     except Exception as exc:
         # from kaggle.utils.supabase_utils import log_to_supabase
         # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")
-        raise exc
+        print(f"Exception in run_distributed or Trainer: {exc}", flush=True)
+        # raise exc
 
 
 if __name__ == "__main__":
