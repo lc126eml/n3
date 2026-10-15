@@ -13,6 +13,7 @@ from pathlib import Path
 from packaging import version
 
 _IS_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
+os.environ["IS_KAGGLE"] = "True"
 _N3_GITHUB_ZIP_URL = os.environ.get(
     "N3R_GITHUB_ZIP_URL", "https://github.com/lc126eml/n3/archive/refs/heads/master.zip"
 )
@@ -20,50 +21,9 @@ _N3_GITHUB_ZIP_URL = os.environ.get(
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied after Hydra compose.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
 KAGGLE_RUNTIME_CONFIG_NAME = 'default_kaggle_tpu'
-KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'accum_steps': 1,
- 'break_at': 130,
- 'checkpoint.resume_checkpoint_path': None,
- 'checkpoint.resume_config_skip_keys': [],
- 'data.data_module.train_config.batch_size': 64,
- 'data.data_module.train_config.debug_enumerate_batches': False,
- 'loss.switch.gt_align_to_pts': False,
- 'loss.switch.pts_align_to_center': False,
- 'loss.switch.pts_align_to_gt': False,
- 'loss.switch.pts_center_world': False,
- 'max_epochs': 130,
- 'mode': 'train',
- 'model.enable_depth': False,
- 'optim.lr_multipliers.0.ratio': 0.01,
- 'optim.options.lr.0.scheduler.schedulers.0.end_value': 0.0001,
- 'optim.val_freq': 1,
- 'optim.warmup_batch_cost_discount': 0.55,
- 'optim.warmup_epochs': 30,
- 'postprocess.train.align.center_world.align_pose': True,
- 'postprocess.train.align.center_world.enabled': False,
- 'postprocess.train.align.gt_align_to_pts.align_pose': True,
- 'postprocess.train.align.gt_align_to_pts.conf_percentage': 80,
- 'postprocess.train.align.gt_align_to_pts.enabled': False,
- 'postprocess.train.align.pred_center.align_pose': True,
- 'postprocess.train.align.pred_center.enabled': False,
- 'postprocess.train.align.pred_center.pr_to_gt': False,
- 'postprocess.train.align.pts_align_to_gt.align_pose': True,
- 'postprocess.train.align.pts_align_to_gt.conf_percentage': 80,
- 'postprocess.train.align.pts_align_to_gt.enabled': False,
- 'postprocess.train.align.pts_align_to_gt.normalize_depth': False,
- 'postprocess.train.align.pts_align_to_gt.normalize_pose': False,
- 'postprocess.train.align.pts_align_to_gt.with_scale': True,
- 'postprocess.train.align.to_first_cam.enabled': True,
- 'postprocess.train.align.to_first_cam.points': True,
- 'postprocess.train.normalize.gt_depth': False,
- 'postprocess.train.normalize.gt_pts': True,
- 'postprocess.train.normalize.gt_pts_invariant.enabled': False,
- 'postprocess.train.normalize.gt_pts_invariant.translate': True,
- 'postprocess.train.normalize.pr_pts.enabled': False,
- 'postprocess.train.normalize.pr_pts.metric': False,
- 'postprocess.train.normalize.pr_pts_invariant.enabled': False,
- 'postprocess.train.normalize.pr_pts_invariant.translate': False,
- 'resume_bs': True,
- 'seed_value': 42,
+KAGGLE_RUNTIME_CONFIG_OVERRIDES = {'checkpoint.resume_checkpoint_path': '/kaggle/input/notebooks/cfy002/pts-align-to-gt-omega776-s42-dcw2c-mf100-r1/logs/ckpts/checkpoint.pt',
+ 'checkpoint.resume_config_skip_keys': ['total_run_time_hr'],
+ 'kernel_id': 'cfy002/pts-align-to-gt-omega776-s42-dcw2c-mf100-r2',
  'total_run_time_hr': 11.6}
 # END_KAGGLE_RUNTIME_OVERRIDES
 
@@ -124,18 +84,27 @@ def _log_memory_snapshot(prefix: str) -> None:
 
 def _apply_kaggle_runtime_overrides(cfg) -> None:
     overrides = KAGGLE_RUNTIME_CONFIG_OVERRIDES
-    if not isinstance(overrides, dict) or not overrides:
+    if not isinstance(overrides, dict):
         return
+    from datetime import datetime
+
     from omegaconf import OmegaConf
+
+    overrides = dict(overrides)
+    overrides["current_datetime"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     applied = []
     for key, value in overrides.items():
         if not isinstance(key, str) or not key:
             continue
-        OmegaConf.update(cfg, key, value, merge=False)
+        OmegaConf.update(cfg, key, value, merge=False, force_add=True)
         applied.append(key)
     if applied:
         print(f"[launch_tpu] Applied runtime config overrides: {applied}", flush=True)
+
+    kernel_id = cfg.get("kernel_id")
+    if kernel_id:
+        os.environ["kernel_id"] = str(kernel_id)
 
 
 def _apply_kaggle_tpu_policy(cfg) -> None:
@@ -581,7 +550,12 @@ def main() -> None:
     print(f"[launch_tpu] data_module_target={cfg.data.data_module._target_}", flush=True)
     print("[launch_tpu] device=xla", flush=True)
 
-    _spawn_tpu(cfg)
+    try:
+        _spawn_tpu(cfg)
+    except Exception as exc:
+        # from kaggle.utils.supabase_utils import log_to_supabase
+        # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")
+        raise exc
 
 
 if __name__ == "__main__":

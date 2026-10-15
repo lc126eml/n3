@@ -448,10 +448,10 @@ optim:
       - "*"  # Epoch 0 enables only the point prediction and confidence projections.
       # - "*patch_embed*"
   lr_multipliers:
-    - name: patch_embed
-      ratio: 1.0e-2
-      param_names:
-        - "aggregator.patch_embed.*"
+    # - name: patch_embed
+    #   ratio: 1.0e-2
+    #   param_names:
+    #     - "aggregator.patch_embed.*"
     # - name: frame_blocks
     #   ratio: 1.0e-1
     #   param_names:
@@ -479,9 +479,9 @@ optim:
   gradient_clip:
     _target_: train_utils.gradient_clip.GradientClipper
     configs:
-      - module_name: ["aggregator.patch_embed"]
-        max_norm: 1.0   
-        norm_type: 2
+      # - module_name: ["aggregator.patch_embed"]
+      #   max_norm: 1.0   
+      #   norm_type: 2
       # - module_name: ["aggregator.asg"]
       #   max_norm: 5.0   
       #   norm_type: 2
