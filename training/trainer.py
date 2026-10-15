@@ -124,7 +124,7 @@ def get_amp_type(amp_dtype: str):
 
 if _IS_KAGGLE:
     sys.path.insert(0, str(PROJECT_ROOT/ "kaggle"))
-    from utils.supabase_utils import log_to_supabase
+    # from utils.supabase_utils import log_to_supabase
 
 def _log_to_supabase(status, message):
     return
@@ -384,6 +384,7 @@ class Trainer:
                 f.write(OmegaConf.to_yaml(conf_to_save))
             print(f"Saved trainer config to {config_path}")
         self.nonfinite_count = 0
+        self.unfreeze_modified = False
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -1094,10 +1095,14 @@ class Trainer:
         if self.is_distributed:
             data_module.world_size = self.world_size
             data_module.rank = self.rank
-        if hasattr(data_module, "accum_steps"):
-            data_module.accum_steps = int(self.accum_steps)
-        if hasattr(data_module, "train_config") and isinstance(data_module.train_config, Mapping):
-            data_module.train_config["accum_steps"] = int(self.accum_steps)
+        # if self.accumulation_mode == "across_batches":
+        #     accum_steps = 1
+        # else:
+        #     accum_steps = int(self.accum_steps)
+        # if hasattr(data_module, "accum_steps"):
+        #     data_module.accum_steps = accum_steps
+        # if hasattr(data_module, "train_config") and isinstance(data_module.train_config, Mapping):
+        #     data_module.train_config["accum_steps"] = accum_steps
         self.data_module = data_module
 
         if self.mode in ["train", "val"] and self.rank == 0:
@@ -1797,6 +1802,7 @@ class Trainer:
                 self.epoch, "replayed " if replay else "", epoch,
                 "all" if conf is None else conf.modules, after - before, discount,
             )
+            self.unfreeze_modified = True
 
         warmup_configs = list(self.optim_conf.get("warmup_configs", []) or [])
         if replay:
@@ -2001,11 +2007,13 @@ class Trainer:
             except (TypeError, ValueError):
                 logging.warning(f"Ignoring invalid total_run_time_hr={self.total_run_time_hr!r}")
                 limit_sec = None
-        if self.rank == 0:
-            _log_to_supabase( 0, f"training {self.epoch}")
+        # if self.rank == 0:
+        #     _log_to_supabase( 0, f"training {self.epoch}")
         while self.epoch < self.max_epochs:
+            self.unfreeze_modified = False
             self.end_warmup()
-            self._ensure_ddp_model()
+            if self.unfreeze_modified:
+                self._ensure_ddp_model()
             # log_gpu_memory("end of _ensure_ddp_model", self.rank)
             set_seeds(self.seed_value + self.epoch * 100, self.max_epochs, self.rank)
             self._set_train_data_epoch(self.epoch)
@@ -2031,8 +2039,8 @@ class Trainer:
                 ran_val = True
 
             if (self.checkpoint_conf.save_freq > 0 and int(self.epoch + 1) % self.checkpoint_conf.save_freq == 0):
-                if not _IS_KAGGLE:
-                    self.save_checkpoint(self.epoch)
+                # if not _IS_KAGGLE:
+                self.save_checkpoint(self.epoch)
 
             gc.collect()
             if torch.cuda.is_available():
@@ -2055,11 +2063,11 @@ class Trainer:
                 dist.broadcast(stop_tensor, src=0)
                 stop_for_time = bool(stop_tensor.item())
             if stop_for_time:
-                self.save_checkpoint(self.epoch)
+                # self.save_checkpoint(self.epoch)
                 break
             if self.epoch == self.cfg.get("break_at", -1):
                 logging.info(f"break_at {self.epoch}")
-                self.save_checkpoint(self.epoch)
+                # self.save_checkpoint(self.epoch)
                 break
         # _log_to_supabase( 1, f"SUCCESS: {self.epoch}")
         self.epoch -= 1
@@ -2307,6 +2315,12 @@ class Trainer:
         for data_iter, batch in enumerate(train_loader):
             if data_iter >= limit_train_batches:
                 break
+            if not torch.isfinite(batch["img"]).all():
+                logging.error(f"Rank {self.rank}: Non-finite values detected in img at iter {data_iter}!")
+                logging.error(f"Min: {batch["img"].min()}, Max: {batch["img"].max()}")
+            if not torch.isfinite(batch["depthmap"]).all():
+                logging.error(f"Rank {self.rank}: Non-finite values detected in depthmap at iter {data_iter}!")
+                logging.error(f"Min: {batch["depthmap"].min()}, Max: {batch["depthmap"].max()}")
             
             # measure data loading time
             data_time.update(time.time() - end)
@@ -2324,6 +2338,7 @@ class Trainer:
                 logging.warning("Skipping empty batch during training.")
                 continue
 
+            logging.warning(f"image shape: {batch_img_shape}, {self.rank=} {data_iter=}")
             if self.accumulation_mode == "chunk_within_batch":
                 accum_steps = self.accum_steps
                 # logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
@@ -2434,6 +2449,7 @@ class Trainer:
                         log_step=self.steps[phase],
                     )
 
+                logging.warning(f"after step, {self.rank=} {data_iter=}")
                 loss = loss_dict["objective"]
                 loss_key = f"{phase}_loss_objective"
                 loss_value = loss.detach()
@@ -2443,10 +2459,13 @@ class Trainer:
                     logging.error(error_msg)
                     return False
 
+                logging.warning(f"before backward, {self.epoch=} {self.rank=} {data_iter=}")
+                begin_time = time.time()
                 loss = loss / accum_steps
                 self.scaler.scale(loss).backward()
                 loss_meters[loss_key].update(loss_value, batch_size)
 
+                logging.warning(f"after backward, {self.rank=} {data_iter=} {time.time()-begin_time}")
                 if should_step:
                     opt_iters = math.ceil(limit_train_batches / accum_steps)
                     step_idx = math.ceil((data_iter + 1) / accum_steps)
@@ -2462,6 +2481,7 @@ class Trainer:
                             f"Skipping scheduler update since the training is at the end, i.e, {self.where} of [0,1]."
                         )
 
+                    logging.warning(f"after step sch, {self.rank=} {data_iter=}")
                     if self.steps[phase] % self.logging_conf.log_freq == 0:
                         for i, optim in enumerate(self.optims):
                             for j, param_group in enumerate(optim.optimizer.param_groups):
@@ -2500,16 +2520,18 @@ class Trainer:
                         skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
                     skip_optimizer_step = self._sync_skip_optimizer_step(skip_optimizer_step)
+                    logging.warning(f"before opt step, {self.epoch=} {self.rank=} {data_iter=} {skip_optimizer_step=}")
                     if skip_optimizer_step:
-                        logging.warning("Skipping optimizer step because nonfinite gradients were detected.")
+                        logging.warning(f"Skipping optimizer step because nonfinite gradients were detected. {self.rank=}")
                         self.nonfinite_count+=1
-                        if self.nonfinite_count > 5:
+                        if self.nonfinite_count > 1:
                             raise ValueError(f"Error because nonfinite gradients were detected.")
                         self.scaler.update()
                     else:
                         for optim in self.optims:
                             self.scaler.step(optim.optimizer)
                         self.scaler.update()
+                    logging.warning(f"after opt step, {self.rank=} {data_iter=}")
                     # self._clear_optimizer_step_memory()
 
             # Measure elapsed time
@@ -2532,6 +2554,7 @@ class Trainer:
                     *loss_meters.values(),
                 ]
                 progress.display(data_iter)
+            logging.warning(f"after iter display, {self.rank=} {data_iter=}")
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv("train", loss_meters)

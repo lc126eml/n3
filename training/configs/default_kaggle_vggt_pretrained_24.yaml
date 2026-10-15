@@ -551,7 +551,7 @@ distributed:
   backend: nccl
   comms_dtype: None
   find_unused_parameters: false
-  timeout_mins: 30
+  timeout_mins: 3
   gradient_as_bucket_view: true  # Less memory used
   bucket_cap_mb: 25
   broadcast_buffers: true

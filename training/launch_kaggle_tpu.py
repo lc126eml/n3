@@ -14,9 +14,8 @@ from packaging import version
 
 _IS_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE") or os.path.exists("/kaggle/working"))
 os.environ["IS_KAGGLE"] = "True"
-_N3_GITHUB_ZIP_URL = os.environ.get(
-    "N3R_GITHUB_ZIP_URL", "https://github.com/lc126eml/n3/archive/refs/heads/master.zip"
-)
+os.environ["IS_TPU"] = "True"
+_N3_GITHUB_ZIP_URL = 'https://github.com/lc126eml/n3/archive/refs/heads/ddp.zip'
 
 # Managed by kaggle/process_kaggle.py. Dot-path overrides applied after Hydra compose.
 # BEGIN_KAGGLE_RUNTIME_OVERRIDES
@@ -555,7 +554,8 @@ def main() -> None:
     except Exception as exc:
         # from kaggle.utils.supabase_utils import log_to_supabase
         # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")
-        raise exc
+        print(f"Exception in _spawn_tpu: {exc}", flush=True)
+        # raise exc
 
 
 if __name__ == "__main__":

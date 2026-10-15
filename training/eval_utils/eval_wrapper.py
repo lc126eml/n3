@@ -1,16 +1,19 @@
 from typing import Dict, Any
-
+import os
+_IS_TPU = os.environ.get("IS_TPU", 'False').lower() == 'true'
 from vggt.utils.pose_enc import intri_to_fov_encoding
 
 from .metric_utils.camera_metric import (
     compute_absolute_pose_error_angle,
     compute_batched_all_pairs_relative_metrics,
 )
-from .metric_utils.depth_metric import calculate_depth_metrics_optimized
-from .metric_utils.recon_metric import (
-    calculate_batched_nearest_neighbor_pointcloud_metrics,
-    calculate_corresponding_points_error_torch_optimized,
-)
+if _IS_TPU:
+    from .metric_utils.depth_metric_tpu import calculate_depth_metrics_optimized
+    from .metric_utils.recon_metric import calculate_reconstruction_metrics_tpu as calculate_reconstruction_metrics
+else:
+    from .metric_utils.depth_metric import calculate_depth_metrics_optimized
+    from .metric_utils.recon_metric import calculate_reconstruction_metrics
+from .metric_utils.recon_metric import calculate_batched_nearest_neighbor_pointcloud_metrics
 from .align_utils.align_camera import align_camera_and_points_batch_ext
 from .normalize_utils.normalize_pc import normalize_pose_translation
 from .pose_from_points import estimate_poses_from_world_points
@@ -50,38 +53,6 @@ def _evaluate_camera_metrics(
     return metrics
 
 
-def _calculate_reconstruction_metrics(
-    pred_points,
-    gt_points,
-    valid_mask,
-    prefix: str,
-    nn_metrics_enabled: bool,
-    nn_threshold: float,
-    nn_max_points: int,
-) -> Dict[str, float]:
-    if valid_mask is not None:
-        pred_points_flat = pred_points[valid_mask]
-        gt_points_flat = gt_points[valid_mask]
-    else:
-        pred_points_flat = pred_points.reshape(-1, 3)
-        gt_points_flat = gt_points.reshape(-1, 3)
-
-    metrics = calculate_corresponding_points_error_torch_optimized(
-        gt_points_flat,
-        pred_points_flat,
-    )
-    if nn_metrics_enabled:
-        metrics.update(
-            calculate_batched_nearest_neighbor_pointcloud_metrics(
-                gt_points,
-                pred_points,
-                valid_mask=valid_mask,
-                threshold=nn_threshold,
-                max_points=nn_max_points,
-            )
-        )
-
-    return {f"{prefix}{key}": value.item() for key, value in metrics.items()}
 
 
 def eval_batch(
@@ -223,7 +194,7 @@ def eval_batch(
         gt_points = batch.get(data_keys.get("world_points"))
         valid_mask = batch.get(data_keys.get("valid_mask"))
         all_metrics.update(
-            _calculate_reconstruction_metrics(
+            calculate_reconstruction_metrics(
                 selected_pred_points,
                 gt_points,
                 valid_mask,
@@ -239,7 +210,7 @@ def eval_batch(
         gt_points = batch.get(data_keys.get("world_points"))
         valid_mask = batch.get(data_keys.get("valid_mask"))
         all_metrics.update(
-            _calculate_reconstruction_metrics(
+            calculate_reconstruction_metrics(
                 y_hat[global_from_cam_key],
                 gt_points,
                 valid_mask,
@@ -255,7 +226,7 @@ def eval_batch(
         gt_points = batch.get(data_keys.get("world_points"))
         valid_mask = batch.get(data_keys.get("valid_mask"))
         all_metrics.update(
-            _calculate_reconstruction_metrics(
+            calculate_reconstruction_metrics(
                 y_hat[global_from_depth_key],
                 gt_points,
                 valid_mask,

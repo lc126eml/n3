@@ -566,12 +566,15 @@ class BaseMultiViewDataset(EasyDataset):
         for _ in range(MAX_RETRY):
             try:
                 views = self._get_views(idx, resolution, rng, nview)
+                # print(f"loaded {resolution=} {nview=} {views["label"]}", flush=True)
                 if len(views['img']) == nview:
                     break
                 # len mismatch: will go to reseed and retry
-            except Exception:
+            except Exception as exc:
                 # any exception from _get_views, swallow and retry
-                pass
+                print(f"load failed {resolution=} {nview=} ({exc})", flush=True)
+                # raise exc
+                # pass
 
             # reseed local rng for next attempt, using current rng to generate new seed
             new_seed = rng.integers(0, 2**32)

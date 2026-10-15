@@ -37,7 +37,8 @@ class StandaloneMultiViewDataModule:
         self.persistent_workers = persistent_workers
         self.prefetch_factor = prefetch_factor
         self.seed = seed
-        self.accum_steps = int(kwargs.get("accum_steps", 1))
+        self.accum_steps = 1
+        # int(kwargs.get("accum_steps", 1))
         self.world_size = 1
         self.rank = 0
 
