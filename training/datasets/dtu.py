@@ -10,6 +10,7 @@ import glob
 
 from training.datasets.base.base_multiview_dataset import BaseMultiViewDataset, cropping
 from dust3r.utils.image import imread_cv2
+import random
 
 
 class DTU_Multi(BaseMultiViewDataset):
@@ -91,22 +92,35 @@ class DTU_Multi(BaseMultiViewDataset):
         batched_views = defaultdict(list)
 
         for v, base_name in enumerate(img_ids):
-            # --- Changed: Construct paths for processed files ---
-            i = rng.integers(7)  # Random lighting condition from 0 to 6
-            rgb_path = osp.join(scene_path, f"{base_name}_{i}_rgb.png")
-            depth_path = osp.join(scene_path, f'{base_name}_depth.exr')
-            cam_path = osp.join(scene_path, f'{base_name}_cam.npz')
+            for _ in range(self.MAX_RETRY):
+                try:
+                    # --- Changed: Construct paths for processed files ---
+                    i = rng.integers(7)  # Random lighting condition from 0 to 6
+                    rgb_path = osp.join(scene_path, f"{base_name}_{i}_rgb.png")
+                    depth_path = osp.join(scene_path, f'{base_name}_depth.exr')
+                    cam_path = osp.join(scene_path, f'{base_name}_cam.npz')
 
-            if not all(osp.exists(p) for p in [rgb_path, depth_path, cam_path]):
-                print(f"Warning: Missing processed file for {base_name}. Skipping.")
-                continue
+                    if not all(osp.exists(p) for p in [rgb_path, depth_path, cam_path]):
+                        print(f"Warning: Missing processed file for {base_name}. Skipping.")
+                        continue
 
-            # --- Changed: Load processed data ---
+                    # --- Changed: Load processed data ---
+                    depthmap = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+                    depthmap = np.nan_to_num(depthmap.astype(np.float32), 0.0)/1000
+                    depthmap[~np.isfinite(depthmap)] = 0  # invalid
+                    if np.max(depthmap) <= 0:
+                        raise ValueError("empty depthmap")
+                    break
+                except Exception as exc:
+                    # any exception from _get_views, swallow and retry
+                    print(f"load failed {depth_path=} ({exc})", flush=True)
+                    base_name = random.choice(all_image_ids)
+                    # raise exc
+            else:
+                raise RuntimeError(f"Exceed max retry {self.MAX_RETRY} for {rgb_path}, cannot load valid depth view")
+
             rgb_image = imread_cv2(rgb_path)
             # Use cv2.IMREAD_UNCHANGED for single-channel float .exr files
-            depthmap = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-            depthmap = np.nan_to_num(depthmap.astype(np.float32), 0.0)/1000
-            depthmap[~np.isfinite(depthmap)] = 0  # invalid
             
             camera_data = np.load(cam_path)
             # print(type(camera_data))

@@ -8,6 +8,7 @@ import numpy as np
 
 from training.datasets.base.base_multiview_dataset import BaseMultiViewDataset
 from dust3r.utils.image import imread_cv2
+import random
 
 # Depth images represent Euclidean distances in meters from the camera center.
 # Euclidean distances (in meters) to the optical center of the camera
@@ -508,14 +509,26 @@ class HyperSim_Multi(BaseMultiViewDataset):
         batched_views = defaultdict(list)
 
         for v, view_idx in enumerate(image_idxs):
-            rgb_path = self.images[view_idx]
-            rgb_name = osp.basename(rgb_path)
-            depth_path = rgb_path.replace("rgb.png", "depth.npy")
-            cam_path = rgb_path.replace("rgb.png", "cam.npz")
+            for _ in range(self.MAX_RETRY):
+                try:
+                    rgb_path = self.images[view_idx]
+                    rgb_name = osp.basename(rgb_path)
+                    depth_path = rgb_path.replace("rgb.png", "depth.npy")
+                    cam_path = rgb_path.replace("rgb.png", "cam.npz")
 
+                    depthmap = np.load(depth_path).astype(np.float32)
+                    depthmap[~np.isfinite(depthmap)] = 0  # invalid
+                    if np.max(depthmap) <= 0:
+                        raise ValueError("empty depthmap")
+                    break
+                except Exception as exc:
+                    # any exception from _get_views, swallow and retry
+                    print(f"load failed {depth_path=} ({exc})", flush=True)
+                    view_idx = random.choice(all_image_ids)
+                    # raise exc
+            else:
+                raise RuntimeError(f"Exceed max retry {self.MAX_RETRY} for {rgb_path}, cannot load valid depth view")
             rgb_image = imread_cv2(rgb_path, cv2.IMREAD_COLOR)
-            depthmap = np.load(depth_path).astype(np.float32)
-            depthmap[~np.isfinite(depthmap)] = 0  # invalid
             cam_file = np.load(cam_path)
             intrinsics = cam_file["intrinsics"].astype(np.float32)
             camera_pose = cam_file["pose"].astype(np.float32)

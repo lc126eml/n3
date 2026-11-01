@@ -9,6 +9,7 @@ from collections import deque, defaultdict
 # Assuming the base class and utilities are available in your project structure
 from training.datasets.base.base_multiview_dataset import BaseMultiViewDataset, cropping
 from dust3r.utils.image import imread_cv2
+import random
 
 
 class ETH3D_Multi(BaseMultiViewDataset):
@@ -99,29 +100,40 @@ class ETH3D_Multi(BaseMultiViewDataset):
         batched_views = defaultdict(list)
 
         for v, rgb_filename in enumerate(img_filenames):
-            # e.g., '1477833684658155598_rgb.png' -> '1477833684658155598'
-            base_name = rgb_filename.replace('_rgb.png', '')
+            for _ in range(self.MAX_RETRY):
+                try:
+                    # e.g., '1477833684658155598_rgb.png' -> '1477833684658155598'
+                    base_name = rgb_filename.replace('_rgb.png', '')
 
-            # Construct paths for processed files within the subscene directory
-            rgb_path = osp.join(subscene_path, rgb_filename)
-            depth_path = osp.join(subscene_path, f'{base_name}_depth.exr')
-            cam_path = osp.join(subscene_path, f'{base_name}_cam.npz')
+                    # Construct paths for processed files within the subscene directory
+                    rgb_path = osp.join(subscene_path, rgb_filename)
+                    depth_path = osp.join(subscene_path, f'{base_name}_depth.exr')
+                    cam_path = osp.join(subscene_path, f'{base_name}_cam.npz')
 
-            if not all(osp.exists(p) for p in [rgb_path, depth_path, cam_path]):
-                print(f"Warning: Missing processed file for {base_name} in {subscene_path}. Skipping.")
-                continue
+                    if not all(osp.exists(p) for p in [rgb_path, depth_path, cam_path]):
+                        print(f"Warning: Missing processed file for {base_name} in {subscene_path}. Skipping.")
+                        continue
 
+                    # Use cv2.IMREAD_UNCHANGED for single-channel float .exr files
+                    depthmap = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+                    
+                    # Our preprocessed .exr files already store metric depth, so no scaling is needed.
+                    # Ensure correct dtype and handle potential NaNs.
+                    depthmap = np.nan_to_num(depthmap.astype(np.float32), 0.0)
+                    depthmap[~np.isfinite(depthmap)] = 0  # invalid
+                    if np.max(depthmap) <= 0:
+                        raise ValueError("empty depthmap")
+                    break
+                except Exception as exc:
+                    # any exception from _get_views, swallow and retry
+                    print(f"load failed {depth_path=} ({exc})", flush=True)
+                    rgb_filename = random.choice(all_images)
+                    # raise exc
+            else:
+                raise RuntimeError(f"Exceed max retry {self.MAX_RETRY} for {rgb_path}, cannot load valid depth view")
+            
             # Load the processed data
             rgb_image = imread_cv2(rgb_path) # Assumes RGB format
-            
-            # Use cv2.IMREAD_UNCHANGED for single-channel float .exr files
-            depthmap = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-            
-            # Our preprocessed .exr files already store metric depth, so no scaling is needed.
-            # Ensure correct dtype and handle potential NaNs.
-            depthmap = np.nan_to_num(depthmap.astype(np.float32), 0.0)
-            depthmap[~np.isfinite(depthmap)] = 0  # invalid
-            
             camera_data = np.load(cam_path)
             intrinsics = camera_data["intrinsics"]
             camera_pose = camera_data['pose']

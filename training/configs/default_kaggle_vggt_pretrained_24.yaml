@@ -5,7 +5,7 @@ defaults:
 gpu_lock_priority: 10
 exp_name: aug_ablation
 seed_value: 42
-accum_steps: 4
+accum_steps: 5
 
 limit_train_batches:
 limit_val_batches:
@@ -25,7 +25,7 @@ data:
         max_scale: 1.2
         random_crop_prob: 0.0
         pcrop: 0.0
-break_at: 2
+break_at: 130
 resume_bs: true
 total_run_time_hr: 12.0
 n3_github_zip_url: https://github.com/lc126eml/n3/archive/refs/heads/omega.zip
@@ -364,10 +364,10 @@ loss:
 
 optim:
   val_freq: 5
-  accumulation_mode: chunk_within_batch
+  accumulation_mode: across_batches #chunk_within_batch
   log_per_optimizer_step: true
   param_group_modifiers: false
-  warmup_epochs: &warmup_epochs 15
+  warmup_epochs: &warmup_epochs -15
   warmup_batch_cost_discount: 0.5
   # Additive stages; warmup_epochs still unfreezes everything at epoch 15.
   # Globs match canonical module names recursively (*word* means contains word).
@@ -381,10 +381,18 @@ optim:
       modules:
         patterns: ["dense_head.point_proj*"]
       batch_cost_discount: 1.0
+    - epoch: 1
+      modules:
+        patterns: ["aggregator.camera_token*", "aggregator.register_token*"]
+      batch_cost_discount: 1.0
     - epoch: 5
       modules:
-        frame_block_ranges: [[22, 24]]
-      batch_cost_discount: 0.8
+        frame_block_ranges: [[0, 24]]
+      batch_cost_discount: 0.12
+    # - epoch: 5
+    #   modules:
+    #     frame_block_ranges: [[22, 24]]
+    #   batch_cost_discount: 0.8
     # - epoch: 2
     #   modules:
     #     patterns: ["*_head"]
@@ -453,7 +461,7 @@ optim:
     #   param_names:
     #     - "aggregator.patch_embed.*"
     # - name: frame_blocks
-    #   ratio: 1.0e-1
+    #   ratio: 0.1
     #   param_names:
     #     - "aggregator.frame_blocks.*"
     #     - "aggregator.inter_frame_blocks.*"
@@ -551,7 +559,7 @@ distributed:
   backend: nccl
   comms_dtype: None
   find_unused_parameters: false
-  timeout_mins: 3
+  timeout_mins: 10
   gradient_as_bucket_view: true  # Less memory used
   bucket_cap_mb: 25
   broadcast_buffers: true

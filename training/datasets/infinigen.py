@@ -5,6 +5,7 @@ import cv2
 from collections import defaultdict
 from training.datasets.base.base_multiview_dataset import BaseMultiViewDataset, cropping
 from dust3r.utils.image import imread_cv2
+import random
 
 class Infinigen_Multi(BaseMultiViewDataset):
     def __init__(self, *args, ROOT, samples_per_scene=10, max_interval=5, **kwargs):
@@ -77,16 +78,28 @@ class Infinigen_Multi(BaseMultiViewDataset):
         image_idxs = np.array(all_image_ids)[pos]
         # 1. Initialize a dictionary of lists to collect batch data
         batched_views = defaultdict(list)
+        scene_dir = osp.join(self.ROOT, self.scenes[scene_id])
 
         for v, view_idx in enumerate(image_idxs):
-            scene_dir = osp.join(self.ROOT, self.scenes[scene_id])
-            rgb_path = osp.join(scene_dir, self.images[view_idx])
-            depth_path = rgb_path.replace("Image", "Depth").replace(".png", ".npy")
-            cam_path = rgb_path.replace("Image", "camview").replace(".png", ".npz")
+            for _ in range(self.MAX_RETRY):
+                try:
+                    rgb_path = osp.join(scene_dir, self.images[view_idx])
+                    depth_path = rgb_path.replace("Image", "Depth").replace(".png", ".npy")
+                    cam_path = rgb_path.replace("Image", "camview").replace(".png", ".npz")
 
+                    depthmap = np.load(depth_path).astype(np.float32)
+                    depthmap[~np.isfinite(depthmap)] = 0.0  # Handle invalid depths
+                    if np.max(depthmap) <= 0:
+                        raise ValueError("empty depthmap")
+                    break
+                except Exception as exc:
+                    # any exception from _get_views, swallow and retry
+                    print(f"load failed {depth_path=} ({exc})", flush=True)
+                    view_idx = random.choice(all_image_ids)
+                    # raise exc
+            else:
+                raise RuntimeError(f"Exceed max retry {self.MAX_RETRY} for {rgb_path}, cannot load valid depth view")
             rgb_image = imread_cv2(rgb_path, cv2.IMREAD_COLOR)
-            depthmap = np.load(depth_path).astype(np.float32)
-            depthmap[~np.isfinite(depthmap)] = 0.0  # Handle invalid depths
             cam_file = np.load(cam_path)
             intrinsics = cam_file["K"].astype(np.float32)
             camera_pose = cam_file["T"].astype(np.float32)

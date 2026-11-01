@@ -209,6 +209,7 @@ class DynamicResolutionSampler(BatchSampler):
         discount = float(discount)
         if discount <= 0:
             raise ValueError("target batch cost discount must be > 0")
+        # discount = self._target_batch_cost_discount * discount
         self._target_batch_cost_discount = discount
         self.target_batch_cost = self._base_target_batch_cost * discount
         self._target_cap_cost = self._base_target_cap_cost * discount

@@ -94,6 +94,7 @@ class BaseMultiViewDataset(EasyDataset):
         self.seq_aug_crop = seq_aug_crop
         self.align_poses = align_poses
         self.pose_convention = pose_convention
+        self.MAX_RETRY = 20
 
     @property
     def epoch(self) -> int:

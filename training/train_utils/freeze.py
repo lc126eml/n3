@@ -4,9 +4,10 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 from wcmatch import fnmatch
 from functools import wraps
-from typing import List
+from typing import List, Union
 import math
 
 import torch.nn as nn
@@ -49,7 +50,14 @@ def select_unfreeze_modules(model: nn.Module, selectors) -> list[nn.Module]:
         matches = {name: mod for name, mod in model.named_modules()
                    if fnmatch.fnmatch(name, pattern, flags=GLOB_FLAGS)}
         if not matches:
-            raise ValueError(f"Unfreeze pattern matched nothing: {pattern!r}")
+            matches = {
+                name: param for name, param in model.named_parameters()
+                if fnmatch.fnmatch(name, pattern, flags=GLOB_FLAGS)
+            }
+        if not matches:
+            logging.warning(f"Unfreeze pattern matched nothing: {pattern!r}")
+            continue
+            # raise ValueError(f"Unfreeze pattern matched nothing: {pattern!r}")
         selected.update(matches)
     for bounds in ranges:
         if (not hasattr(bounds, "__len__") or len(bounds) != 2
@@ -58,12 +66,13 @@ def select_unfreeze_modules(model: nn.Module, selectors) -> list[nn.Module]:
         start, end = bounds
         for name in ("frame_blocks", "inter_frame_blocks"):
             blocks = getattr(getattr(model, "aggregator", None), name, None)
-            if blocks is None or not 0 <= start < end <= len(blocks):
+            if blocks is None or not 0 <= start < end: # <= len(blocks)
                 raise ValueError(f"Invalid range {bounds} for aggregator.{name}")
-            for index in range(start, end):
+            for index in range(start, min(end, len(blocks))):
                 selected[f"aggregator.{name}.{index}"] = blocks[index]
     if not selected:
-        raise ValueError("An unfreeze stage must select at least one module")
+        return []        
+        # raise ValueError("An unfreeze stage must select at least one module")
     return list(selected.values())
 
 
@@ -171,7 +180,18 @@ def unfreeze_ignore(mod: nn.Module, recursive: bool = True, ignore_names: list[s
             
         p.requires_grad = True
 
-def unfreeze(mod: nn.Module, recursive: bool = True) -> None:
+def unfreeze(target: Union[nn.Module, nn.Parameter], recursive: bool = True) -> None:
+    """
+    Unfreeze either nn.Module (call original unfreeze) or nn.Parameter (only enable grad).
+    """
+    if isinstance(target, nn.Module):
+        unfreeze_mod(target, recursive=recursive)
+    elif isinstance(target, nn.Parameter):
+        target.requires_grad = True
+    else:
+        raise TypeError(f"target must be nn.Module or nn.Parameter, got {type(target)}")
+
+def unfreeze_mod(mod: nn.Module, recursive: bool = True) -> None:
     """
     Put *mod* back in train mode and enable gradients.
     Does NOT restore previous state — just unfreezes.
