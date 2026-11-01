@@ -114,7 +114,11 @@ from eval_utils.transform_utils import (
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt_omega.utils.pose_enc import encoding_to_camera as omega_pose_encoding_to_extri_intri
 from dust3r.utils.camera import center_c2w_poses_batch, get_pred_world_to_gt_world_transforms
-
+# os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+# os.environ["NCCL_DEBUG"] = "INFO"
+# os.environ["NCCL_DEBUG_SUBSYS"] = "COLL"
+# os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 def get_amp_type(amp_dtype: str):
     assert amp_dtype in ["bfloat16", "float16"], f"Invalid Amp type: {amp_dtype}"
     if amp_dtype == "bfloat16":
@@ -180,8 +184,8 @@ class Trainer:
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
-        if self.accumulation_mode == "across_batches":
-            cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
+        # if self.accumulation_mode == "across_batches":
+        #     cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
         self.cfg = cfg
 
         self._setup_env_variables(cfg.get("env_variables"))
@@ -936,7 +940,7 @@ class Trainer:
         elif self.optims:
             if str(ckpt_path).endswith(".pt"):
                 base = str(ckpt_path)[:-3]
-                optimizer_path = f"{base}_optimizer_{self.rank}.pt"
+                optimizer_path = f"{base}_optimizer_{self.rank}.pt" if self.shard_optimizer_state else f"{base}_optimizer_0.pt"
                 if g_pathmgr.exists(optimizer_path):
                     logging.info(f"Loading the optimizer state dict from {optimizer_path}")
                     opt_state = self._load_checkpoint_file(optimizer_path)
@@ -1216,9 +1220,10 @@ class Trainer:
             # gc.collect()
             # torch.cuda.empty_cache()  # debug only
 
-        optimizer_content = self._build_optimizer_content()
-        saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
-        del optimizer_content
+        if self.shard_optimizer_state or self.rank == 0:
+            optimizer_content = self._build_optimizer_content()
+            saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
+            del optimizer_content
         # Collective op: ALL ranks, must execute after rank‑0 IO
         # self._zero_optimizer_state()
 
@@ -1354,9 +1359,10 @@ class Trainer:
                     skip_saving_parameters=[],
                 )
                 del checkpoint_content
-            optimizer_content = self._build_optimizer_content()
-            saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
-            del optimizer_content
+            if self.shard_optimizer_state or self.rank == 0:
+                optimizer_content = self._build_optimizer_content()
+                saver.save_optimizer_checkpoint(optimizer_state_dicts=optimizer_content)
+                del optimizer_content
         else:
             if self.rank == 0:
                 checkpoint_path = os.path.join(checkpoint_folder, f"{checkpoint_name}.pt")
@@ -1763,6 +1769,7 @@ class Trainer:
                         pass
                 normalized_rows.append(normalized_row)
             self.metrics_history[phase] = normalized_rows
+        self._log_to_json(self.metrics_history["val"], phase="val")
 
     def _sync_metrics_history_to_csv(self, phase=None):
         if not self.csv_logger:
@@ -1788,6 +1795,8 @@ class Trainer:
                 continue
             model = unwrap_model(self.model)
             modules = [model] if conf is None else select_unfreeze_modules(model, conf.modules)
+            if not modules:
+                continue
             before = sum(p.numel() for p in model.parameters() if p.requires_grad)
             for module in modules:
                 unfreeze(module)
@@ -2115,14 +2124,22 @@ class Trainer:
         )
 
 
-        with g_pathmgr.open(
-            os.path.join(self.logging_conf.log_dir, "val_stats.json"),
-            "a",
-        ) as f:
-            f.write(json.dumps(outs_json) + "\n")
+        self._log_to_json([outs_json])
+        # with g_pathmgr.open(
+        #     os.path.join(self.logging_conf.log_dir, "val_stats.json"),
+        #     "a",
+        # ) as f:
+        #     f.write(json.dumps(outs_json) + "\n")
 
         return outs_json
 
+    def _log_to_json(self, rows, phase='val'):
+        with g_pathmgr.open(
+            os.path.join(self.logging_conf.log_dir, f"{phase}_stats.json"),
+            "a",
+        ) as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
     @staticmethod
     def _resolve_batch_limit(total_batches: int, configured_limit) -> int:
         """Resolve an absolute or fractional batch limit against a loader length."""
@@ -2315,13 +2332,37 @@ class Trainer:
         for data_iter, batch in enumerate(train_loader):
             if data_iter >= limit_train_batches:
                 break
-            if not torch.isfinite(batch["img"]).all():
-                logging.error(f"Rank {self.rank}: Non-finite values detected in img at iter {data_iter}!")
-                logging.error(f"Min: {batch["img"].min()}, Max: {batch["img"].max()}")
-            if not torch.isfinite(batch["depthmap"]).all():
-                logging.error(f"Rank {self.rank}: Non-finite values detected in depthmap at iter {data_iter}!")
-                logging.error(f"Min: {batch["depthmap"].min()}, Max: {batch["depthmap"].max()}")
-            
+            # if not torch.isfinite(batch["img"]).all():
+            #     logging.error(f"Rank {self.rank}: Non-finite values detected in img at iter {data_iter}!")
+            #     logging.error(f"Min: {batch["img"].min()}, Max: {batch["img"].max()}")
+            # if not torch.isfinite(batch["depthmap"]).all():
+            #     logging.error(f"Rank {self.rank}: Non-finite values detected in depthmap at iter {data_iter}!")
+            #     logging.error(f"Min: {batch["depthmap"].min()}, Max: {batch["depthmap"].max()}")
+            if self.epoch == 36 and data_iter == 1535:
+                def dump_tensor_meta(name, b: Dict):
+                    t = b[name]
+                    meta = {
+                        "name": name,
+                        "shape": list(t.shape),
+                        "stride": list(t.stride()),
+                        "is_contiguous": t.is_contiguous(),
+                        "dtype": str(t.dtype),
+                        "device": str(t.device),
+                        "min": float(t.min()),
+                        "max": float(t.max()),
+                        "mean": float(t.mean()),
+                        "std": float(t.std()),
+                        "has_nan": bool(t.isnan().any()),
+                        "has_inf": bool(t.isinf().any()),
+                    }
+                    logging.warning(f"R{self.rank} [DUMP META] {meta}")
+                    # return meta
+                logging.warning(f"R{self.rank} {batch["dataset"]} {batch["label"]}")
+                dump_tensor_meta("img", batch)
+                dump_tensor_meta("depthmap", batch)
+                torch.autograd.set_detect_anomaly(True)
+                # continue
+
             # measure data loading time
             data_time.update(time.time() - end)
             data_times.append(data_time.val)
@@ -2341,7 +2382,6 @@ class Trainer:
             logging.warning(f"image shape: {batch_img_shape}, {self.rank=} {data_iter=}")
             if self.accumulation_mode == "chunk_within_batch":
                 accum_steps = self.accum_steps
-                # logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
                 if accum_steps > batch_size:
                     logging.warning(
                         f"accum_steps ({accum_steps}) > batch_size ({batch_size}); "
@@ -2462,16 +2502,23 @@ class Trainer:
                 logging.warning(f"before backward, {self.epoch=} {self.rank=} {data_iter=}")
                 begin_time = time.time()
                 loss = loss / accum_steps
+                # torch.cuda.synchronize()
+                # logging.warning(f"R{self.rank} {data_iter=} alloc: {torch.cuda.memory_allocated()}, reserved: {torch.cuda.memory_reserved()}")
                 self.scaler.scale(loss).backward()
+                # logging.warning(f"after backward, {self.rank=} {data_iter=} {time.time()-begin_time}")
+                # torch.cuda.synchronize()
+                # logging.warning(f"R{self.rank} after update sync, {data_iter=}")
                 loss_meters[loss_key].update(loss_value, batch_size)
 
-                logging.warning(f"after backward, {self.rank=} {data_iter=} {time.time()-begin_time}")
+                # logging.warning(f"before should_step, {self.rank=} {data_iter=} {should_step=}")
                 if should_step:
                     opt_iters = math.ceil(limit_train_batches / accum_steps)
                     step_idx = math.ceil((data_iter + 1) / accum_steps)
                     exact_epoch = self.epoch + float(step_idx) / opt_iters
                     self.where = float(exact_epoch) / self.max_epochs
 
+                    # torch.cuda.synchronize()
+                    # logging.warning(f"before step_schedulers, {self.rank=} {data_iter=}")
                     assert self.where <= 1 + self.EPSILON
                     if self.where < 1.0:
                         for optim in self.optims:
@@ -2481,7 +2528,8 @@ class Trainer:
                             f"Skipping scheduler update since the training is at the end, i.e, {self.where} of [0,1]."
                         )
 
-                    logging.warning(f"after step sch, {self.rank=} {data_iter=}")
+                    # torch.cuda.synchronize()
+                    # logging.warning(f"before log_freq, {self.rank=} {data_iter=}")
                     if self.steps[phase] % self.logging_conf.log_freq == 0:
                         for i, optim in enumerate(self.optims):
                             for j, param_group in enumerate(optim.optimizer.param_groups):
@@ -2520,7 +2568,7 @@ class Trainer:
                         skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
                     skip_optimizer_step = self._sync_skip_optimizer_step(skip_optimizer_step)
-                    logging.warning(f"before opt step, {self.epoch=} {self.rank=} {data_iter=} {skip_optimizer_step=}")
+                    # logging.warning(f"before opt step, {self.epoch=} {self.rank=} {data_iter=} {skip_optimizer_step=}")
                     if skip_optimizer_step:
                         logging.warning(f"Skipping optimizer step because nonfinite gradients were detected. {self.rank=}")
                         self.nonfinite_count+=1
@@ -2531,7 +2579,7 @@ class Trainer:
                         for optim in self.optims:
                             self.scaler.step(optim.optimizer)
                         self.scaler.update()
-                    logging.warning(f"after opt step, {self.rank=} {data_iter=}")
+                    # logging.warning(f"after opt step, {self.rank=} {data_iter=}")
                     # self._clear_optimizer_step_memory()
 
             # Measure elapsed time
@@ -2554,7 +2602,7 @@ class Trainer:
                     *loss_meters.values(),
                 ]
                 progress.display(data_iter)
-            logging.warning(f"after iter display, {self.rank=} {data_iter=}")
+            # logging.warning(f"after iter display, {self.rank=} {data_iter=}")
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv("train", loss_meters)

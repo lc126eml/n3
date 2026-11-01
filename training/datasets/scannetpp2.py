@@ -7,6 +7,7 @@ import numpy as np
 
 from training.datasets.base.base_multiview_dataset import BaseMultiViewDataset, cropping
 from dust3r.utils.image import imread_cv2
+import random
 
 
 class ScanNetpp_Multi(BaseMultiViewDataset):
@@ -212,15 +213,25 @@ class ScanNetpp_Multi(BaseMultiViewDataset):
         batched_views = defaultdict(list)
 
         for v, view_idx in enumerate(image_idxs):
-            rgb_path = self.images[view_idx]
-            rgb_name = osp.basename(rgb_path)
-            depth_path = rgb_path.replace("rgb.jpg", "depth.png")
-            cam_path = rgb_path.replace("rgb.jpg", "cam.npz")
-
+            for _ in range(self.MAX_RETRY):
+                try:
+                    rgb_path = self.images[view_idx]
+                    rgb_name = osp.basename(rgb_path)
+                    depth_path = rgb_path.replace("rgb.jpg", "depth.png")
+                    cam_path = rgb_path.replace("rgb.jpg", "cam.npz")
+                    depthmap = imread_cv2(depth_path, cv2.IMREAD_UNCHANGED)
+                    depthmap[depthmap == 65535] = 0
+                    depthmap = depthmap.astype(np.float32) / 1000.0
+                    if np.nanmax(depthmap) > 0:
+                        view_idx = random.randint(0, len(all_image_ids) - 1)
+                        raise ValueError("empty depthmap")
+                    else:
+                        break
+                except Exception as exc:
+                    # any exception from _get_views, swallow and retry
+                    print(f"load failed {depth_path=} ({exc})", flush=True)
+                    # raise exc
             rgb_image = imread_cv2(rgb_path, cv2.IMREAD_COLOR)
-            depthmap = imread_cv2(depth_path, cv2.IMREAD_UNCHANGED)
-            depthmap[depthmap == 65535] = 0
-            depthmap = depthmap.astype(np.float32) / 1000.0
             cam_file = np.load(cam_path)
             intrinsics = cam_file["intrinsics"].astype(np.float32)
             camera_pose = cam_file["pose"].astype(np.float32)

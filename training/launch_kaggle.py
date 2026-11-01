@@ -446,6 +446,7 @@ def main() -> None:
 
     from training.trainer import Trainer
 
+    begin_time = time.time()
     try:
         if cfg.get("distributed", {}).get("enabled", False) and torch.cuda.device_count() > 1:
             from train_utils.distributed import run_distributed
@@ -457,7 +458,8 @@ def main() -> None:
         # from kaggle.utils.supabase_utils import log_to_supabase
         # log_to_supabase(cfg["kernel_id"], 1, f"ERROR: {exc}")
         print(f"Exception in run_distributed or Trainer: {exc}", flush=True)
-        # raise exc
+        if time.time() - begin_time < 3600*2:
+            raise exc
 
 
 if __name__ == "__main__":

@@ -371,6 +371,10 @@ optim:
       batch_cost_discount: 1.0
     - epoch: 1
       modules:
+        patterns: ["aggregator.camera_token*", "aggregator.register_token*"]
+      batch_cost_discount: 1.0
+    - epoch: 1
+      modules:
         frame_block_ranges: [[22, 24]]
       batch_cost_discount: 0.8
     # - epoch: 2
