@@ -180,8 +180,8 @@ class Trainer:
         cfg = self._resolve_conf_logit_max(cfg)
         self.accum_steps = cfg.get("accum_steps", 1)
         self.accumulation_mode = cfg.optim.get("accumulation_mode", "chunk_within_batch")
-        if self.accumulation_mode == "across_batches":
-            cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
+        # if self.accumulation_mode == "across_batches":
+        #     cfg.logging.log_freq = cfg.logging.log_freq * self.accum_steps
         self.cfg = cfg
 
         self._setup_env_variables(cfg.get("env_variables"))
@@ -1763,6 +1763,7 @@ class Trainer:
                         pass
                 normalized_rows.append(normalized_row)
             self.metrics_history[phase] = normalized_rows
+        self._log_to_json(self.metrics_history["val"], phase="val")
 
     def _sync_metrics_history_to_csv(self, phase=None):
         if not self.csv_logger:
@@ -2115,14 +2116,22 @@ class Trainer:
         )
 
 
-        with g_pathmgr.open(
-            os.path.join(self.logging_conf.log_dir, "val_stats.json"),
-            "a",
-        ) as f:
-            f.write(json.dumps(outs_json) + "\n")
+        self._log_to_json([outs_json])
+        # with g_pathmgr.open(
+        #     os.path.join(self.logging_conf.log_dir, "val_stats.json"),
+        #     "a",
+        # ) as f:
+        #     f.write(json.dumps(outs_json) + "\n")
 
         return outs_json
 
+    def _log_to_json(self, rows, phase='val'):
+        with g_pathmgr.open(
+            os.path.join(self.logging_conf.log_dir, f"{phase}_stats.json"),
+            "a",
+        ) as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
     @staticmethod
     def _resolve_batch_limit(total_batches: int, configured_limit) -> int:
         """Resolve an absolute or fractional batch limit against a loader length."""
@@ -2338,7 +2347,7 @@ class Trainer:
                 logging.warning("Skipping empty batch during training.")
                 continue
 
-            logging.warning(f"image shape: {batch_img_shape}, {self.rank=} {data_iter=}")
+            # logging.warning(f"image shape: {batch_img_shape}, {self.rank=} {data_iter=}")
             if self.accumulation_mode == "chunk_within_batch":
                 accum_steps = self.accum_steps
                 # logging.warning(f"batch_size ({batch_size}); image size: {batch_img_shape}")
@@ -2449,7 +2458,7 @@ class Trainer:
                         log_step=self.steps[phase],
                     )
 
-                logging.warning(f"after step, {self.rank=} {data_iter=}")
+                # logging.warning(f"after step, {self.rank=} {data_iter=}")
                 loss = loss_dict["objective"]
                 loss_key = f"{phase}_loss_objective"
                 loss_value = loss.detach()
@@ -2459,13 +2468,13 @@ class Trainer:
                     logging.error(error_msg)
                     return False
 
-                logging.warning(f"before backward, {self.epoch=} {self.rank=} {data_iter=}")
+                # logging.warning(f"before backward, {self.epoch=} {self.rank=} {data_iter=}")
                 begin_time = time.time()
                 loss = loss / accum_steps
                 self.scaler.scale(loss).backward()
                 loss_meters[loss_key].update(loss_value, batch_size)
 
-                logging.warning(f"after backward, {self.rank=} {data_iter=} {time.time()-begin_time}")
+                # logging.warning(f"after backward, {self.rank=} {data_iter=} {time.time()-begin_time}")
                 if should_step:
                     opt_iters = math.ceil(limit_train_batches / accum_steps)
                     step_idx = math.ceil((data_iter + 1) / accum_steps)
@@ -2481,7 +2490,7 @@ class Trainer:
                             f"Skipping scheduler update since the training is at the end, i.e, {self.where} of [0,1]."
                         )
 
-                    logging.warning(f"after step sch, {self.rank=} {data_iter=}")
+                    # logging.warning(f"after step sch, {self.rank=} {data_iter=}")
                     if self.steps[phase] % self.logging_conf.log_freq == 0:
                         for i, optim in enumerate(self.optims):
                             for j, param_group in enumerate(optim.optimizer.param_groups):
@@ -2520,7 +2529,7 @@ class Trainer:
                         skip_optimizer_step = getattr(self.gradient_clipper, "found_nonfinite", False)
 
                     skip_optimizer_step = self._sync_skip_optimizer_step(skip_optimizer_step)
-                    logging.warning(f"before opt step, {self.epoch=} {self.rank=} {data_iter=} {skip_optimizer_step=}")
+                    # logging.warning(f"before opt step, {self.epoch=} {self.rank=} {data_iter=} {skip_optimizer_step=}")
                     if skip_optimizer_step:
                         logging.warning(f"Skipping optimizer step because nonfinite gradients were detected. {self.rank=}")
                         self.nonfinite_count+=1
@@ -2531,7 +2540,7 @@ class Trainer:
                         for optim in self.optims:
                             self.scaler.step(optim.optimizer)
                         self.scaler.update()
-                    logging.warning(f"after opt step, {self.rank=} {data_iter=}")
+                    # logging.warning(f"after opt step, {self.rank=} {data_iter=}")
                     # self._clear_optimizer_step_memory()
 
             # Measure elapsed time
@@ -2554,7 +2563,7 @@ class Trainer:
                     *loss_meters.values(),
                 ]
                 progress.display(data_iter)
-            logging.warning(f"after iter display, {self.rank=} {data_iter=}")
+            # logging.warning(f"after iter display, {self.rank=} {data_iter=}")
 
         # Log metrics to CSV
         self._log_epoch_metrics_to_csv("train", loss_meters)
